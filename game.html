@@ -100,6 +100,10 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
       <button class="dbg-btn" onclick="skipToDay()" style="flex:1">☀️ 白天</button>
       <button class="dbg-btn" onclick="skipToNight()" style="flex:1">🌙 夜晚</button>
     </div>
+      <div style="display:flex;gap:2px;margin-bottom:3px;">
+        <button class="dbg-btn" onclick="unlockAll()" style="flex:1">🔓解锁</button>
+        <button class="dbg-btn" onclick="upgradeTH()" style="flex:1">⬆升本</button>
+      </div>
     <div style="display:flex;flex-wrap:wrap;gap:2px;">
       <div class="dbg-row"><span>🍗</span><input id="dbg-food" type="number" value="50" size="4"><button class="dbg-btn" onclick="setRes('food')">设</button></div>
       <div class="dbg-row"><span>🪵</span><input id="dbg-wood" type="number" value="30" size="4"><button class="dbg-btn" onclick="setRes('wood')">设</button></div>
@@ -110,15 +114,18 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
   <canvas id="game"></canvas>
   <div id="building-panel">
     <h3>🏘 建筑</h3>
-    <button class="bld-btn" data-type="house">🏠 住房<div class="cost">10木 5石</div></button>
     <button class="bld-btn" data-type="farm">🌾 农场<div class="cost">5木</div></button>
     <button class="bld-btn" data-type="lumber">🪓 伐木场<div class="cost">5木</div></button>
-    <button class="bld-btn" data-type="quarry">⛏ 采石场<div class="cost">10木 5石</div></button>
-    <button class="bld-btn" data-type="iron_mine">⚒ 铁矿<div class="cost">15木 10石</div></button>
-    <button class="bld-btn" data-type="storage">📦 仓库<div class="cost">15木 10石</div></button>
     <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
+    <button class="bld-btn" data-type="house">🏠 住房<div class="cost">10木 5石</div></button>
+    <button class="bld-btn" data-type="wood_storage">🪵 木材仓库<div class="cost">10木 5石</div></button>
+    <button class="bld-btn" data-type="quarry">⛏ 采石场<div class="cost">10木 5石</div></button>
+    <button class="bld-btn" data-type="stone_storage">🪨 石材仓库<div class="cost">10木 5石</div></button>
     <button class="bld-btn" data-type="wall">🧱 城墙<div class="cost">5石</div></button>
-    <button class="bld-btn" data-type="lab">🔬 研究所<div class="cost">30木 20石</div></button>
+    <button class="bld-btn" data-type="iron_mine">⚒ 铁矿<div class="cost">15木 10石</div></button>
+    <button class="bld-btn" data-type="smelter">🔥 炼铁机<div class="cost">20木 15石</div></button>
+    <button class="bld-btn" data-type="iron_storage">⚒ 铁矿仓库<div class="cost">10木 10石</div></button>
+    <button class="bld-btn" data-type="ingot_storage">🔩 铁锭仓库<div class="cost">10木 10石</div></button>
   </div>
 
   <div id="topbar">
@@ -129,9 +136,7 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
     <div style="color:#aaa;">|</div>
     <div class="top-res"><span class="icon">👤</span><span class="val" id="r-pop">4/8</span></div>
     <div style="color:#aaa;">|</div>
-    <div class="top-res"><span class="icon"   <div class="top-res"><span class="icon">🔬</span><span class="val" id="r-science">0</span></div>
-  <div style="color:#aaa;">|</div>
-  <div class="top-res"><span class="icon" id="day-icon">☀️</span><span class="val" id="r-time">Day 1</span></div>
+    <div class="top-res"><span class="icon" id="day-icon">☀️</span><span class="val" id="r-time">Day 1</span></div>
   </div>
 
   <div id="time-indicator"></div>
@@ -146,19 +151,6 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
     border:none;border-radius:8px;cursor:pointer;font-family:inherit;">🔄 重新开始</button>
 </div>
 
-<div id="techtree-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
-  background:rgba(0,0,0,0.8); z-index:100; justify-content:center;align-items:center;">
-  <div style="background:#1a1a2e; border:2px solid #555; border-radius:12px; padding:24px;
-    max-width:600px; max-height:80vh; overflow-y:auto; color:#fff; font-size:13px; min-width:400px;">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <h2 style="color:#ffd700; margin:0;">📚 科技树</h2>
-      <button onclick="closeTechTree()" style="background:#a44; color:#fff; border:none; padding:6px 14px;
-        border-radius:4px; cursor:pointer; font-size:14px; font-family:inherit;">✖ 关闭</button>
-    </div>
-    <div style="margin-bottom:12px; color:#ffd700;">🔬 科技点: <span id="tt-science">0</span> | 队列: <span id="tt-queue-count">0</span>/5</div>
-    <div id="tech-list" style="display:flex; flex-direction:column; gap:4px;"></div>
-  </div>
-</div>
 
 <script>
 // ============================================================
@@ -182,47 +174,21 @@ const CFG = {
 // BUILDING DEFINITIONS
 // ============================================================
 const BLD_DEFS = {
-  house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4 },
-  farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8 },
-  lumber:      { name:'伐木场',icon:'🪓', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'wood',  baseTime:6 },
-  quarry:      { name:'采石场',icon:'⛏', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', baseTime:10 },
-  iron_mine:   { name:'铁矿', icon:'⚒', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:4, produces:'iron',  baseTime:12 },
-  storage:     { name:'仓库', icon:'📦', cat:'storage',   sz:[2,2], cost:{wood:15,stone:10},hp:180, maxWorkers:0, capacity:50 },
-  arrow_tower: { name:'箭塔', icon:'🏹', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8 },
-  town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5} },
-  wall:        { name:'城墙', icon:'🧱', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0 },
-  lab:         { name:'研究所',icon:'🔬', cat:'facility',  sz:[2,2], cost:{wood:30,stone:20},hp:150, maxWorkers:3, produces:'science', baseTime:8 },
+  house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 },
+  farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, unlock:1 },
+  lumber:      { name:'伐木场',icon:'🪓', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'wood',  baseTime:6, unlock:1 },
+  quarry:      { name:'采石场',icon:'⛏', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', baseTime:10, unlock:3 },
+  iron_mine:   { name:'铁矿', icon:'⚒', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:4, produces:'iron',  baseTime:12, unlock:4 },
+  smelter:     { name:'炼铁机',icon:'🔥', cat:'production',sz:[2,2], cost:{wood:20,stone:15},hp:120, maxWorkers:2, produces:'ingot', baseTime:8, unlock:4 },
+  wood_storage:{ name:'木材仓库',icon:'🪵', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:2 },
+  stone_storage:{name:'石材仓库',icon:'🪨', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:3 },
+  iron_storage:{ name:'铁矿仓库',icon:'⚒', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 },
+  ingot_storage:{name:'铁锭仓库',icon:'🔩', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 },
+  arrow_tower: { name:'箭塔', icon:'🏹', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8, unlock:1 },
+  town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5}, unlock:1 },
+  wall:        { name:'城墙', icon:'🧱', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0, unlock:3 },
 };
 
-// ============================================================
-// TECH TREE
-// ============================================================
-const TECHS = [
-  { id:'masonry',      name:'石工技术', icon:'🏠', cost:40,  desc:'住房等级上限+2',        apply:()=>{} },
-  { id:'fortify',      name:'要塞化',   icon:'🏛', cost:60,  desc:'大本营HP+200',         apply:()=>{ if(G.townHall){G.townHall.maxHp+=200;G.townHall.hp+=200;} } },
-  { id:'archery',      name:'高级箭术', icon:'🏹', cost:50,  desc:'箭塔射程+40 伤害+10',   apply:()=>{} },
-  { id:'walls',        name:'强化城墙', icon:'🧱', cost:30,  desc:'城墙HP+100',           apply:()=>{} },
-  { id:'farming',      name:'农业改良', icon:'🌾', cost:30,  desc:'农场效率+25%',          apply:()=>{} },
-  { id:'mining',       name:'采矿技术', icon:'⚒', cost:50,  desc:'铁矿效率+25%',          apply:()=>{} },
-  { id:'woodworking',  name:'木工技术', icon:'🪓', cost:30,  desc:'伐木效率+25%',          apply:()=>{} },
-  { id:'quarrying',    name:'采石技术', icon:'⛏', cost:40,  desc:'采石效率+25%',          apply:()=>{} },
-  { id:'logistics',    name:'后勤学',   icon:'📦', cost:50,  desc:'居民搬运速度+30%',       apply:()=>{} },
-  { id:'housing',      name:'居住改良', icon:'🏠', cost:60,  desc:'住房人口上限+2',         apply:()=>{ G.maxPop+=2; } },
-];
-function isTechDone(id) { return G.researched.includes(id); }
-function isTechQueued(id) { return G.researchQueue.includes(id); }
-function techEffect(type) {
-  switch(type) {
-    case 'masonry': return 0; // House level cap buff, checked on upgrade
-    case 'fortify': return 0;
-    case 'archery': return 1; // Tower buff
-    case 'walls': return 1;
-    case 'farming': case 'mining': case 'woodworking': case 'quarrying': return 1; // Efficiency buff
-    case 'logistics': return 1;
-    case 'housing': return 1;
-    default: return 0;
-  }
-}
 
 // ============================================================
 // GAME STATE
@@ -235,7 +201,6 @@ const G = {
   mouseX: 0, mouseY: 0,
   placingMode: false, movingBuilding: null,
   maxPop: CFG.MAX_POP_BASE, popGrowthTimer: 0,
-  science: 0, researched: [], researchQueue: [],
   enemySpawnQueue: [], enemySpawnTimer: 0,
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
   dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
@@ -303,10 +268,11 @@ function canPlaceBuilding(type, col, row, excludeBld) {
   return true;
 }
 
+function isStorage(type) { return BLD_DEFS[type] && (BLD_DEFS[type].cat==='storage' || type==='town_hall'); }
 function findNearestStorage(pos) {
   let best=null, bestD=Infinity;
   for (const b of G.buildings) {
-    if (b.type!=='storage' || b.hp<=0) continue;
+    if (!isStorage(b.type) || b.hp<=0) continue;
     const cx=b.x+BLD_DEFS[b.type].sz[0]*CFG.CELL/2;
     const cy=b.y+BLD_DEFS[b.type].sz[1]*CFG.CELL/2;
     const d=Math.hypot(pos.x-cx, pos.y-cy);
@@ -314,16 +280,21 @@ function findNearestStorage(pos) {
   }
   return best;
 }
+function maxBuildingLevel(type) {
+  const th = G.townHall;
+  return th ? th.level : 1;
+}
 
 function houseCapacity(h) {
-  if (h.type!=='house') return 0;
-  return BLD_DEFS.house.popBonus + (h.level-1)*2;
+  if (h.type==='town_hall') return 4 + (h.level-1)*4;
+  if (h.type==='house') return BLD_DEFS.house.popBonus + (h.level-1)*2;
+  return 0;
 }
 function findNearestHome(pos) {
   let best=null, bestD=Infinity;
   for (const b of G.buildings) {
-    if (b.type!=='house' || b.hp<=0) continue;
-    if (b.residentCount >= houseCapacity(b)) continue; // full
+    if ((b.type!=='house' && b.type!=='town_hall') || b.hp<=0) continue;
+    if (b.residentCount >= houseCapacity(b)) continue;
     const cx=b.x+BLD_DEFS[b.type].sz[0]*CFG.CELL/2;
     const cy=b.y+BLD_DEFS[b.type].sz[1]*CFG.CELL/2;
     const d=Math.hypot(pos.x-cx, pos.y-cy);
@@ -372,10 +343,6 @@ class Building {
     const def = BLD_DEFS[this.type];
     if (!def.maxWorkers) return 0;
     let eff = Math.min(1, this.assignedWorkers/def.maxWorkers);
-    if (this.type==='farm' && isTechDone('farming')) eff *= 1.25;
-    if (this.type==='iron_mine' && isTechDone('mining')) eff *= 1.25;
-    if (this.type==='lumber' && isTechDone('woodworking')) eff *= 1.25;
-    if (this.type==='quarry' && isTechDone('quarrying')) eff *= 1.25;
     return eff;
   }
   def() { return BLD_DEFS[this.type]; }
@@ -436,10 +403,8 @@ function initGame() {
   G.townHall = th;
   G.cam.x = th.x + CFG.CELL; G.cam.y = th.y + CFG.CELL;
 
-  addBuilding('house', 37, 23);
-  addBuilding('storage', 37, 26);
-  addBuilding('farm', 35, 22);
-  G.buildings[3].assignedWorkers = 2;
+  addBuilding('lumber', 37, 25);
+  G.buildings[1].assignedWorkers = 2; // lumber
   G.maxPop = CFG.MAX_POP_BASE;
 
   for (let i=0; i<CFG.START_POP; i++) {
@@ -447,13 +412,11 @@ function initGame() {
       th.x + 40 + (Math.random()-0.5)*100,
       th.y + 40 + (Math.random()-0.5)*100
     );
-    assignHome(r, G.buildings[1]);
+    assignHome(r, th);
     G.residents.push(r);
   }
-  let assigned=0;
-  for (const r of G.residents) {
-    if (assigned<2) { r.workplace=G.buildings[3]; r.state='GOING_TO_WORK'; assigned++; }
-  }
+  G.residents[0].workplace = G.buildings[1]; G.residents[0].state = 'GOING_TO_WORK';
+  G.residents[1].workplace = G.buildings[1]; G.residents[1].state = 'GOING_TO_WORK';
 }
 
 function addBuilding(type, col, row) {
@@ -598,8 +561,8 @@ function updateTowers(dt) {
     b.attackCooldown -= dt;
     if (b.attackCooldown > 0) continue;
     const def=BLD_DEFS[b.type], center=b.center();
-    const range = def.range + (isTechDone('archery')?40:0);
-    const damage = def.damage + (isTechDone('archery')?10:0);
+    const range = def.range + 0;
+    const damage = def.damage + 0;
     let closest=null, closestD=Infinity;
     for (const e of G.enemies) {
       if (!e.alive) continue;
@@ -636,10 +599,14 @@ function updateResidents(dt) {
     // Priority 1: Hungry
     if (r.hunger >= CFG.HUNGER_THRESHOLD && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
       const storage = findNearestStorage(r);
-      if (storage && (G.resources.food||0) > 0) {
-        r.state = 'GOING_TO_EAT';
-        const sc = storage.center();
-        r.targetX = sc.x; r.targetY = sc.y;
+      if ((G.resources.food||0) > 0) {
+        if (storage) {
+          r.state = 'GOING_TO_EAT';
+          const sc = storage.center(); r.targetX = sc.x; r.targetY = sc.y;
+        } else {
+          // No storage — eat directly
+          r.state = 'EATING'; r.eatTimer = 1.5;
+        }
       }
     }
 
@@ -658,9 +625,13 @@ function updateResidents(dt) {
     // Execute state
     switch (r.state) {
       case 'GOING_TO_EAT': {
+        // Recalculate target each frame
+        const storage = findNearestStorage(r);
+        if (!storage) { r.state='EATING'; r.eatTimer=0.5; break; }
+        const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
         if (dd<4) { r.state='EATING'; r.eatTimer=1.5; }
-        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; }
+        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED)*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED)*dt; }
         break;
       }
       case 'EATING':
@@ -673,7 +644,7 @@ function updateResidents(dt) {
       case 'GOING_HOME': {
         const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
         if (dd<4) { r.state='SLEEPING'; r.tired=0; }
-        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; }
+        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED)*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED)*dt; }
         break;
       }
       case 'GOING_TO_WORK': {
@@ -681,7 +652,7 @@ function updateResidents(dt) {
         const wc=r.workplace.center();
         const dx=wc.x-r.x, dy=wc.y-r.y, dd=Math.hypot(dx,dy)||1;
         if (dd<10) { r.state='WORKING'; r.prodTimer=0; }
-        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; }
+        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED)*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED)*dt; }
         break;
       }
       case 'WORKING': {
@@ -689,15 +660,6 @@ function updateResidents(dt) {
         const b=r.workplace, def=BLD_DEFS[b.type];
         const eff=b.efficiency();
         if (eff<=0) break;
-        // Lab produces science directly
-        if (b.type==='lab') {
-          b.productionProgress += dt / (def.baseTime/eff);
-          if (b.productionProgress >= 1) {
-            b.productionProgress = 0;
-            G.science++;
-          }
-          break;
-        }
         b.productionProgress += dt / (def.baseTime/eff);
         if (b.productionProgress >= 1) {
           b.productionProgress = 0;
@@ -712,6 +674,10 @@ function updateResidents(dt) {
         break;
       }
       case 'HAULING': {
+        // Recalculate target each frame (storage may have moved)
+        const storage = findNearestStorage(r);
+        if (!storage) { r.carrying=null; r.state='IDLE'; break; }
+        const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
         if (dd<10) {
           if (r.carrying) {
@@ -722,7 +688,7 @@ function updateResidents(dt) {
           r.carrying=null;
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
-        } else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; }
+        } else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED)*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED)*dt; }
         break;
       }
       default: { // IDLE / PATROL
@@ -771,6 +737,7 @@ function updateBuildings(dt) {
         b.maxHp=Math.floor(b.maxHp*1.3);
         b.hp=b.maxHp;
         if (b.type==='house') G.maxPop += 2;
+        if (b.type==='town_hall') updateBuildingPanel();
       }
     }
     // Recruiting (大本营)
@@ -846,6 +813,20 @@ function skipToNight() {
   spawnEnemyWave();
   showTimeIndicator('🌙 跳过至夜晚');
 }
+function unlockAll() {
+  const th = G.townHall; if (!th) return;
+  th.level = 4; th.maxHp = Math.floor(500 * Math.pow(1.3, 3)); th.hp = th.maxHp;
+  G.maxPop = CFG.MAX_POP_BASE;
+  for (const b of G.buildings) { if (b.type==='house') G.maxPop += BLD_DEFS.house.popBonus + (b.level-1)*2; }
+  G.maxPop += 4 + (th.level-1)*4;
+  updateBuildingPanel();
+}
+function upgradeTH() {
+  const th = G.townHall; if (!th) return;
+  th.level++; th.maxHp = Math.floor(th.maxHp * 1.3); th.hp = th.maxHp;
+  G.maxPop += 4;
+  updateBuildingPanel();
+}
 function skipToDay() {
   G.phase = 'day'; G.dayTime = 0; G.day++; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   for (const r of G.residents) { r.state = 'IDLE'; r.tired = 0; }
@@ -880,7 +861,6 @@ function restartGame() {
   G.selectedBldType = null; G.selectedBuilding = null; G.placingMode = false; G.movingBuilding = null;
   G.maxPop = CFG.MAX_POP_BASE; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   G.dragging = false; gameSpeed = 1; gameRunning = true;
-  G.science = 0; G.researched = []; G.researchQueue = []; G._researchTimer = 0;
   document.getElementById('gameover-overlay').style.display = 'none';
   initGame();
 }
@@ -895,7 +875,6 @@ function update(dt) {
     updateTowers(dt);
   }
   updateParticles(dt);
-  processResearchQueue(dt);
   G.tick++;
 }
 
@@ -988,9 +967,9 @@ function render() {
       const def=BLD_DEFS[b.type];
       const center=b.center();
       ctx.fillStyle='rgba(255,255,255,0.08)';
-      ctx.beginPath(); ctx.arc(center.x, center.y, (def.range + (isTechDone('archery')?40:0)), 0, Math.PI*2); ctx.fill();
+      ctx.beginPath(); ctx.arc(center.x, center.y, (def.range + 0), 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.arc(center.x, center.y, (def.range + (isTechDone('archery')?40:0)), 0, Math.PI*2); ctx.stroke();
+      ctx.beginPath(); ctx.arc(center.x, center.y, (def.range + 0), 0, Math.PI*2); ctx.stroke();
     }
     ctx.strokeStyle='#ffd700'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
     ctx.strokeRect(b.x-2,b.y-2,b.size[0]*CFG.CELL+4,b.size[1]*CFG.CELL+4);
@@ -1018,7 +997,7 @@ function drawBuilding(b, x, y) {
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
     ctx.fillText(`👤${b.assignedWorkers}/${def.maxWorkers}`,cx,cy+h/2-6);
   }
-  if (b.type==='house') {
+  if (b.type==='house'||b.type==='town_hall') {
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
     ctx.fillText(`🏠${b.residentCount}/${houseCapacity(b)}`,cx,cy+h/2-6);
@@ -1029,7 +1008,7 @@ function drawBuilding(b, x, y) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',lumber:'#7a6b4a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',storage:'#5a6a8a',arrow_tower:'#8a5a4a',wall:'#7a7a6a',lab:'#6a5a8a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',lumber:'#7a6b4a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResident(r) {
@@ -1132,7 +1111,6 @@ function updateTopBar() {
   document.getElementById('r-pop').textContent = `${G.residents.length}/${G.maxPop}` + (homeless>0?` ⚠${homeless}`:'');
   document.getElementById('r-time').textContent = G.phase==='day'?`第${G.day}天`:G.phase==='night'?`第${G.day}夜`:`第${G.day}天·过渡`;
   document.getElementById('day-icon').textContent = G.phase==='day'?'☀️':G.phase==='night'?'🌙':'🌅';
-  document.getElementById('r-science').textContent = G.science;
 }
 
 function showContextMenu(building, mx, my) {
@@ -1146,23 +1124,24 @@ function showContextMenu(building, mx, my) {
   if(b.type==='town_hall') {
     const slots = G.maxPop - G.residents.length - b.recruitQueue;
     const full = slots <= 0;
-    h+=`<div class="info-line" style="font-size:10px">人口: ${G.residents.length}/${G.maxPop} | 队列: ${b.recruitQueue}</div>`;
+    h+=`<div class="info-line" style="font-size:10px">人口: ${G.residents.length}/${G.maxPop} | 住户: ${b.residentCount}/${houseCapacity(b)} | 队列: ${b.recruitQueue}</div>`;
     h+=`<button onclick="actionRecruit()"${full?' disabled':''}>👤 增加人口 (消耗${def.recruitCost.food}食物)${b.recruitQueue>0?` (${b.recruitQueue}人排队中)`:''}${full?' [已满]':''}</button>`;
-    h+=`<button onclick="actionUpgrade()">⬆ 升级${b.upgrading?' (升级中...)':''}</button>`;
-  } else if(b.type==='lab') {
-    h+=`<div class="info-line" style="font-size:10px">科技点: ${G.science} | 队列: ${G.researchQueue.length}/5</div>`;
-    h+=`<button onclick="openTechTree()">📚 科技树</button>`;
-    h+=`<button onclick="actionUpgrade()">⬆ 升级${b.upgrading?' (升级中...)':''}</button>`;
-    if(def.maxWorkers>0) {
-      const full = b.assignedWorkers >= def.maxWorkers;
-      const none = b.assignedWorkers <= 0;
-      h+=`<button onclick="actionAddWorker()"${full?' disabled':''}>➕ 增加工人${full?' [满]':''}</button>`;
-      h+=`<button onclick="actionRemoveWorker()"${none?' disabled':''}>➖ 减少工人${none?' [空]':''}</button>`;
+    const nextLv = b.level + 1;
+    const unlocks = [];
+    for (const [k, d] of Object.entries(BLD_DEFS)) {
+      if (d.unlock === nextLv && k !== 'town_hall') unlocks.push(d.icon+d.name);
     }
-    h+=`<button onclick="actionMove()">↔ 移动</button>`;
-    h+=`<button onclick="actionDemolish()" style="color:#f66">✖ 拆除</button>`;
+    const thCosts = {1:{wood:20}, 2:{wood:50}, 3:{wood:200,stone:50}};
+    const cost = thCosts[b.level] || {wood:500,stone:200};
+    const costStr = Object.entries(cost).map(([k,v])=>v+({wood:'木',stone:'石'}[k]||k)).join(' ');
+    const capText = `建筑等级上限 → Lv.${nextLv}`;
+    const unlockText = unlocks.length ? '解锁: '+unlocks.join(' ') : '';
+    h+=`<div class="info-line" style="font-size:10px;color:#ffd700;">⬆ 升级后: ${capText}${unlockText?' | '+unlockText:''}</div>`;
+    h+=`<button onclick="actionUpgrade()">⬆ 升级 Lv.${b.level}→${nextLv} (${costStr})${b.upgrading?' (升级中...)':''}</button>`;
   } else {
-    h+=`<button onclick="actionUpgrade()">⬆ 升级${b.upgrading?' (升级中...)':''}</button>`;
+    const maxLv = maxBuildingLevel(b.type);
+    const capped = b.level >= maxLv;
+    h+=`<button onclick="actionUpgrade()"${capped?' disabled':''}>⬆ 升级${b.upgrading?' (升级中...)':''}${capped?` [需大本营Lv.${b.level+1}]`:''}</button>`;
     if(def.maxWorkers>0) {
       const full = b.assignedWorkers >= def.maxWorkers;
       const none = b.assignedWorkers <= 0;
@@ -1181,64 +1160,17 @@ function showContextMenu(building, mx, my) {
 
 function hideContextMenu() { contextMenu.style.display='none'; }
 
-function openTechTree() {
-  document.getElementById('techtree-overlay').style.display = 'flex';
-  renderTechTree();
-}
-function closeTechTree() {
-  document.getElementById('techtree-overlay').style.display = 'none';
-}
-function renderTechTree() {
-  document.getElementById('tt-science').textContent = G.science;
-  document.getElementById('tt-queue-count').textContent = G.researchQueue.length;
-  let h = '';
-  for (const t of TECHS) {
-    const done = isTechDone(t.id);
-    const queued = isTechQueued(t.id);
-    const canQueue = !done && !queued && G.researchQueue.length < 5;
-    let status = done ? '✅ 已完成' : queued ? '⏳ 排队中' : '🔒 可研发';
-    h += `<div style="display:flex; align-items:center; gap:8px; padding:6px;
-      background:${done?'#2a3a2a':queued?'#3a3a2a':'#2a2a3a'}; border-radius:6px;">
-      <span style="font-size:20px;">${t.icon}</span>
-      <div style="flex:1;"><b>${t.name}</b><div style="font-size:10px;color:#aaa;">${t.desc} | 消耗: ${t.cost} 科技点</div></div>
-      ${done ? '' : queued ? `<button onclick="unqueueTech('${t.id}')" style="background:#a44;color:#fff;border:none;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;">取消</button>` :
-        `<button onclick="queueTech('${t.id}')"${!canQueue?' disabled':''} style="background:${canQueue?'#4a4':'#555'};color:#fff;border:none;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;">研发</button>`}
-    </div>`;
-  }
-  document.getElementById('tech-list').innerHTML = h;
-}
-function queueTech(id) {
-  if (G.researchQueue.length >= 5 || isTechDone(id) || isTechQueued(id)) return;
-  G.researchQueue.push(id);
-  renderTechTree();
-}
-function unqueueTech(id) {
-  const idx = G.researchQueue.indexOf(id);
-  if (idx >= 0) G.researchQueue.splice(idx, 1);
-  renderTechTree();
-}
-
-function processResearchQueue(dt) {
-  if (G.researchQueue.length === 0) return;
-  if (!G._researchTimer) G._researchTimer = 0;
-  G._researchTimer += dt;
-  if (G._researchTimer < 2) return; // 2 seconds between queue ticks
-  G._researchTimer = 0;
-  const id = G.researchQueue[0];
-  const tech = TECHS.find(t => t.id === id);
-  if (!tech) { G.researchQueue.shift(); return; }
-  if (G.science >= tech.cost) {
-    G.science -= tech.cost;
-    G.researchQueue.shift();
-    G.researched.push(id);
-    if (tech.apply) tech.apply();
-    renderTechTree();
-  }
-}
-
 function actionUpgrade() {
   const b=G.selectedBuilding; if(!b||b.upgrading) return;
-  const cost={wood:10*b.level, stone:5*b.level};
+  const maxLv = b.type==='town_hall' ? 99 : maxBuildingLevel(b.type);
+  if (b.level >= maxLv) return;
+  let cost;
+  if (b.type==='town_hall') {
+    const costs = {1:{wood:20}, 2:{wood:50}, 3:{wood:200,stone:50}};
+    cost = costs[b.level] || {wood:500,stone:200};
+  } else {
+    cost = {wood:10*b.level, stone:5*b.level};
+  }
   if(!canAfford(cost)) return;
   payCost(cost); b.upgrading=true; b.upgradeProgress=0; hideContextMenu();
 }
@@ -1281,6 +1213,15 @@ function actionDemolish() {
   demolishBuilding(b); G.selectedBuilding=null; hideContextMenu();
 }
 
+function updateBuildingPanel() {
+  const th = G.townHall; const lv = th ? th.level : 1;
+  for (const btn of document.querySelectorAll('.bld-btn')) {
+    const def = BLD_DEFS[btn.dataset.type];
+    if (!def) continue;
+    const locked = def.unlock > lv;
+    btn.style.display = locked ? "none" : "";
+  }
+}
 buildingPanel.addEventListener('click', e => {
   const btn=e.target.closest('.bld-btn'); if(!btn) return;
   const type=btn.dataset.type;
@@ -1353,6 +1294,10 @@ canvas.addEventListener('click', e => {
     if(canPlaceBuilding(b.type,cp.col,cp.row,b)){
       b.col=cp.col;b.row=cp.row;b.x=gridX(cp.col);b.y=gridY(cp.row);
       G.placingMode=false;G.movingBuilding=null;G.selectedBuilding=null;hideContextMenu();
+      for (const r of G.residents) {
+        if (r.workplace === b) r.state = 'GOING_TO_WORK';
+        if (r.home === b) r.state = 'IDLE';
+      }
     }
     return;
   }
@@ -1409,6 +1354,7 @@ function gameLoop(ts) {
 }
 
 initGame();
+updateBuildingPanel();
 lastTime=performance.now();
 requestAnimationFrame(gameLoop);
 console.log('🏘 殖民模拟塔防游戏已就绪');
