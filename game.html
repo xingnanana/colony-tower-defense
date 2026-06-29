@@ -1,0 +1,1417 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>殖民模拟 - 塔防</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#1a1a2e; display:flex; justify-content:center; align-items:center;
+  height:100vh; font-family:'Microsoft YaHei',sans-serif; user-select:none; overflow:hidden;
+}
+#game-container { position:relative; display:flex; gap:8px; }
+canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
+
+#topbar {
+  position:absolute; top:8px; left:50%; transform:translateX(-50%);
+  display:flex; gap:16px; z-index:10;
+  background:rgba(0,0,0,0.85); padding:6px 16px; border-radius:8px; color:#fff; font-size:13px;
+  pointer-events:none;
+}
+.top-res { display:flex; align-items:center; gap:4px; }
+.top-res .icon { font-size:16px; }
+.top-res .val { font-weight:bold; color:#ffd700; }
+
+#building-panel {
+  width:120px; background:rgba(0,0,0,0.85); border-radius:8px; padding:8px;
+  display:flex; flex-direction:column; gap:4px; color:#fff; font-size:12px;
+}
+#building-panel h3 { text-align:center; font-size:14px; margin-bottom:4px; color:#ffd700; }
+.bld-btn {
+  background:#2a2a4a; border:1px solid #444; color:#ddd;
+  padding:8px 6px; border-radius:4px; cursor:pointer;
+  font-size:11px; font-family:inherit; text-align:left; transition:all 0.15s;
+}
+.bld-btn:hover { background:#3a3a6a; border-color:#888; }
+.bld-btn.selected { background:#4a4a2a; border-color:#ffd700; }
+.bld-btn .cost { font-size:10px; color:#aaa; }
+
+#context-menu {
+  position:fixed; display:none; flex-direction:column; gap:2px;
+  background:rgba(0,0,0,0.92); padding:4px; border-radius:6px;
+  border:1px solid #555; z-index:20; min-width:130px;
+}
+#context-menu button {
+  background:#2a2a4a; border:1px solid #444; color:#ddd;
+  padding:6px 10px; border-radius:3px; cursor:pointer;
+  font-size:12px; font-family:inherit; text-align:left;
+}
+#context-menu button:hover { background:#3a3a6a; }
+#context-menu .info-line {
+  color:#aaa; font-size:11px; padding:4px 8px;
+  text-align:center; border-bottom:1px solid #333; margin-bottom:2px;
+}
+
+#time-indicator {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  font-size:48px; font-weight:bold; color:#fff;
+  text-shadow:0 0 20px rgba(255,200,0,0.6);
+  pointer-events:none; z-index:5; opacity:0; transition:opacity 0.5s;
+}
+#debug-panel {
+  width:120px; background:rgba(0,0,0,0.85); border-radius:8px; padding:8px;
+  color:#fff; font-size:11px; display:flex; flex-direction:column; gap:2px;
+  position:relative; z-index:1; flex-shrink:0;
+}
+.dbg-btn {
+  background:#3a3a5a; border:1px solid #555; color:#ddd;
+  padding:3px 6px; border-radius:3px; cursor:pointer;
+  font-size:11px; font-family:inherit;
+}
+.dbg-btn:hover { background:#5a5a7a; }
+.dbg-row { display:flex; align-items:center; gap:3px; }
+.dbg-row input {
+  width:50px; background:#222; border:1px solid #555; color:#fff;
+  padding:2px 4px; border-radius:3px; font-size:11px; font-family:inherit;
+}
+</style>
+</head>
+<body>
+
+<div id="game-container">
+  <div id="debug-panel">
+    <div style="font-size:12px;color:#ffd700;margin-bottom:2px;">🔧 调试</div>
+    <div style="display:flex;gap:2px;margin-bottom:3px;flex-wrap:wrap;">
+      <button class="dbg-btn" onclick="setSpeed(0)">⏸</button>
+      <button class="dbg-btn" onclick="setSpeed(1)">▶</button>
+      <button class="dbg-btn" onclick="setSpeed(2)">2x</button>
+      <button class="dbg-btn" onclick="setSpeed(5)">5x</button>
+      <button class="dbg-btn" onclick="setSpeed(20)">20x</button>
+    </div>
+    <div style="display:flex;gap:2px;margin-bottom:3px;">
+      <button class="dbg-btn" onclick="setAllRes()" style="flex:1">💰 无限资源</button>
+    </div>
+    <div style="display:flex;gap:2px;margin-bottom:3px;">
+      <button class="dbg-btn" onclick="addPop(1)" style="flex:1">+👤</button>
+      <button class="dbg-btn" onclick="addPop(-1)" style="flex:1">-👤</button>
+    </div>
+    <div style="display:flex;gap:2px;margin-bottom:3px;">
+      <button class="dbg-btn" onclick="skipToDay()" style="flex:1">☀️ 白天</button>
+      <button class="dbg-btn" onclick="skipToNight()" style="flex:1">🌙 夜晚</button>
+    </div>
+    <div style="display:flex;flex-wrap:wrap;gap:2px;">
+      <div class="dbg-row"><span>🍗</span><input id="dbg-food" type="number" value="50" size="4"><button class="dbg-btn" onclick="setRes('food')">设</button></div>
+      <div class="dbg-row"><span>🪵</span><input id="dbg-wood" type="number" value="30" size="4"><button class="dbg-btn" onclick="setRes('wood')">设</button></div>
+      <div class="dbg-row"><span>🪨</span><input id="dbg-stone" type="number" value="20" size="4"><button class="dbg-btn" onclick="setRes('stone')">设</button></div>
+      <div class="dbg-row"><span>⚒</span><input id="dbg-iron" type="number" value="0" size="4"><button class="dbg-btn" onclick="setRes('iron')">设</button></div>
+    </div>
+  </div>
+  <canvas id="game"></canvas>
+  <div id="building-panel">
+    <h3>🏘 建筑</h3>
+    <button class="bld-btn" data-type="house">🏠 住房<div class="cost">10木 5石</div></button>
+    <button class="bld-btn" data-type="farm">🌾 农场<div class="cost">5木</div></button>
+    <button class="bld-btn" data-type="lumber">🪓 伐木场<div class="cost">5木</div></button>
+    <button class="bld-btn" data-type="quarry">⛏ 采石场<div class="cost">10木 5石</div></button>
+    <button class="bld-btn" data-type="iron_mine">⚒ 铁矿<div class="cost">15木 10石</div></button>
+    <button class="bld-btn" data-type="storage">📦 仓库<div class="cost">15木 10石</div></button>
+    <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
+    <button class="bld-btn" data-type="wall">🧱 城墙<div class="cost">5石</div></button>
+    <button class="bld-btn" data-type="lab">🔬 研究所<div class="cost">30木 20石</div></button>
+  </div>
+
+  <div id="topbar">
+    <div class="top-res"><span class="icon">🍗</span><span class="val" id="r-food">50</span></div>
+    <div class="top-res"><span class="icon">🪵</span><span class="val" id="r-wood">30</span></div>
+    <div class="top-res"><span class="icon">🪨</span><span class="val" id="r-stone">20</span></div>
+    <div class="top-res"><span class="icon">⚒</span><span class="val" id="r-iron">0</span></div>
+    <div style="color:#aaa;">|</div>
+    <div class="top-res"><span class="icon">👤</span><span class="val" id="r-pop">4/8</span></div>
+    <div style="color:#aaa;">|</div>
+    <div class="top-res"><span class="icon"   <div class="top-res"><span class="icon">🔬</span><span class="val" id="r-science">0</span></div>
+  <div style="color:#aaa;">|</div>
+  <div class="top-res"><span class="icon" id="day-icon">☀️</span><span class="val" id="r-time">Day 1</span></div>
+  </div>
+
+  <div id="time-indicator"></div>
+</div>
+
+<div id="context-menu"></div>
+<div id="gameover-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,0.7); z-index:100; justify-content:center;align-items:center;flex-direction:column;gap:16px;">
+  <div style="font-size:36px;color:#f44;font-weight:bold;">💀 游戏结束</div>
+  <div id="gameover-msg" style="font-size:18px;color:#fff;"></div>
+  <button onclick="restartGame()" style="padding:12px 32px;font-size:18px;background:#4a4;color:#fff;
+    border:none;border-radius:8px;cursor:pointer;font-family:inherit;">🔄 重新开始</button>
+</div>
+
+<div id="techtree-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,0.8); z-index:100; justify-content:center;align-items:center;">
+  <div style="background:#1a1a2e; border:2px solid #555; border-radius:12px; padding:24px;
+    max-width:600px; max-height:80vh; overflow-y:auto; color:#fff; font-size:13px; min-width:400px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h2 style="color:#ffd700; margin:0;">📚 科技树</h2>
+      <button onclick="closeTechTree()" style="background:#a44; color:#fff; border:none; padding:6px 14px;
+        border-radius:4px; cursor:pointer; font-size:14px; font-family:inherit;">✖ 关闭</button>
+    </div>
+    <div style="margin-bottom:12px; color:#ffd700;">🔬 科技点: <span id="tt-science">0</span> | 队列: <span id="tt-queue-count">0</span>/5</div>
+    <div id="tech-list" style="display:flex; flex-direction:column; gap:4px;"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const CFG = {
+  CANVAS_W: 1200, CANVAS_H: 800,
+  CELL: 40, WORLD_COLS: 80, WORLD_ROWS: 50,
+  WORLD_W: 3200, WORLD_H: 2000,
+  DAY_DURATION: 162, NIGHT_DURATION: 78, TRANSITION: 8,
+  START_FOOD: 50, START_WOOD: 40, START_STONE: 20, START_IRON: 0,
+  START_POP: 4, MAX_POP_BASE: 4,
+  HUNGER_RATE: 0.6, HUNGER_THRESHOLD: 60,
+  TIRED_RATE: 0.4, TIRED_THRESHOLD: 100,
+  ENEMY_BASE_HP: 40, ENEMY_SPEED: 50, ENEMY_DAMAGE: 8, ENEMY_ATTACK_RANGE: 30,
+  TOWER_RANGE: 150, TOWER_DAMAGE: 15, TOWER_COOLDOWN: 0.8,
+  RESIDENT_SPEED: 60,
+};
+
+// ============================================================
+// BUILDING DEFINITIONS
+// ============================================================
+const BLD_DEFS = {
+  house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4 },
+  farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8 },
+  lumber:      { name:'伐木场',icon:'🪓', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'wood',  baseTime:6 },
+  quarry:      { name:'采石场',icon:'⛏', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', baseTime:10 },
+  iron_mine:   { name:'铁矿', icon:'⚒', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:4, produces:'iron',  baseTime:12 },
+  storage:     { name:'仓库', icon:'📦', cat:'storage',   sz:[2,2], cost:{wood:15,stone:10},hp:180, maxWorkers:0, capacity:50 },
+  arrow_tower: { name:'箭塔', icon:'🏹', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8 },
+  town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5} },
+  wall:        { name:'城墙', icon:'🧱', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0 },
+  lab:         { name:'研究所',icon:'🔬', cat:'facility',  sz:[2,2], cost:{wood:30,stone:20},hp:150, maxWorkers:3, produces:'science', baseTime:8 },
+};
+
+// ============================================================
+// TECH TREE
+// ============================================================
+const TECHS = [
+  { id:'masonry',      name:'石工技术', icon:'🏠', cost:40,  desc:'住房等级上限+2',        apply:()=>{} },
+  { id:'fortify',      name:'要塞化',   icon:'🏛', cost:60,  desc:'大本营HP+200',         apply:()=>{ if(G.townHall){G.townHall.maxHp+=200;G.townHall.hp+=200;} } },
+  { id:'archery',      name:'高级箭术', icon:'🏹', cost:50,  desc:'箭塔射程+40 伤害+10',   apply:()=>{} },
+  { id:'walls',        name:'强化城墙', icon:'🧱', cost:30,  desc:'城墙HP+100',           apply:()=>{} },
+  { id:'farming',      name:'农业改良', icon:'🌾', cost:30,  desc:'农场效率+25%',          apply:()=>{} },
+  { id:'mining',       name:'采矿技术', icon:'⚒', cost:50,  desc:'铁矿效率+25%',          apply:()=>{} },
+  { id:'woodworking',  name:'木工技术', icon:'🪓', cost:30,  desc:'伐木效率+25%',          apply:()=>{} },
+  { id:'quarrying',    name:'采石技术', icon:'⛏', cost:40,  desc:'采石效率+25%',          apply:()=>{} },
+  { id:'logistics',    name:'后勤学',   icon:'📦', cost:50,  desc:'居民搬运速度+30%',       apply:()=>{} },
+  { id:'housing',      name:'居住改良', icon:'🏠', cost:60,  desc:'住房人口上限+2',         apply:()=>{ G.maxPop+=2; } },
+];
+function isTechDone(id) { return G.researched.includes(id); }
+function isTechQueued(id) { return G.researchQueue.includes(id); }
+function techEffect(type) {
+  switch(type) {
+    case 'masonry': return 0; // House level cap buff, checked on upgrade
+    case 'fortify': return 0;
+    case 'archery': return 1; // Tower buff
+    case 'walls': return 1;
+    case 'farming': case 'mining': case 'woodworking': case 'quarrying': return 1; // Efficiency buff
+    case 'logistics': return 1;
+    case 'housing': return 1;
+    default: return 0;
+  }
+}
+
+// ============================================================
+// GAME STATE
+// ============================================================
+const G = {
+  tick: 0, dt: 0, day: 1, dayTime: 0, phase: 'day', totalTime: 0,
+  resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON },
+  buildings: [], residents: [], enemies: [], particles: [],
+  selectedBldType: null, selectedBuilding: null, hoveredCell: null,
+  mouseX: 0, mouseY: 0,
+  placingMode: false, movingBuilding: null,
+  maxPop: CFG.MAX_POP_BASE, popGrowthTimer: 0,
+  science: 0, researched: [], researchQueue: [],
+  enemySpawnQueue: [], enemySpawnTimer: 0,
+  cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
+  dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
+};
+
+// ============================================================
+// UTILITY
+// ============================================================
+function dist(a,b) { return Math.hypot(a.x-b.x, a.y-b.y); }
+function lerp(a,b,t) { return a+(b-a)*t; }
+function clamp(v,lo,hi) { return Math.max(lo,Math.min(hi,v)); }
+function gridCol(px) { return Math.floor(px/CFG.CELL); }
+function gridRow(py) { return Math.floor(py/CFG.CELL); }
+function gridX(col) { return col*CFG.CELL; }
+function gridY(row) { return row*CFG.CELL; }
+
+function canAfford(cost) {
+  for (const [k,v] of Object.entries(cost||{}))
+    if ((G.resources[k]||0) < v) return false;
+  return true;
+}
+function payCost(cost) {
+  for (const [k,v] of Object.entries(cost||{})) G.resources[k] -= v;
+}
+
+function isCellBlocked(col, row, excludeBld) {
+  if (col<0 || row<0 || col>=CFG.WORLD_COLS || row>=CFG.WORLD_ROWS) return true;
+  for (const b of G.buildings) {
+    if (b === excludeBld) continue;
+    const def = BLD_DEFS[b.type];
+    if (col>=b.col && col<b.col+def.sz[0] && row>=b.row && row<b.row+def.sz[1]) return true;
+  }
+  return false;
+}
+function centerPlacement(type, col, row) {
+  const def = BLD_DEFS[type];
+  return { col: col - Math.floor(def.sz[0]/2), row: row - Math.floor(def.sz[1]/2) };
+}
+// World <-> Screen coordinate conversion
+function worldToScreen(wx, wy) {
+  return {
+    x: (wx - G.cam.x) * G.cam.zoom + CFG.CANVAS_W/2,
+    y: (wy - G.cam.y) * G.cam.zoom + CFG.CANVAS_H/2
+  };
+}
+function screenToWorld(sx, sy) {
+  return {
+    x: (sx - CFG.CANVAS_W/2) / G.cam.zoom + G.cam.x,
+    y: (sy - CFG.CANVAS_H/2) / G.cam.zoom + G.cam.y
+  };
+}
+
+function pixelCenterPlacement(type, mx, my) {
+  const def = BLD_DEFS[type];
+  return {
+    col: Math.round((mx - def.sz[0]*CFG.CELL/2) / CFG.CELL),
+    row: Math.round((my - def.sz[1]*CFG.CELL/2) / CFG.CELL)
+  };
+}
+function canPlaceBuilding(type, col, row, excludeBld) {
+  const def = BLD_DEFS[type];
+  for (let dc=0; dc<def.sz[0]; dc++)
+    for (let dr=0; dr<def.sz[1]; dr++)
+      if (isCellBlocked(col+dc, row+dr, excludeBld)) return false;
+  return true;
+}
+
+function findNearestStorage(pos) {
+  let best=null, bestD=Infinity;
+  for (const b of G.buildings) {
+    if (b.type!=='storage' || b.hp<=0) continue;
+    const cx=b.x+BLD_DEFS[b.type].sz[0]*CFG.CELL/2;
+    const cy=b.y+BLD_DEFS[b.type].sz[1]*CFG.CELL/2;
+    const d=Math.hypot(pos.x-cx, pos.y-cy);
+    if (d<bestD) { bestD=d; best=b; }
+  }
+  return best;
+}
+
+function houseCapacity(h) {
+  if (h.type!=='house') return 0;
+  return BLD_DEFS.house.popBonus + (h.level-1)*2;
+}
+function findNearestHome(pos) {
+  let best=null, bestD=Infinity;
+  for (const b of G.buildings) {
+    if (b.type!=='house' || b.hp<=0) continue;
+    if (b.residentCount >= houseCapacity(b)) continue; // full
+    const cx=b.x+BLD_DEFS[b.type].sz[0]*CFG.CELL/2;
+    const cy=b.y+BLD_DEFS[b.type].sz[1]*CFG.CELL/2;
+    const d=Math.hypot(pos.x-cx, pos.y-cy);
+    if (d<bestD) { bestD=d; best=b; }
+  }
+  return best;
+}
+
+function getIdleResidents() {
+  return G.residents.filter(r=>r.state==='IDLE'||r.state==='PATROL');
+}
+function assignHome(r, house) {
+  if (r.home && r.home.hp>0) r.home.residentCount--;
+  r.home = house;
+  if (house) house.residentCount++;
+}
+function removeHome(r) {
+  if (r.home) { r.home.residentCount = Math.max(0, r.home.residentCount-1); }
+  r.home = null;
+}
+
+// ============================================================
+// BUILDING CLASS
+// ============================================================
+class Building {
+  constructor(type, col, row) {
+    const def = BLD_DEFS[type];
+    this.type = type; this.col = col; this.row = row;
+    this.x = gridX(col); this.y = gridY(row);
+    this.hp = def.hp; this.maxHp = def.hp;
+    this.level = 1;
+    this.assignedWorkers = 0;
+    this.productionProgress = 0;
+    this.upgradeProgress = 0; this.upgrading = false;
+    this.stored = {};
+    this.attackCooldown = 0;
+    this.size = def.sz;
+    this.recruitQueue = 0;
+    this.recruitProgress = 0;
+    this.residentCount = 0; // for houses
+  }
+  center() {
+    return { x:this.x+this.size[0]*CFG.CELL/2, y:this.y+this.size[1]*CFG.CELL/2 };
+  }
+  efficiency() {
+    const def = BLD_DEFS[this.type];
+    if (!def.maxWorkers) return 0;
+    let eff = Math.min(1, this.assignedWorkers/def.maxWorkers);
+    if (this.type==='farm' && isTechDone('farming')) eff *= 1.25;
+    if (this.type==='iron_mine' && isTechDone('mining')) eff *= 1.25;
+    if (this.type==='lumber' && isTechDone('woodworking')) eff *= 1.25;
+    if (this.type==='quarry' && isTechDone('quarrying')) eff *= 1.25;
+    return eff;
+  }
+  def() { return BLD_DEFS[this.type]; }
+}
+
+// ============================================================
+// RESIDENT CLASS
+// ============================================================
+class Resident {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.state = 'IDLE';
+    this.workplace = null; this.home = null;
+    this.hunger = 0; this.tired = 0;
+    this.carrying = null;
+    this.targetX = x; this.targetY = y;
+    this.patrolAngle = Math.random()*Math.PI*2;
+    this.patrolTimer = 0;
+    this.eatTimer = 0; this.prodTimer = 0;
+  }
+}
+
+// ============================================================
+// ENEMY CLASS
+// ============================================================
+class Enemy {
+  constructor(x, y) {
+    this.x = x; this.y = y;
+    this.hp = CFG.ENEMY_BASE_HP; this.maxHp = CFG.ENEMY_BASE_HP;
+    this.speed = CFG.ENEMY_SPEED * (0.8+Math.random()*0.4);
+    // 目标：大本营位置
+    const th = G.townHall;
+    if (th) { this.targetX = th.x+th.size[0]*CFG.CELL/2; this.targetY = th.y+th.size[1]*CFG.CELL/2; }
+    else { this.targetX = CFG.WORLD_W/2; this.targetY = CFG.WORLD_H/2; }
+    this.attacking = null; this.attackTimer = 0;
+    this.alive = true;
+    this.size = 8 + Math.random()*4;
+  }
+}
+
+// ============================================================
+// PARTICLE CLASS
+// ============================================================
+class Particle {
+  constructor(x,y,color,life) {
+    this.x=x; this.y=y; this.color=color; this.life=life; this.maxLife=life;
+    this.vx=(Math.random()-0.5)*60; this.vy=(Math.random()-0.5)*60;
+  }
+}
+
+// ============================================================
+// INITIALIZE
+// ============================================================
+function initGame() {
+  // 大本营在正中央
+  const th = new Building('town_hall', 39, 24);
+  G.buildings.push(th);
+  G.townHall = th;
+  G.cam.x = th.x + CFG.CELL; G.cam.y = th.y + CFG.CELL;
+
+  addBuilding('house', 37, 23);
+  addBuilding('storage', 37, 26);
+  addBuilding('farm', 35, 22);
+  G.buildings[3].assignedWorkers = 2;
+  G.maxPop = CFG.MAX_POP_BASE;
+
+  for (let i=0; i<CFG.START_POP; i++) {
+    const r = new Resident(
+      th.x + 40 + (Math.random()-0.5)*100,
+      th.y + 40 + (Math.random()-0.5)*100
+    );
+    assignHome(r, G.buildings[1]);
+    G.residents.push(r);
+  }
+  let assigned=0;
+  for (const r of G.residents) {
+    if (assigned<2) { r.workplace=G.buildings[3]; r.state='GOING_TO_WORK'; assigned++; }
+  }
+}
+
+function addBuilding(type, col, row) {
+  if (!canPlaceBuilding(type, col, row)) return null;
+  const def = BLD_DEFS[type];
+  if (!canAfford(def.cost)) return null;
+  payCost(def.cost);
+  const b = new Building(type, col, row);
+  G.buildings.push(b);
+  if (type==='house') G.maxPop += BLD_DEFS[type].popBonus;
+  return b;
+}
+
+function demolishBuilding(b) {
+  if (b.type==='town_hall') return; // 大本营不可拆除
+  const idx = G.buildings.indexOf(b);
+  if (idx===-1) return;
+  for (const r of G.residents) {
+    if (r.workplace===b) { r.workplace=null; r.state='IDLE'; }
+    if (r.home===b) { assignHome(r, findNearestHome(r)); }
+  }
+  if (b.type==='house') G.maxPop = Math.max(CFG.MAX_POP_BASE, G.maxPop - BLD_DEFS[b.type].popBonus - (b.level-1)*2);
+  G.buildings.splice(idx,1);
+}
+
+// ============================================================
+// UPDATE
+// ============================================================
+function updateDayNight(dt) {
+  const phaseDuration = G.phase==='day' ? CFG.DAY_DURATION :
+    G.phase==='night' ? CFG.NIGHT_DURATION : CFG.TRANSITION;
+  G.dayTime += dt;
+  G.totalTime += dt;
+  if (G.dayTime >= phaseDuration) {
+    G.dayTime = 0;
+    if (G.phase==='day') {
+      G.phase='dusk'; showTimeIndicator('🌅 黄昏');
+      spawnEnemyWave();
+      // 让居民回家睡觉
+      for (const r of G.residents) {
+        r.tired = CFG.TIRED_THRESHOLD;
+        const home = r.home || findNearestHome(r);
+        if (home) {
+          r.state = 'GOING_HOME';
+          const hc = home.center();
+          r.targetX = hc.x; r.targetY = hc.y;
+          if (!r.home) assignHome(r, home);
+        }
+        // homeless residents stay IDLE → vulnerable to enemies
+      }
+    } else if (G.phase==='dusk') {
+      G.phase='night'; showTimeIndicator('🌙 夜晚');
+    } else if (G.phase==='night') {
+      G.phase='dawn'; showTimeIndicator('🌄 黎明');
+      G.enemies=[];
+    } else if (G.phase==='dawn') {
+      G.phase='day'; G.day++; showTimeIndicator('☀️ 第'+G.day+'天');
+      for (const r of G.residents) { r.state='IDLE'; r.tired=0; }
+    }
+  }
+}
+
+function spawnEnemyWave() {
+  const count = 3 + G.day * 2;
+  G.enemySpawnTimer = 0;
+  G.enemySpawnQueue = [];
+  for (let i=0; i<count; i++)
+    G.enemySpawnQueue.push({ delay: i*1.5 + Math.random()*2 });
+}
+
+function spawnEnemy() {
+  const side = Math.floor(Math.random()*4);
+  const pad=20;
+  let x, y;
+  if (side===0)      { x=Math.random()*CFG.WORLD_W; y=-pad; }
+  else if (side===1) { x=CFG.WORLD_W+pad; y=Math.random()*CFG.WORLD_H; }
+  else if (side===2) { x=Math.random()*CFG.WORLD_W; y=CFG.WORLD_H+pad; }
+  else               { x=-pad; y=Math.random()*CFG.WORLD_H; }
+  G.enemies.push(new Enemy(x,y));
+}
+
+function updateEnemies(dt) {
+  G.enemySpawnTimer += dt;
+  for (let i=G.enemySpawnQueue.length-1; i>=0; i--) {
+    if (G.enemySpawnQueue[i].delay <= G.enemySpawnTimer) {
+      spawnEnemy(); G.enemySpawnQueue.splice(i,1);
+    }
+  }
+  for (const e of G.enemies) {
+    if (!e.alive) continue;
+    if (e.attacking && e.attacking.hp>0) {
+      e.attackTimer += dt;
+      if (e.attackTimer >= 0.5) {
+        e.attackTimer = 0;
+        e.attacking.hp -= CFG.ENEMY_DAMAGE;
+        spawnParticles(e.x,e.y,'#ff4444',3);
+        if (e.attacking.hp <= 0) { e.attacking.hp = 0; e.attacking = null; }
+      }
+    } else {
+      let blocked=false;
+      for (const b of G.buildings) {
+        if (b.hp<=0) continue;
+        const closestX=clamp(e.x, b.x, b.x+b.size[0]*CFG.CELL);
+        const closestY=clamp(e.y, b.y, b.y+b.size[1]*CFG.CELL);
+        if (Math.hypot(e.x-closestX, e.y-closestY) < CFG.ENEMY_ATTACK_RANGE+5) {
+          e.attacking=b; e.attackTimer=0; blocked=true; break;
+        }
+      }
+      if (!blocked) {
+        const dx=e.targetX-e.x, dy=e.targetY-e.y;
+        const dd=Math.hypot(dx,dy)||1;
+        e.x+=(dx/dd)*e.speed*dt;
+        e.y+=(dy/dd)*e.speed*dt;
+      }
+    }
+  }
+  G.enemies = G.enemies.filter(e=>e.alive && e.hp>0);
+
+  // Homeless residents at night can be attacked by enemies
+  if (G.phase==='night') {
+    for (const e of G.enemies) {
+      if (!e.alive || e.attacking) continue;
+      for (const r of G.residents) {
+        if (r.state==='SLEEPING') continue; // safe in bed
+        if (r.home) continue; // has home, safe
+        const d = Math.hypot(e.x-r.x, e.y-r.y);
+        if (d < 20) { // enemy close enough to attack
+          G.residents = G.residents.filter(rr => rr !== r);
+          if (r.workplace) { r.workplace.assignedWorkers--; }
+          removeHome(r);
+          spawnParticles(r.x, r.y, '#ff0000', 8);
+          break; // one kill per enemy per frame
+        }
+      }
+    }
+  }
+}
+
+function updateTowers(dt) {
+  for (const b of G.buildings) {
+    if (b.type!=='arrow_tower'||b.hp<=0) continue;
+    b.attackCooldown -= dt;
+    if (b.attackCooldown > 0) continue;
+    const def=BLD_DEFS[b.type], center=b.center();
+    const range = def.range + (isTechDone('archery')?40:0);
+    const damage = def.damage + (isTechDone('archery')?10:0);
+    let closest=null, closestD=Infinity;
+    for (const e of G.enemies) {
+      if (!e.alive) continue;
+      const d=dist(center,e);
+      if (d<range && d<closestD) { closestD=d; closest=e; }
+    }
+    if (closest) {
+      closest.hp -= damage;
+      b.attackCooldown = def.cooldown;
+      spawnParticles(closest.x, closest.y, '#ffaa00', 2);
+      if (closest.hp<=0) {
+        closest.alive=false;
+        spawnParticles(closest.x, closest.y, '#ff6600', 6);
+      }
+    }
+  }
+}
+
+function updateResidents(dt) {
+  for (const r of G.residents) {
+    if (r.state!=='SLEEPING') {
+      r.hunger += CFG.HUNGER_RATE * dt;
+      r.tired += CFG.TIRED_RATE * dt;
+      if (G.phase==='night') r.tired += CFG.TIRED_RATE*2*dt;
+    }
+  }
+
+  for (const r of G.residents) {
+    if (r.state==='SLEEPING') {
+      if (G.phase==='day'||G.phase==='dawn') { r.state='IDLE'; r.tired=0; }
+      continue;
+    }
+
+    // Priority 1: Hungry
+    if (r.hunger >= CFG.HUNGER_THRESHOLD && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
+      const storage = findNearestStorage(r);
+      if (storage && (G.resources.food||0) > 0) {
+        r.state = 'GOING_TO_EAT';
+        const sc = storage.center();
+        r.targetX = sc.x; r.targetY = sc.y;
+      }
+    }
+
+    // Priority 2: Tired
+    if (r.tired >= CFG.TIRED_THRESHOLD && r.state!=='GOING_HOME' && r.state!=='SLEEPING'
+        && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
+      const home = r.home || findNearestHome(r);
+      if (home) {
+        r.state = 'GOING_HOME';
+        const hc = home.center();
+        r.targetX = hc.x; r.targetY = hc.y;
+        assignHome(r, home);
+      }
+    }
+
+    // Execute state
+    switch (r.state) {
+      case 'GOING_TO_EAT': {
+        const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
+        if (dd<4) { r.state='EATING'; r.eatTimer=1.5; }
+        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; }
+        break;
+      }
+      case 'EATING':
+        if ((r.eatTimer-=dt)<=0) {
+          if (G.resources.food>0) { G.resources.food--; r.hunger=0; }
+          r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
+            : r.workplace?'GOING_TO_WORK':'IDLE';
+        }
+        break;
+      case 'GOING_HOME': {
+        const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
+        if (dd<4) { r.state='SLEEPING'; r.tired=0; }
+        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; }
+        break;
+      }
+      case 'GOING_TO_WORK': {
+        if (!r.workplace||r.workplace.hp<=0) { r.state='IDLE'; r.workplace=null; break; }
+        const wc=r.workplace.center();
+        const dx=wc.x-r.x, dy=wc.y-r.y, dd=Math.hypot(dx,dy)||1;
+        if (dd<10) { r.state='WORKING'; r.prodTimer=0; }
+        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; }
+        break;
+      }
+      case 'WORKING': {
+        if (!r.workplace||r.workplace.hp<=0) { r.state='IDLE'; r.workplace=null; break; }
+        const b=r.workplace, def=BLD_DEFS[b.type];
+        const eff=b.efficiency();
+        if (eff<=0) break;
+        // Lab produces science directly
+        if (b.type==='lab') {
+          b.productionProgress += dt / (def.baseTime/eff);
+          if (b.productionProgress >= 1) {
+            b.productionProgress = 0;
+            G.science++;
+          }
+          break;
+        }
+        b.productionProgress += dt / (def.baseTime/eff);
+        if (b.productionProgress >= 1) {
+          b.productionProgress = 0;
+          const res = def.produces;
+          if (!b.stored[res]) b.stored[res]=0;
+          b.stored[res]++;
+          r.state = 'HAULING';
+          r.carrying = { type:res, amount:1 };
+          const storage = findNearestStorage(r);
+          if (storage) { const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y; }
+        }
+        break;
+      }
+      case 'HAULING': {
+        const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
+        if (dd<10) {
+          if (r.carrying) {
+            G.resources[r.carrying.type] = (G.resources[r.carrying.type]||0) + r.carrying.amount;
+            if (r.workplace && r.workplace.stored[r.carrying.type])
+              r.workplace.stored[r.carrying.type] = Math.max(0, (r.workplace.stored[r.carrying.type]||0)-1);
+          }
+          r.carrying=null;
+          r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
+            : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
+        } else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED*(isTechDone('logistics')?1.3:1))*dt; }
+        break;
+      }
+      default: { // IDLE / PATROL
+        if (G.phase==='night' || G.phase==='dusk') {
+          const home = r.home || findNearestHome(r);
+          if (home) { r.state='GOING_HOME'; r.targetX=home.center().x; r.targetY=home.center().y; }
+          else r.state='SLEEPING';
+          break;
+        }
+        if (r.workplace && r.workplace.hp>0) { r.state='GOING_TO_WORK'; break; }
+        r.state='PATROL';
+        if ((r.patrolTimer-=dt)<=0) {
+          r.patrolTimer=2+Math.random()*4;
+          r.patrolAngle=Math.random()*Math.PI*2;
+        }
+        r.x+=Math.cos(r.patrolAngle)*30*dt;
+        r.y+=Math.sin(r.patrolAngle)*30*dt;
+        r.x=clamp(r.x,10,CFG.WORLD_W-10);
+        r.y=clamp(r.y,10,CFG.WORLD_H-10);
+        break;
+      }
+    }
+  }
+
+  // Population growth
+  G.popGrowthTimer += dt;
+  if (G.popGrowthTimer >= 30 && G.residents.length < G.maxPop && G.resources.food>0) {
+    G.popGrowthTimer = 0;
+    const home = G.buildings.find(b=>b.type==='house'&&b.hp>0);
+    if (home) {
+      const hc=home.center();
+      const r = new Resident(hc.x+(Math.random()-0.5)*40, hc.y+(Math.random()-0.5)*40);
+      assignHome(r, home);
+      G.residents.push(r);
+    }
+  }
+}
+
+function updateBuildings(dt) {
+  for (const b of G.buildings) {
+    if (b.upgrading) {
+      b.upgradeProgress += dt/15;
+      if (b.upgradeProgress>=1) {
+        b.upgradeProgress=0; b.upgrading=false;
+        b.level++;
+        b.maxHp=Math.floor(b.maxHp*1.3);
+        b.hp=b.maxHp;
+        if (b.type==='house') G.maxPop += 2;
+      }
+    }
+    // Recruiting (大本营)
+    if (b.type==='town_hall' && b.recruitQueue > 0) {
+      b.recruitProgress += dt / BLD_DEFS[b.type].recruitTime;
+      if (b.recruitProgress >= 1) {
+        b.recruitProgress = 0; b.recruitQueue--;
+        if (G.residents.length < G.maxPop) {
+          const hc = b.center();
+          const nr = new Resident(hc.x+(Math.random()-0.5)*40, hc.y+(Math.random()-0.5)*40);
+          assignHome(nr, findNearestHome(nr));
+          G.residents.push(nr);
+        }
+      }
+    }
+  }
+  G.buildings = G.buildings.filter(b=>{
+    if (b.hp<=0) {
+      if (b.type==='town_hall') { gameOver('大本营被摧毁！'); return false; }
+      for (const r of G.residents) {
+        if (r.workplace===b) { r.workplace=null; r.state='IDLE'; }
+        if (r.home===b) removeHome(r);
+      }
+      if (b.type==='house') G.maxPop=Math.max(CFG.MAX_POP_BASE, G.maxPop-BLD_DEFS[b.type].popBonus-(b.level-1)*2);
+      return false;
+    }
+    return true;
+  });
+}
+
+function updateParticles(dt) {
+  for (const p of G.particles) { p.life-=dt; p.x+=p.vx*dt; p.y+=p.vy*dt; }
+  G.particles=G.particles.filter(p=>p.life>0);
+}
+
+function spawnParticles(x,y,color,count) {
+  for (let i=0;i<count;i++)
+    G.particles.push(new Particle(x,y,color,0.3+Math.random()*0.4));
+}
+
+function showTimeIndicator(text) {
+  const el=document.getElementById('time-indicator');
+  el.textContent=text; el.style.opacity='1';
+  setTimeout(()=>el.style.opacity='0', 1500);
+}
+
+let gameRunning = true;
+let gameSpeed = 1;
+
+function setSpeed(s) {
+  gameSpeed = s;
+  document.querySelectorAll('.dbg-btn').forEach(b=>b.style.background='#3a3a5a');
+  const btns = document.querySelectorAll('#debug-panel .dbg-btn');
+  if(s===0) btns[0].style.background='#5a5a2a';
+  else if(s===1) btns[1].style.background='#5a5a2a';
+  else if(s===2) btns[2].style.background='#5a5a2a';
+  else if(s===5) btns[3].style.background='#5a5a2a';
+  else if(s===20) btns[4].style.background='#5a5a2a';
+}
+function setRes(type) {
+  const inp = document.getElementById('dbg-'+type);
+  G.resources[type] = parseInt(inp.value) || 0;
+}
+function setAllRes() {
+  G.resources.food = 9999;
+  G.resources.wood = 9999;
+  G.resources.stone = 9999;
+  G.resources.iron = 9999;
+}
+function skipToNight() {
+  G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
+  for (const r of G.residents) { r.state = 'SLEEPING'; }
+  spawnEnemyWave();
+  showTimeIndicator('🌙 跳过至夜晚');
+}
+function skipToDay() {
+  G.phase = 'day'; G.dayTime = 0; G.day++; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
+  for (const r of G.residents) { r.state = 'IDLE'; r.tired = 0; }
+  showTimeIndicator('☀️ 跳过至第'+G.day+'天');
+}
+function addPop(n) {
+  if (n > 0) {
+    for (let i=0; i<n; i++) {
+      const th = G.townHall;
+      const r = new Resident(th.x+40+(Math.random()-0.5)*60, th.y+40+(Math.random()-0.5)*60);
+      assignHome(r, findNearestHome(r)); G.residents.push(r);
+    }
+  } else {
+    for (let i=0; i<-n && G.residents.length>0; i++) {
+      const r = G.residents[G.residents.length-1];
+      if (r.workplace) { r.workplace.assignedWorkers--; }
+      G.residents.pop();
+    }
+  }
+  G.popGrowthTimer = 0;
+}
+
+function gameOver(msg) {
+  gameRunning = false;
+  document.getElementById('gameover-msg').textContent = msg;
+  document.getElementById('gameover-overlay').style.display = 'flex';
+}
+function restartGame() {
+  G.buildings = []; G.residents = []; G.enemies = []; G.particles = [];
+  G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON };
+  G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
+  G.selectedBldType = null; G.selectedBuilding = null; G.placingMode = false; G.movingBuilding = null;
+  G.maxPop = CFG.MAX_POP_BASE; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
+  G.dragging = false; gameSpeed = 1; gameRunning = true;
+  G.science = 0; G.researched = []; G.researchQueue = []; G._researchTimer = 0;
+  document.getElementById('gameover-overlay').style.display = 'none';
+  initGame();
+}
+function update(dt) {
+  if (!gameRunning) return;
+  G.dt = dt;
+  updateDayNight(dt);
+  updateBuildings(dt);
+  updateResidents(dt);
+  if (G.phase==='night') {
+    updateEnemies(dt);
+    updateTowers(dt);
+  }
+  updateParticles(dt);
+  processResearchQueue(dt);
+  G.tick++;
+}
+
+// ============================================================
+// RENDERER
+// ============================================================
+const canvas = document.getElementById('game');
+const ctx = canvas.getContext('2d');
+canvas.width = CFG.CANVAS_W;
+canvas.height = CFG.CANVAS_H;
+
+function getAlpha() {
+  if (G.phase==='day') return 0;
+  if (G.phase==='night') return 0.55;
+  if (G.phase==='dusk') return 0.55*(G.dayTime/CFG.TRANSITION);
+  return 0.55*(1-G.dayTime/CFG.TRANSITION);
+}
+
+function render() {
+  const alpha=getAlpha();
+  ctx.clearRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H);
+
+  // Camera transform
+  ctx.save();
+  ctx.translate(CFG.CANVAS_W/2, CFG.CANVAS_H/2);
+  ctx.scale(G.cam.zoom, G.cam.zoom);
+  ctx.translate(-G.cam.x, -G.cam.y);
+
+  // Ground
+  ctx.fillStyle=lerpColor('#3d5a3d','#1a2a1a',alpha);
+  ctx.fillRect(0,0,CFG.WORLD_W,CFG.WORLD_H);
+
+  // Grid
+  ctx.strokeStyle=alpha>0.3?'rgba(255,255,255,0.04)':'rgba(255,255,255,0.08)';
+  ctx.lineWidth=1/G.cam.zoom;
+  for (let c=0;c<=CFG.WORLD_COLS;c++) { ctx.beginPath(); ctx.moveTo(c*CFG.CELL,0); ctx.lineTo(c*CFG.CELL,CFG.WORLD_H); ctx.stroke(); }
+  for (let r=0;r<=CFG.WORLD_ROWS;r++) { ctx.beginPath(); ctx.moveTo(0,r*CFG.CELL); ctx.lineTo(CFG.WORLD_W,r*CFG.CELL); ctx.stroke(); }
+
+  // Placement hover
+  if (G.hoveredCell && !G.placingMode && G.selectedBldType) {
+    const def=BLD_DEFS[G.selectedBldType];
+    const wp=screenToWorld(G.mouseX, G.mouseY);
+    const cp=pixelCenterPlacement(G.selectedBldType, wp.x, wp.y);
+    const ok=canPlaceBuilding(G.selectedBldType, cp.col, cp.row);
+    ctx.fillStyle=ok?'rgba(0,255,0,0.25)':'rgba(255,0,0,0.25)';
+    ctx.fillRect(gridX(cp.col),gridY(cp.row),def.sz[0]*CFG.CELL,def.sz[1]*CFG.CELL);
+  }
+
+  // Moving ghost
+  if (G.placingMode && G.movingBuilding && G.hoveredCell) {
+    const b=G.movingBuilding, def=BLD_DEFS[b.type];
+    const wp=screenToWorld(G.mouseX, G.mouseY);
+    const cp=pixelCenterPlacement(b.type, wp.x, wp.y);
+    const ok=canPlaceBuilding(b.type, cp.col, cp.row, b);
+    ctx.fillStyle=ok?'rgba(0,255,0,0.35)':'rgba(255,0,0,0.35)';
+    ctx.fillRect(gridX(cp.col),gridY(cp.row),def.sz[0]*CFG.CELL,def.sz[1]*CFG.CELL);
+    ctx.globalAlpha=0.5; drawBuilding(b,gridX(cp.col),gridY(cp.row)); ctx.globalAlpha=1;
+  }
+
+  // Buildings
+  for (const b of G.buildings) {
+    if (!(G.placingMode && b===G.movingBuilding)) drawBuilding(b,b.x,b.y);
+  }
+
+  // Residents
+  for (const r of G.residents) drawResident(r);
+
+  // Enemies
+  for (const e of G.enemies) if(e.alive) drawEnemy(e);
+
+  // Particles
+  for (const p of G.particles) {
+    ctx.fillStyle=p.color; ctx.globalAlpha=p.life/p.maxLife;
+    ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
+  }
+
+  ctx.restore();
+
+  // Night overlay (screen space)
+  if (alpha>0) { ctx.fillStyle=`rgba(10,10,40,${alpha})`; ctx.fillRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H); }
+
+  // Clock (screen space)
+  drawClock();
+
+  // Selection outline & range
+  if (G.selectedBuilding && !G.placingMode) {
+    const b=G.selectedBuilding;
+    // Attack range for defense buildings
+    if (b.type==='arrow_tower') {
+      const def=BLD_DEFS[b.type];
+      const center=b.center();
+      ctx.fillStyle='rgba(255,255,255,0.08)';
+      ctx.beginPath(); ctx.arc(center.x, center.y, (def.range + (isTechDone('archery')?40:0)), 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1;
+      ctx.beginPath(); ctx.arc(center.x, center.y, (def.range + (isTechDone('archery')?40:0)), 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.strokeStyle='#ffd700'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
+    ctx.strokeRect(b.x-2,b.y-2,b.size[0]*CFG.CELL+4,b.size[1]*CFG.CELL+4);
+    ctx.setLineDash([]);
+  }
+}
+
+function drawBuilding(b, x, y) {
+  const def=BLD_DEFS[b.type], w=def.sz[0]*CFG.CELL, h=def.sz[1]*CFG.CELL, cx=x+w/2, cy=y+h/2;
+  ctx.fillStyle=buildingColor(b.type); ctx.fillRect(x+2,y+2,w-4,h-4);
+  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1.5; ctx.strokeRect(x+2,y+2,w-4,h-4);
+
+  if (b.hp<b.maxHp) {
+    const bw=w-8, bh=4;
+    ctx.fillStyle='#333'; ctx.fillRect(x+4,y-8,bw,bh);
+    ctx.fillStyle=b.hp/b.maxHp>0.5?'#4a4':'#a44'; ctx.fillRect(x+4,y-8,bw*(b.hp/b.maxHp),bh);
+  }
+  ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+5);
+
+  if (b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.fillRect(x,y,w*b.upgradeProgress,h); }
+  if (b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.fillRect(x,y,w*b.recruitProgress,h); }
+
+  if (def.maxWorkers>0) {
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
+    ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(`👤${b.assignedWorkers}/${def.maxWorkers}`,cx,cy+h/2-6);
+  }
+  if (b.type==='house') {
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
+    ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(`🏠${b.residentCount}/${houseCapacity(b)}`,cx,cy+h/2-6);
+  }
+
+  const ts=b.stored?Object.values(b.stored).reduce((a,c)=>a+c,0):0;
+  if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='9px sans-serif'; ctx.fillText(`📦${ts}`,cx,y-4); }
+}
+
+function buildingColor(t) {
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',lumber:'#7a6b4a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',storage:'#5a6a8a',arrow_tower:'#8a5a4a',wall:'#7a7a6a',lab:'#6a5a8a'}[t]||'#777';
+}
+
+function drawResident(r) {
+  const s=5;
+  ctx.fillStyle = !r.home && (G.phase==='night'||G.phase==='dusk')?'#ff4444'
+    :r.state==='SLEEPING'||r.state==='GOING_HOME'?'#8899cc'
+    :r.state==='GOING_TO_EAT'||r.state==='EATING'?'#ffcc44'
+    :r.state==='HAULING'?'#44ccff'
+    :r.state==='WORKING'||r.state==='GOING_TO_WORK'?'#44cc88'
+    :'#aaaaaa';
+  ctx.beginPath(); ctx.arc(r.x,r.y,s,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1; ctx.stroke();
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(r.x+2,r.y-2,1.5,0,Math.PI*2); ctx.fill();
+
+  if (r.carrying) {
+    ctx.fillStyle=rc(r.carrying.type); ctx.beginPath(); ctx.arc(r.x,r.y-8,2.5,0,Math.PI*2); ctx.fill();
+  }
+  if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='7px sans-serif'; ctx.fillText('🍗',r.x-5,r.y-9); }
+  if (r.tired>CFG.TIRED_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='7px sans-serif'; ctx.fillText('💤',r.x+3,r.y-9); }
+}
+
+function drawEnemy(e) {
+  const a=Math.atan2(e.targetY-e.y,e.targetX-e.x), s=e.size;
+  ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(a);
+  ctx.fillStyle=e.attacking?'#ff4444':'#ff6633';
+  ctx.beginPath(); ctx.moveTo(s,0); ctx.lineTo(-s,-s*0.7); ctx.lineTo(-s,s*0.7); ctx.closePath();
+  ctx.fill(); ctx.strokeStyle='rgba(0,0,0,0.4)'; ctx.lineWidth=1; ctx.stroke(); ctx.restore();
+
+  if (e.hp<e.maxHp) {
+    const bw=16; ctx.fillStyle='#333'; ctx.fillRect(e.x-bw/2,e.y-s-8,bw,3);
+    ctx.fillStyle='#f44'; ctx.fillRect(e.x-bw/2,e.y-s-8,bw*(e.hp/e.maxHp),3);
+  }
+}
+
+function rc(t) { return {food:'#ffcc44',wood:'#aa8844',stone:'#aaaaaa',iron:'#cc8866'}[t]||'#fff'; }
+
+function lerpColor(c1,c2,t) {
+  const r1=parseInt(c1.slice(1,3),16),g1=parseInt(c1.slice(3,5),16),b1=parseInt(c1.slice(5,7),16);
+  const r2=parseInt(c2.slice(1,3),16),g2=parseInt(c2.slice(3,5),16),b2=parseInt(c2.slice(5,7),16);
+  return `rgb(${Math.round(lerp(r1,r2,t))},${Math.round(lerp(g1,g2,t))},${Math.round(lerp(b1,b2,t))})`;
+}
+
+function drawClock() {
+  const cx = CFG.CANVAS_W - 55, cy = 55, r = 38;
+  const cycleLen = CFG.DAY_DURATION + CFG.NIGHT_DURATION + CFG.TRANSITION*2;
+  const hour24 = ((G.totalTime / cycleLen * 24) + 6) % 24;
+
+  // Clock face background
+  ctx.fillStyle = 'rgba(0,0,0,0.7)';
+  ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle = '#888'; ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // Night sector: 10 PM (330°) to 6 AM (90°) = 120°
+  ctx.fillStyle = '#222';
+  ctx.beginPath(); ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, r-3, -Math.PI/2 + (22/24)*Math.PI*2, -Math.PI/2 + (6/24)*Math.PI*2);
+  ctx.closePath(); ctx.fill();
+
+  // Day sector: 6 AM (90°) to 10 PM (330°) = 240° — grey
+  ctx.fillStyle = '#999';
+  ctx.beginPath(); ctx.moveTo(cx, cy);
+  ctx.arc(cx, cy, r-3, -Math.PI/2 + (6/24)*Math.PI*2, -Math.PI/2 + (22/24)*Math.PI*2);
+  ctx.closePath(); ctx.fill();
+
+  // Hour markers
+  ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+  for (let h=0; h<24; h+=3) {
+    const a = -Math.PI/2 + (h/24)*Math.PI*2;
+    const lx = cx + Math.cos(a)*(r-14), ly = cy + Math.sin(a)*(r-14);
+    const label = h===0?'0':h===6?'6':h===12?'12':h===18?'18':String(h);
+    const isNight = (h>=22||h<6); // 10pm-6am
+    ctx.fillStyle = isNight ? '#fff' : '#000';
+    ctx.fillText(label, lx, ly+3);
+  }
+
+  // Hour hand — pure white
+  const ha = -Math.PI/2 + (hour24/24)*Math.PI*2;
+  ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
+  ctx.beginPath(); ctx.moveTo(cx,cy);
+  ctx.lineTo(cx+Math.cos(ha)*(r-18), cy+Math.sin(ha)*(r-18)); ctx.stroke();
+
+  // Center dot — pure white
+  ctx.fillStyle = '#fff';
+  ctx.beginPath(); ctx.arc(cx, cy, 2.5, 0, Math.PI*2); ctx.fill();
+}
+
+// ============================================================
+// UI
+// ============================================================
+const contextMenu = document.getElementById('context-menu');
+const buildingPanel = document.getElementById('building-panel');
+
+function updateTopBar() {
+  document.getElementById('r-food').textContent = Math.floor(G.resources.food);
+  document.getElementById('r-wood').textContent = Math.floor(G.resources.wood);
+  document.getElementById('r-stone').textContent = Math.floor(G.resources.stone);
+  document.getElementById('r-iron').textContent = Math.floor(G.resources.iron);
+  const homeless = G.residents.filter(r=>!r.home).length;
+  document.getElementById('r-pop').textContent = `${G.residents.length}/${G.maxPop}` + (homeless>0?` ⚠${homeless}`:'');
+  document.getElementById('r-time').textContent = G.phase==='day'?`第${G.day}天`:G.phase==='night'?`第${G.day}夜`:`第${G.day}天·过渡`;
+  document.getElementById('day-icon').textContent = G.phase==='day'?'☀️':G.phase==='night'?'🌙':'🌅';
+  document.getElementById('r-science').textContent = G.science;
+}
+
+function showContextMenu(building, mx, my) {
+  const b=building, def=BLD_DEFS[b.type];
+  let h=`<div class="info-line">${def.icon} ${def.name} Lv.${b.level}</div>`;
+  h+=`<div class="info-line" style="font-size:10px">HP: ${Math.ceil(b.hp)}/${b.maxHp}</div>`;
+  if (b.type==='house') h+=`<div class="info-line" style="font-size:10px">住户: ${b.residentCount}/${houseCapacity(b)}</div>`;
+  if(def.maxWorkers>0) h+=`<div class="info-line" style="font-size:10px">工人: ${b.assignedWorkers}/${def.maxWorkers}</div>`;
+
+  // 大本营特殊按钮：增加人口
+  if(b.type==='town_hall') {
+    const slots = G.maxPop - G.residents.length - b.recruitQueue;
+    const full = slots <= 0;
+    h+=`<div class="info-line" style="font-size:10px">人口: ${G.residents.length}/${G.maxPop} | 队列: ${b.recruitQueue}</div>`;
+    h+=`<button onclick="actionRecruit()"${full?' disabled':''}>👤 增加人口 (消耗${def.recruitCost.food}食物)${b.recruitQueue>0?` (${b.recruitQueue}人排队中)`:''}${full?' [已满]':''}</button>`;
+    h+=`<button onclick="actionUpgrade()">⬆ 升级${b.upgrading?' (升级中...)':''}</button>`;
+  } else if(b.type==='lab') {
+    h+=`<div class="info-line" style="font-size:10px">科技点: ${G.science} | 队列: ${G.researchQueue.length}/5</div>`;
+    h+=`<button onclick="openTechTree()">📚 科技树</button>`;
+    h+=`<button onclick="actionUpgrade()">⬆ 升级${b.upgrading?' (升级中...)':''}</button>`;
+    if(def.maxWorkers>0) {
+      const full = b.assignedWorkers >= def.maxWorkers;
+      const none = b.assignedWorkers <= 0;
+      h+=`<button onclick="actionAddWorker()"${full?' disabled':''}>➕ 增加工人${full?' [满]':''}</button>`;
+      h+=`<button onclick="actionRemoveWorker()"${none?' disabled':''}>➖ 减少工人${none?' [空]':''}</button>`;
+    }
+    h+=`<button onclick="actionMove()">↔ 移动</button>`;
+    h+=`<button onclick="actionDemolish()" style="color:#f66">✖ 拆除</button>`;
+  } else {
+    h+=`<button onclick="actionUpgrade()">⬆ 升级${b.upgrading?' (升级中...)':''}</button>`;
+    if(def.maxWorkers>0) {
+      const full = b.assignedWorkers >= def.maxWorkers;
+      const none = b.assignedWorkers <= 0;
+      h+=`<button onclick="actionAddWorker()"${full?' disabled':''}>➕ 增加工人${full?' [满]':''}</button>`;
+      h+=`<button onclick="actionRemoveWorker()"${none?' disabled':''}>➖ 减少工人${none?' [空]':''}</button>`;
+    }
+    h+=`<button onclick="actionMove()">↔ 移动</button>`;
+    h+=`<button onclick="actionDemolish()" style="color:#f66">✖ 拆除</button>`;
+  }
+  contextMenu.innerHTML=h;
+  contextMenu.style.display='flex';
+  const cr = canvas.getBoundingClientRect();
+  contextMenu.style.left = Math.min(mx, cr.right - 150) + 'px';
+  contextMenu.style.top = Math.min(my, cr.bottom - 220) + 'px';
+}
+
+function hideContextMenu() { contextMenu.style.display='none'; }
+
+function openTechTree() {
+  document.getElementById('techtree-overlay').style.display = 'flex';
+  renderTechTree();
+}
+function closeTechTree() {
+  document.getElementById('techtree-overlay').style.display = 'none';
+}
+function renderTechTree() {
+  document.getElementById('tt-science').textContent = G.science;
+  document.getElementById('tt-queue-count').textContent = G.researchQueue.length;
+  let h = '';
+  for (const t of TECHS) {
+    const done = isTechDone(t.id);
+    const queued = isTechQueued(t.id);
+    const canQueue = !done && !queued && G.researchQueue.length < 5;
+    let status = done ? '✅ 已完成' : queued ? '⏳ 排队中' : '🔒 可研发';
+    h += `<div style="display:flex; align-items:center; gap:8px; padding:6px;
+      background:${done?'#2a3a2a':queued?'#3a3a2a':'#2a2a3a'}; border-radius:6px;">
+      <span style="font-size:20px;">${t.icon}</span>
+      <div style="flex:1;"><b>${t.name}</b><div style="font-size:10px;color:#aaa;">${t.desc} | 消耗: ${t.cost} 科技点</div></div>
+      ${done ? '' : queued ? `<button onclick="unqueueTech('${t.id}')" style="background:#a44;color:#fff;border:none;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;">取消</button>` :
+        `<button onclick="queueTech('${t.id}')"${!canQueue?' disabled':''} style="background:${canQueue?'#4a4':'#555'};color:#fff;border:none;padding:4px 10px;border-radius:3px;cursor:pointer;font-size:11px;">研发</button>`}
+    </div>`;
+  }
+  document.getElementById('tech-list').innerHTML = h;
+}
+function queueTech(id) {
+  if (G.researchQueue.length >= 5 || isTechDone(id) || isTechQueued(id)) return;
+  G.researchQueue.push(id);
+  renderTechTree();
+}
+function unqueueTech(id) {
+  const idx = G.researchQueue.indexOf(id);
+  if (idx >= 0) G.researchQueue.splice(idx, 1);
+  renderTechTree();
+}
+
+function processResearchQueue(dt) {
+  if (G.researchQueue.length === 0) return;
+  if (!G._researchTimer) G._researchTimer = 0;
+  G._researchTimer += dt;
+  if (G._researchTimer < 2) return; // 2 seconds between queue ticks
+  G._researchTimer = 0;
+  const id = G.researchQueue[0];
+  const tech = TECHS.find(t => t.id === id);
+  if (!tech) { G.researchQueue.shift(); return; }
+  if (G.science >= tech.cost) {
+    G.science -= tech.cost;
+    G.researchQueue.shift();
+    G.researched.push(id);
+    if (tech.apply) tech.apply();
+    renderTechTree();
+  }
+}
+
+function actionUpgrade() {
+  const b=G.selectedBuilding; if(!b||b.upgrading) return;
+  const cost={wood:10*b.level, stone:5*b.level};
+  if(!canAfford(cost)) return;
+  payCost(cost); b.upgrading=true; b.upgradeProgress=0; hideContextMenu();
+}
+function actionAddWorker() {
+  const b=G.selectedBuilding; if(!b) return;
+  if(b.assignedWorkers>=BLD_DEFS[b.type].maxWorkers) return;
+  const idles=getIdleResidents(); if(idles.length===0) return;
+  idles[0].workplace=b; idles[0].state='GOING_TO_WORK'; b.assignedWorkers++;
+  // Refresh menu to show updated count
+  const menu=document.getElementById('context-menu');
+  showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
+}
+function actionRemoveWorker() {
+  const b=G.selectedBuilding; if(!b||b.assignedWorkers<=0) return;
+  const w=G.residents.find(r=>r.workplace===b&&(r.state==='WORKING'||r.state==='GOING_TO_WORK'||r.state==='HAULING'));
+  if(w){w.workplace=null;w.state='IDLE';} b.assignedWorkers--;
+  const menu=document.getElementById('context-menu');
+  showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
+}
+function actionRecruit() {
+  const b=G.selectedBuilding; if(!b||b.type!=='town_hall') return;
+  const slots = G.maxPop - G.residents.length - b.recruitQueue;
+  if (slots <= 0) return;
+  const cost=BLD_DEFS[b.type].recruitCost;
+  if(!canAfford(cost)) return;
+  payCost(cost);
+  b.recruitQueue++;
+  if (b.recruitProgress <= 0) b.recruitProgress = 0;
+  // Refresh menu
+  const menu=document.getElementById('context-menu');
+  showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
+}
+function actionMove() {
+  const b=G.selectedBuilding; if(!b||b.type==='town_hall') return;
+  G.placingMode=true; G.movingBuilding=b; G.selectedBldType=null;
+  document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected')); hideContextMenu();
+}
+function actionDemolish() {
+  const b=G.selectedBuilding; if(!b) return;
+  demolishBuilding(b); G.selectedBuilding=null; hideContextMenu();
+}
+
+buildingPanel.addEventListener('click', e => {
+  const btn=e.target.closest('.bld-btn'); if(!btn) return;
+  const type=btn.dataset.type;
+  if(G.placingMode){G.placingMode=false;G.movingBuilding=null;}
+  if(G.selectedBldType===type){
+    G.selectedBldType=null; btn.classList.remove('selected');
+  } else {
+    document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected'));
+    G.selectedBldType=type; btn.classList.add('selected');
+    G.selectedBuilding=null; hideContextMenu();
+  }
+});
+
+// ============================================================
+// INPUT
+// ============================================================
+canvas.addEventListener('mousemove', e => {
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  G.mouseX=mx; G.mouseY=my;
+  const wp=screenToWorld(mx, my);
+  G.hoveredCell={col:gridCol(wp.x),row:gridRow(wp.y)};
+
+  // Camera drag
+  if (G.dragging) {
+    G.cam.x = G.dragCamStartX - (mx - G.dragStartX) / G.cam.zoom;
+    G.cam.y = G.dragCamStartY - (my - G.dragStartY) / G.cam.zoom;
+  }
+});
+canvas.addEventListener('mousedown', e => {
+  if (e.button !== 0) return;
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+
+  // Check if clicking a building
+  const wp=screenToWorld(mx, my);
+  const col=gridCol(wp.x), row=gridRow(wp.y);
+  let clickedBld=null;
+  for(const b of G.buildings){
+    const d=BLD_DEFS[b.type];
+    if(col>=b.col&&col<b.col+d.sz[0]&&row>=b.row&&row<b.row+d.sz[1]){clickedBld=b;break;}
+  }
+
+  if (!clickedBld && !G.selectedBldType && !G.placingMode) {
+    // Start camera drag on empty ground with no build selection
+    G.dragging = true;
+    G.dragStartX = mx; G.dragStartY = my;
+    G.dragCamStartX = G.cam.x; G.dragCamStartY = G.cam.y;
+  }
+});
+canvas.addEventListener('click', e => {
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  const wp=screenToWorld(mx, my);
+  const col=gridCol(wp.x), row=gridRow(wp.y);
+
+  if (G.dragging) {
+    G.dragging = false;
+    const dx = mx - G.dragStartX, dy = my - G.dragStartY;
+    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+      hideContextMenu(); // close menu on drag
+      return;
+    }
+  }
+  G.dragging = false;
+
+  if(G.placingMode && G.movingBuilding) {
+    const b=G.movingBuilding;
+    const cp=pixelCenterPlacement(b.type, wp.x, wp.y);
+    if(canPlaceBuilding(b.type,cp.col,cp.row,b)){
+      b.col=cp.col;b.row=cp.row;b.x=gridX(cp.col);b.y=gridY(cp.row);
+      G.placingMode=false;G.movingBuilding=null;G.selectedBuilding=null;hideContextMenu();
+    }
+    return;
+  }
+
+  let clicked=null;
+  for(const b of G.buildings){
+    const d=BLD_DEFS[b.type];
+    if(col>=b.col&&col<b.col+d.sz[0]&&row>=b.row&&row<b.row+d.sz[1]){clicked=b;break;}
+  }
+
+  if(clicked){
+    G.selectedBuilding=clicked; G.selectedBldType=null;
+    document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected'));
+    showContextMenu(clicked,e.clientX,e.clientY);
+  } else if(G.selectedBldType && !G.placingMode){
+    const cp=pixelCenterPlacement(G.selectedBldType, wp.x, wp.y);
+    addBuilding(G.selectedBldType,cp.col,cp.row);
+  } else { G.selectedBuilding=null; hideContextMenu(); }
+});
+canvas.addEventListener('wheel', e => {
+  e.preventDefault();
+  const newZoom = clamp(G.cam.zoom * (e.deltaY > 0 ? 0.9 : 1.1), 0.3, 3);
+  // Zoom toward mouse position
+  const r=canvas.getBoundingClientRect();
+  const mx=e.clientX-r.left, my=e.clientY-r.top;
+  const wp=screenToWorld(mx, my);
+  G.cam.zoom = newZoom;
+  const wp2=screenToWorld(mx, my);
+  G.cam.x += wp.x - wp2.x;
+  G.cam.y += wp.y - wp2.y;
+}, {passive: false});
+canvas.addEventListener('contextmenu', e => {
+  e.preventDefault();
+  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null;
+  document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected')); hideContextMenu();
+});
+canvas.addEventListener('mouseleave', () => { G.dragging = false; });
+contextMenu.addEventListener('click', e => e.stopPropagation());
+document.addEventListener('mousedown', e => {
+  if(!e.target.closest('#context-menu')) hideContextMenu();
+});
+document.addEventListener('wheel', () => hideContextMenu());
+
+// ============================================================
+// LOOP
+// ============================================================
+let lastTime=0;
+function gameLoop(ts) {
+  const rawDt=Math.min((ts-lastTime)/1000,0.1); lastTime=ts;
+  const dt = rawDt * gameSpeed;
+  if (gameSpeed > 0) update(dt);
+  render(); updateTopBar();
+  requestAnimationFrame(gameLoop);
+}
+
+initGame();
+lastTime=performance.now();
+requestAnimationFrame(gameLoop);
+console.log('🏘 殖民模拟塔防游戏已就绪');
+</script>
+</body>
+</html>
