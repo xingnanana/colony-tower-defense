@@ -104,6 +104,10 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
         <button class="dbg-btn" onclick="unlockAll()" style="flex:1">🔓解锁</button>
         <button class="dbg-btn" onclick="upgradeTH()" style="flex:1">⬆升本</button>
       </div>
+      <div style="display:flex;gap:2px;margin-bottom:3px;">
+        <button class="dbg-btn" onclick="openConfigPanel()" style="flex:1">✏️编辑配置</button>
+        <button class="dbg-btn" onclick="cfgExportJSON()" style="flex:1">💾导出JSON</button>
+      </div>
     <div style="display:flex;flex-wrap:wrap;gap:2px;">
       <div class="dbg-row"><span>🍗</span><input id="dbg-food" type="number" value="50" size="4"><button class="dbg-btn" onclick="setRes('food')">设</button></div>
       <div class="dbg-row"><span>🪵</span><input id="dbg-wood" type="number" value="30" size="4"><button class="dbg-btn" onclick="setRes('wood')">设</button></div>
@@ -142,6 +146,34 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
   <div id="time-indicator"></div>
 </div>
 
+<input type="file" id="config-file-import" accept=".json" style="display:none">
+<div id="config-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,0.8); z-index:100; justify-content:center;align-items:center;">
+  <div style="background:#1a1a2e; border:2px solid #555; border-radius:12px; padding:20px;
+    width:600px; max-height:85vh; overflow-y:auto; color:#fff; font-size:12px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+      <h2 style="color:#ffd700; margin:0;">✏️ 配置编辑</h2>
+      <button onclick="closeConfigPanel()" style="background:#a44; color:#fff; border:none; padding:6px 14px;
+        border-radius:4px; cursor:pointer; font-size:14px; font-family:inherit;">✖ 关闭</button>
+    </div>
+    <div style="display:flex; gap:8px; margin-bottom:10px;">
+      <select id="cfg-category" onchange="cfgSelectCategory()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;">
+        <option value="buildings">🏗 建筑</option>
+        <option value="resources">💰 资源</option>
+      </select>
+      <select id="cfg-item" onchange="cfgSelectItem()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;flex:1;"></select>
+    </div>
+    <div id="cfg-fields" style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;"></div>
+    <div style="display:flex; gap:8px;">
+      <button onclick="cfgApply()" style="flex:1; padding:8px; background:#4a4; color:#fff;
+        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">✅ 应用</button>
+      <button onclick="cfgExportJSON()" style="flex:1; padding:8px; background:#4a6aaa; color:#fff;
+        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">💾 导出JSON</button>
+      <button onclick="cfgImportJSON()" style="flex:1; padding:8px; background:#6a5a2a; color:#fff;
+        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">📂 导入JSON</button>
+    </div>
+  </div>
+</div>
 <div id="context-menu"></div>
 <div id="gameover-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
   background:rgba(0,0,0,0.7); z-index:100; justify-content:center;align-items:center;flex-direction:column;gap:16px;">
@@ -153,6 +185,10 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
 
 
 <script>
+window.onerror = function(msg, src, line, col, err) {
+  const stack = err ? err.stack : '';
+  document.body.innerHTML += `<div style="position:fixed;top:0;left:0;right:0;background:#f44;color:#fff;padding:10px;z-index:9999;font-size:12px;">JS ERROR line ${line}: ${msg}<br><textarea onclick="this.select()" style="width:100%;height:60px;background:#600;color:#fff;border:none;margin-top:4px;font-size:11px;">${stack}</textarea></div>`;
+};
 // ============================================================
 // CONFIG
 // ============================================================
@@ -269,6 +305,35 @@ function canPlaceBuilding(type, col, row, excludeBld) {
 }
 
 function isStorage(type) { return BLD_DEFS[type] && (BLD_DEFS[type].cat==='storage' || type==='town_hall'); }
+const RESIDENT_RADIUS = 7;
+
+function resolveCollisions(r, nx, ny) {
+  for (const b of G.buildings) {
+    if (b.hp <= 0) continue;
+    if (r.workplace === b || r.home === b) continue;
+    const c = b.center();
+    const minDist = b.collisionRadius() + RESIDENT_RADIUS;
+    const dx = nx - c.x, dy = ny - c.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < minDist && dist > 0.01) {
+      nx = c.x + (dx / dist) * minDist;
+      ny = c.y + (dy / dist) * minDist;
+    }
+  }
+  for (const other of G.residents) {
+    if (other === r) continue;
+    const minDist = RESIDENT_RADIUS * 2;
+    const dx = nx - other.x, dy = ny - other.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < minDist && dist > 0.01) {
+      nx = other.x + (dx / dist) * minDist;
+      ny = other.y + (dy / dist) * minDist;
+    }
+  }
+  nx = clamp(nx, RESIDENT_RADIUS, CFG.WORLD_W - RESIDENT_RADIUS);
+  ny = clamp(ny, RESIDENT_RADIUS, CFG.WORLD_H - RESIDENT_RADIUS);
+  return { x: nx, y: ny };
+}
 function findNearestStorage(pos) {
   let best=null, bestD=Infinity;
   for (const b of G.buildings) {
@@ -338,6 +403,9 @@ class Building {
   }
   center() {
     return { x:this.x+this.size[0]*CFG.CELL/2, y:this.y+this.size[1]*CFG.CELL/2 };
+  }
+  collisionRadius() {
+    return Math.min(this.size[0], this.size[1]) * CFG.CELL / 2 - 6;
   }
   efficiency() {
     const def = BLD_DEFS[this.type];
@@ -519,9 +587,8 @@ function updateEnemies(dt) {
       let blocked=false;
       for (const b of G.buildings) {
         if (b.hp<=0) continue;
-        const closestX=clamp(e.x, b.x, b.x+b.size[0]*CFG.CELL);
-        const closestY=clamp(e.y, b.y, b.y+b.size[1]*CFG.CELL);
-        if (Math.hypot(e.x-closestX, e.y-closestY) < CFG.ENEMY_ATTACK_RANGE+5) {
+        const c = b.center();
+        if (Math.hypot(e.x-c.x, e.y-c.y) < b.collisionRadius() + CFG.ENEMY_ATTACK_RANGE + 5) {
           e.attacking=b; e.attackTimer=0; blocked=true; break;
         }
       }
@@ -534,6 +601,24 @@ function updateEnemies(dt) {
     }
   }
   G.enemies = G.enemies.filter(e=>e.alive && e.hp>0);
+
+  if (G.phase==='night') {
+    for (const e of G.enemies) {
+      if (!e.alive || e.attacking) continue;
+      for (const r of G.residents) {
+        if (r.state==='SLEEPING') continue;
+        if (r.home) continue;
+        const d = Math.hypot(e.x-r.x, e.y-r.y);
+        if (d < 12) {
+          G.residents = G.residents.filter(rr => rr !== r);
+          if (r.workplace) { r.workplace.assignedWorkers--; }
+          removeHome(r);
+          spawnParticles(r.x, r.y, '#ff0000', 8);
+          break;
+        }
+      }
+    }
+  }
 
   // Homeless residents at night can be attacked by enemies
   if (G.phase==='night') {
@@ -631,7 +716,7 @@ function updateResidents(dt) {
         const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
         if (dd<4) { r.state='EATING'; r.eatTimer=1.5; }
-        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED)*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED)*dt; }
+        else { const nx=r.x+(dx/dd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(dy/dd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
         break;
       }
       case 'EATING':
@@ -642,17 +727,19 @@ function updateResidents(dt) {
         }
         break;
       case 'GOING_HOME': {
+        const home = r.home || findNearestHome(r);
+        if (home) { const hc=home.center(); r.targetX=hc.x; r.targetY=hc.y; }
         const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
-        if (dd<4) { r.state='SLEEPING'; r.tired=0; }
-        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED)*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED)*dt; }
+        if (home && Math.hypot(r.x-home.center().x, r.y-home.center().y) < home.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='SLEEPING'; r.tired=0; }
+        else { const nx=r.x+(dx/dd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(dy/dd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
         break;
       }
       case 'GOING_TO_WORK': {
         if (!r.workplace||r.workplace.hp<=0) { r.state='IDLE'; r.workplace=null; break; }
         const wc=r.workplace.center();
         const dx=wc.x-r.x, dy=wc.y-r.y, dd=Math.hypot(dx,dy)||1;
-        if (dd<10) { r.state='WORKING'; r.prodTimer=0; }
-        else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED)*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED)*dt; }
+        if (Math.hypot(r.x-wc.x, r.y-wc.y) < r.workplace.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='WORKING'; r.prodTimer=0; }
+        else { const nx=r.x+(dx/dd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(dy/dd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
         break;
       }
       case 'WORKING': {
@@ -674,12 +761,10 @@ function updateResidents(dt) {
         break;
       }
       case 'HAULING': {
-        // Recalculate target each frame (storage may have moved)
         const storage = findNearestStorage(r);
         if (!storage) { r.carrying=null; r.state='IDLE'; break; }
         const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
-        const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
-        if (dd<10) {
+        if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) {
           if (r.carrying) {
             G.resources[r.carrying.type] = (G.resources[r.carrying.type]||0) + r.carrying.amount;
             if (r.workplace && r.workplace.stored[r.carrying.type])
@@ -688,7 +773,7 @@ function updateResidents(dt) {
           r.carrying=null;
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
-        } else { r.x+=(dx/dd)*(CFG.RESIDENT_SPEED)*dt; r.y+=(dy/dd)*(CFG.RESIDENT_SPEED)*dt; }
+        } else { const hdx=r.targetX-r.x, hdy=r.targetY-r.y, hdd=Math.hypot(hdx,hdy)||1; const nx=r.x+(hdx/hdd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(hdy/hdd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
         break;
       }
       default: { // IDLE / PATROL
@@ -704,10 +789,10 @@ function updateResidents(dt) {
           r.patrolTimer=2+Math.random()*4;
           r.patrolAngle=Math.random()*Math.PI*2;
         }
-        r.x+=Math.cos(r.patrolAngle)*30*dt;
-        r.y+=Math.sin(r.patrolAngle)*30*dt;
-        r.x=clamp(r.x,10,CFG.WORLD_W-10);
-        r.y=clamp(r.y,10,CFG.WORLD_H-10);
+        const pnx=r.x+Math.cos(r.patrolAngle)*30*dt;
+        const pny=r.y+Math.sin(r.patrolAngle)*30*dt;
+        const prs=resolveCollisions(r,pnx,pny);
+        r.x=prs.x; r.y=prs.y;
         break;
       }
     }
@@ -832,6 +917,118 @@ function skipToDay() {
   for (const r of G.residents) { r.state = 'IDLE'; r.tired = 0; }
   showTimeIndicator('☀️ 跳过至第'+G.day+'天');
 }
+// === In-game JSON Config Editor ===
+const BLD_EDIT_FIELDS = [
+  { k:'name',       label:'名称',     type:'text' },
+  { k:'icon',       label:'图标',     type:'text' },
+  { k:'hp',         label:'生命',     type:'num' },
+  { k:'maxWorkers', label:'最大工人', type:'num' },
+  { k:'unlock',     label:'解锁等级', type:'num' },
+  { k:'baseTime',   label:'基础生产时间', type:'num' },
+  { k:'produces',   label:'产物',     type:'text' },
+  { k:'popBonus',   label:'人口加成', type:'num' },
+  { k:'cost',       label:'消耗(格式: wood:10,stone:5)', type:'text' },
+];
+function closeConfigPanel() { document.getElementById('config-overlay').style.display='none'; }
+function openConfigPanel() {
+  document.getElementById('config-overlay').style.display='flex';
+  cfgSelectCategory();
+}
+function cfgSelectCategory() {
+  const cat=document.getElementById('cfg-category').value;
+  const sel=document.getElementById('cfg-item');
+  sel.innerHTML='';
+  if(cat==='buildings') {
+    for(const [k,d] of Object.entries(BLD_DEFS)) {
+      const opt=document.createElement('option');
+      opt.value=k; opt.textContent=d.icon+' '+d.name+' ('+k+')';
+      sel.appendChild(opt);
+    }
+  }
+  cfgSelectItem();
+}
+function cfgSelectItem() {
+  const cat=document.getElementById('cfg-category').value;
+  const key=document.getElementById('cfg-item').value;
+  const container=document.getElementById('cfg-fields');
+  let html='';
+  if(cat==='buildings'&&BLD_DEFS[key]) {
+    const d=BLD_DEFS[key];
+    for(const f of BLD_EDIT_FIELDS) {
+      let val=d[f.k];
+      if(f.k==='cost') val=Object.entries(d.cost||{}).map(([k,v])=>k+':'+v).join(',');
+      html+=`<div style="display:flex;align-items:center;gap:8px;"><label style="width:100px;text-align:right;color:#aaa;">${f.label}</label><input id="cfg-fld-${f.k}" type="${f.type}" value="${val??''}" style="flex:1;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
+    }
+  } else if(cat==='resources') {
+    html+='<div style="color:#aaa;padding:8px;">初始资源编辑（建设中）</div>';
+  }
+  container.innerHTML=html;
+}
+function cfgApply() {
+  const cat=document.getElementById('cfg-category').value;
+  const key=document.getElementById('cfg-item').value;
+  if(cat==='buildings'&&BLD_DEFS[key]) {
+    const d=BLD_DEFS[key];
+    const oldHp=d.hp;
+    for(const f of BLD_EDIT_FIELDS) {
+      const el=document.getElementById('cfg-fld-'+f.k);
+      if(!el) continue;
+      const raw=el.value.trim();
+      if(f.type==='num') { if(raw!=='') d[f.k]=+raw; }
+      else if(f.k==='cost') {
+        d.cost={};
+        if(raw) { for(const p of raw.split(/[,;\s]+/)) { const [k,v]=p.split(':'); if(k&&v!=null) d.cost[k.trim()]=+v; } }
+      } else { d[f.k]=raw; }
+    }
+    for(const b of G.buildings) {
+      if(b.type!==key) continue;
+      b.maxHp=Math.floor(b.maxHp*(d.hp/oldHp));
+      b.hp=Math.min(b.hp,b.maxHp);
+    }
+    const btn=document.querySelector(`.bld-btn[data-type="${key}"]`);
+    if(btn&&d.cost) {
+      const costDiv=btn.querySelector('.cost');
+      if(costDiv) costDiv.textContent=Object.entries(d.cost).map(([k,v])=>v+({wood:'木',stone:'石',iron:'铁',ingot:'锭'}[k]||k)).join(' ');
+    }
+    updateBuildingPanel();
+    showTimeIndicator('✅ '+d.name+' 配置已应用');
+  }
+}
+function cfgExportJSON() {
+  const data={buildings:BLD_DEFS,resources:{start:{}}};
+  for(const r of ['food','wood','stone','iron']) data.resources.start[r]=CFG['START_'+r.toUpperCase()];
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const a=document.createElement('a');
+  a.href=URL.createObjectURL(blob); a.download='colony-config.json'; a.click();
+  showTimeIndicator('💾 配置已导出');
+}
+function cfgImportJSON() { document.getElementById('config-file-import').click(); }
+document.getElementById('config-file-import').addEventListener('change',function(e) {
+  const file=e.target.files[0]; if(!file) return;
+  const reader=new FileReader();
+  reader.onload=function(ev) {
+    try {
+      const data=JSON.parse(ev.target.result);
+      if(data.buildings) {
+        for(const [k,d] of Object.entries(data.buildings)) {
+          if(BLD_DEFS[k]) { Object.assign(BLD_DEFS[k],d); if(d.cost&&typeof d.cost==='object') BLD_DEFS[k].cost=Object.assign({},d.cost); }
+        }
+        updateBuildingPanel();
+      }
+      if(data.resources&&data.resources.start) {
+        for(const [k,v] of Object.entries(data.resources.start)) {
+          const key='START_'+k.toUpperCase();
+          if(CFG[key]!==undefined) CFG[key]=v;
+        }
+      }
+      cfgSelectItem();
+      showTimeIndicator('✅ JSON配置已导入并应用');
+    } catch(ex) { showTimeIndicator('⚠ JSON解析失败'); }
+  };
+  reader.readAsText(file);
+  this.value='';
+});
+
 function addPop(n) {
   if (n > 0) {
     for (let i=0; i<n; i++) {
@@ -979,19 +1176,19 @@ function render() {
 
 function drawBuilding(b, x, y) {
   const def=BLD_DEFS[b.type], w=def.sz[0]*CFG.CELL, h=def.sz[1]*CFG.CELL, cx=x+w/2, cy=y+h/2;
-  ctx.fillStyle=buildingColor(b.type); ctx.fillRect(x+2,y+2,w-4,h-4);
-  ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1.5; ctx.strokeRect(x+2,y+2,w-4,h-4);
-
+  const cr = b.collisionRadius();
+  ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x, y, w, h);
+  ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.setLineDash([3,6]); ctx.strokeRect(x+1,y+1,w-2,h-2); ctx.setLineDash([]);
+  ctx.fillStyle=buildingColor(b.type); ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.stroke();
   if (b.hp<b.maxHp) {
     const bw=w-8, bh=4;
     ctx.fillStyle='#333'; ctx.fillRect(x+4,y-8,bw,bh);
     ctx.fillStyle=b.hp/b.maxHp>0.5?'#4a4':'#a44'; ctx.fillRect(x+4,y-8,bw*(b.hp/b.maxHp),bh);
   }
   ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+5);
-
-  if (b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.fillRect(x,y,w*b.upgradeProgress,h); }
-  if (b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.fillRect(x,y,w*b.recruitProgress,h); }
-
+  if (b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.upgradeProgress); ctx.lineTo(cx,cy); ctx.fill(); }
+  if (b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.recruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
   if (def.maxWorkers>0) {
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
@@ -1002,7 +1199,6 @@ function drawBuilding(b, x, y) {
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
     ctx.fillText(`🏠${b.residentCount}/${houseCapacity(b)}`,cx,cy+h/2-6);
   }
-
   const ts=b.stored?Object.values(b.stored).reduce((a,c)=>a+c,0):0;
   if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='9px sans-serif'; ctx.fillText(`📦${ts}`,cx,y-4); }
 }
@@ -1012,22 +1208,22 @@ function buildingColor(t) {
 }
 
 function drawResident(r) {
-  const s=5;
-  ctx.fillStyle = !r.home && (G.phase==='night'||G.phase==='dusk')?'#ff4444'
+  const bodyColor = !r.home && (G.phase==='night'||G.phase==='dusk')?'#ff4444'
     :r.state==='SLEEPING'||r.state==='GOING_HOME'?'#8899cc'
     :r.state==='GOING_TO_EAT'||r.state==='EATING'?'#ffcc44'
     :r.state==='HAULING'?'#44ccff'
     :r.state==='WORKING'||r.state==='GOING_TO_WORK'?'#44cc88'
     :'#aaaaaa';
-  ctx.beginPath(); ctx.arc(r.x,r.y,s,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=1; ctx.stroke();
-  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(r.x+2,r.y-2,1.5,0,Math.PI*2); ctx.fill();
-
-  if (r.carrying) {
-    ctx.fillStyle=rc(r.carrying.type); ctx.beginPath(); ctx.arc(r.x,r.y-8,2.5,0,Math.PI*2); ctx.fill();
-  }
-  if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='7px sans-serif'; ctx.fillText('🍗',r.x-5,r.y-9); }
-  if (r.tired>CFG.TIRED_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='7px sans-serif'; ctx.fillText('💤',r.x+3,r.y-9); }
+  const cr = RESIDENT_RADIUS;
+  ctx.fillStyle='rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.arc(r.x,r.y,cr,0,Math.PI*2); ctx.fill();
+  ctx.save(); ctx.translate(r.x, r.y + cr/2 - 10); ctx.scale(0.5, 1.0);
+  ctx.fillStyle=bodyColor; ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=0.8; ctx.stroke();
+  ctx.restore();
+  ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(r.x+2, r.y-14, 1.5, 0, Math.PI*2); ctx.fill();
+  if (r.carrying) { ctx.fillStyle=rc(r.carrying.type); ctx.beginPath(); ctx.arc(r.x, r.y-22, 3, 0, Math.PI*2); ctx.fill(); }
+  if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='8px sans-serif'; ctx.fillText('🍗',r.x-8,r.y-20); }
+  if (r.tired>CFG.TIRED_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='8px sans-serif'; ctx.fillText('💤',r.x+5,r.y-20); }
 }
 
 function drawEnemy(e) {
