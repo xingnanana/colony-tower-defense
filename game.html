@@ -105,8 +105,10 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
         <button class="dbg-btn" onclick="upgradeTH()" style="flex:1">⬆升本</button>
       </div>
       <div style="display:flex;gap:2px;margin-bottom:3px;">
+        <button class="dbg-btn" onclick="restartGame()" style="flex:1">🔄重新开始</button>
+      </div>
+      <div style="display:flex;gap:2px;margin-bottom:3px;">
         <button class="dbg-btn" onclick="openConfigPanel()" style="flex:1">✏️编辑配置</button>
-        <button class="dbg-btn" onclick="cfgExportJSON()" style="flex:1">💾导出JSON</button>
       </div>
     <div style="display:flex;flex-wrap:wrap;gap:2px;">
       <div class="dbg-row"><span>🍗</span><input id="dbg-food" type="number" value="50" size="4"><button class="dbg-btn" onclick="setRes('food')">设</button></div>
@@ -123,6 +125,7 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
     <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
     <button class="bld-btn" data-type="house">🏠 住房<div class="cost">10木 5石</div></button>
     <button class="bld-btn" data-type="wood_storage">🪵 木材仓库<div class="cost">10木 5石</div></button>
+    <button class="bld-btn" data-type="food_storage">🍗 食物仓库<div class="cost">10木 5石</div></button>
     <button class="bld-btn" data-type="quarry">⛏ 采石场<div class="cost">10木 5石</div></button>
     <button class="bld-btn" data-type="stone_storage">🪨 石材仓库<div class="cost">10木 5石</div></button>
     <button class="bld-btn" data-type="wall">🧱 城墙<div class="cost">5石</div></button>
@@ -144,6 +147,14 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
   </div>
 
   <div id="time-indicator"></div>
+
+  <div id="eng-bar" style="position:absolute; bottom:8px; right:132px;
+  display:flex; gap:6px; z-index:10; align-items:center;
+  background:rgba(0,0,0,0.7); padding:3px 10px; border-radius:6px; color:#fff; font-size:12px;">
+  <span id="eng-minus" style="cursor:pointer;color:#a44;display:none" onclick="unassignEngineer()" title="取消工程师">➖</span>
+  <span>👷 <span id="r-eng">0/0</span></span>
+  <span id="eng-plus" style="cursor:pointer;color:#4a4;display:none" onclick="assignEngineer()" title="指派工程师">➕</span>
+</div>
 </div>
 
 <input type="file" id="config-file-import" accept=".json" style="display:none">
@@ -210,19 +221,34 @@ const CFG = {
 // BUILDING DEFINITIONS
 // ============================================================
 const BLD_DEFS = {
-  house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 },
-  farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, unlock:1 },
-  lumber:      { name:'伐木场',icon:'🪓', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'wood',  baseTime:6, unlock:1 },
-  quarry:      { name:'采石场',icon:'⛏', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', baseTime:10, unlock:3 },
-  iron_mine:   { name:'铁矿', icon:'⚒', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:4, produces:'iron',  baseTime:12, unlock:4 },
-  smelter:     { name:'炼铁机',icon:'🔥', cat:'production',sz:[2,2], cost:{wood:20,stone:15},hp:120, maxWorkers:2, produces:'ingot', baseTime:8, unlock:4 },
-  wood_storage:{ name:'木材仓库',icon:'🪵', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:2 },
-  stone_storage:{name:'石材仓库',icon:'🪨', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:3 },
-  iron_storage:{ name:'铁矿仓库',icon:'⚒', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 },
-  ingot_storage:{name:'铁锭仓库',icon:'🔩', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 },
-  arrow_tower: { name:'箭塔', icon:'🏹', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8, unlock:1 },
-  town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5}, unlock:1 },
-  wall:        { name:'城墙', icon:'🧱', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0, unlock:3 },
+  house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 , buildTime:5 },
+
+  farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, unlock:1 , buildTime:2 },
+
+  lumber:      { name:'伐木场',icon:'🪓', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'wood',  baseTime:6, unlock:1 , buildTime:2 },
+
+  quarry:      { name:'采石场',icon:'⛏', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', baseTime:10, unlock:3 , buildTime:8 },
+
+  iron_mine:   { name:'铁矿', icon:'⚒', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:4, produces:'iron',  baseTime:12, unlock:4 , buildTime:11 },
+
+  smelter:     { name:'炼铁机',icon:'🔥', cat:'production',sz:[2,2], cost:{wood:20,stone:15},hp:120, maxWorkers:2, produces:'ingot', baseTime:8, unlock:4 , buildTime:11 },
+
+  food_storage:{ name:'食物仓库',icon:'🍗', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:2 , buildTime:5 },
+
+  wood_storage:{ name:'木材仓库',icon:'🪵', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:2 , buildTime:5 },
+
+  stone_storage:{name:'石材仓库',icon:'🪨', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:3 , buildTime:8 },
+
+  iron_storage:{ name:'铁矿仓库',icon:'⚒', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 , buildTime:11 },
+
+  ingot_storage:{name:'铁锭仓库',icon:'🔩', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 , buildTime:11 },
+
+  arrow_tower: { name:'箭塔', icon:'🏹', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8, unlock:1 , buildTime:2 },
+
+  town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5}, unlock:1 , buildTime:2 },
+
+  wall:        { name:'城墙', icon:'🧱', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0, unlock:3 , buildTime:8 },
+
 };
 
 
@@ -237,6 +263,7 @@ const G = {
   mouseX: 0, mouseY: 0,
   placingMode: false, movingBuilding: null,
   maxPop: CFG.MAX_POP_BASE, popGrowthTimer: 0,
+  engineerCount: 0,
   enemySpawnQueue: [], enemySpawnTimer: 0,
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
   dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
@@ -307,6 +334,25 @@ function canPlaceBuilding(type, col, row, excludeBld) {
 function isStorage(type) { return BLD_DEFS[type] && (BLD_DEFS[type].cat==='storage' || type==='town_hall'); }
 const RESIDENT_RADIUS = 7;
 
+
+function neededMaterials(bp) {
+  if (!bp.constructCost) return null;
+  for (const [k, v] of Object.entries(bp.constructCost)) {
+    const delivered = bp.constructDelivered[k] || 0;
+    if (delivered < v) return { type: k, amount: v - delivered };
+  }
+  return null;
+}
+function findNearestBlueprint(resident) {
+  let best = null, bestD = Infinity;
+  for (const b of G.buildings) {
+    if (!b.blueprint || b.hp <= 0 || b.assignedEngineer) continue;
+    const bc = b.center();
+    const d = Math.hypot(resident.x - bc.x, resident.y - bc.y);
+    if (d < bestD) { bestD = d; best = b; }
+  }
+  return best;
+}
 function resolveCollisions(r, nx, ny) {
   for (const b of G.buildings) {
     if (b.hp <= 0) continue;
@@ -321,23 +367,35 @@ function resolveCollisions(r, nx, ny) {
     }
   }
   for (const other of G.residents) {
-    if (other === r) continue;
+    if (other === r || other.hidden) continue;
     const minDist = RESIDENT_RADIUS * 2;
     const dx = nx - other.x, dy = ny - other.y;
     const dist = Math.hypot(dx, dy);
     if (dist < minDist && dist > 0.01) {
-      nx = other.x + (dx / dist) * minDist;
-      ny = other.y + (dy / dist) * minDist;
+      // Push apart along collision axis
+      const overlap = minDist - dist;
+      nx += (dx / dist) * overlap * 0.5;
+      ny += (dy / dist) * overlap * 0.5;
+      // Slide: add perpendicular offset to help pass each other
+      const px = -dy / dist;
+      const py = dx / dist;
+      nx += px * overlap * 0.3;
+      ny += py * overlap * 0.3;
     }
   }
   nx = clamp(nx, RESIDENT_RADIUS, CFG.WORLD_W - RESIDENT_RADIUS);
   ny = clamp(ny, RESIDENT_RADIUS, CFG.WORLD_H - RESIDENT_RADIUS);
   return { x: nx, y: ny };
 }
-function findNearestStorage(pos) {
+function findNearestStorage(pos, resType) {
   let best=null, bestD=Infinity;
   for (const b of G.buildings) {
     if (!isStorage(b.type) || b.hp<=0) continue;
+    if (resType === 'food' && b.type !== 'food_storage' && b.type !== 'town_hall') continue;
+    if (resType === 'wood' && b.type !== 'wood_storage' && b.type !== 'town_hall') continue;
+    if (resType === 'stone' && b.type !== 'stone_storage' && b.type !== 'town_hall') continue;
+    if (resType === 'iron' && b.type !== 'iron_storage' && b.type !== 'town_hall') continue;
+    if (resType === 'ingot' && b.type !== 'ingot_storage' && b.type !== 'town_hall') continue;
     const cx=b.x+BLD_DEFS[b.type].sz[0]*CFG.CELL/2;
     const cy=b.y+BLD_DEFS[b.type].sz[1]*CFG.CELL/2;
     const d=Math.hypot(pos.x-cx, pos.y-cy);
@@ -369,7 +427,7 @@ function findNearestHome(pos) {
 }
 
 function getIdleResidents() {
-  return G.residents.filter(r=>r.state==='IDLE'||r.state==='PATROL');
+  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.isEngineer);
 }
 function assignHome(r, house) {
   if (r.home && r.home.hp>0) r.home.residentCount--;
@@ -399,7 +457,12 @@ class Building {
     this.size = def.sz;
     this.recruitQueue = 0;
     this.recruitProgress = 0;
-    this.residentCount = 0; // for houses
+    this.residentCount = 0;
+    this.blueprint = false;
+    this.constructCost = null;
+    this.constructDelivered = null;
+    this.assignedEngineer = null;
+    this.constructionTimer = 0;
   }
   center() {
     return { x:this.x+this.size[0]*CFG.CELL/2, y:this.y+this.size[1]*CFG.CELL/2 };
@@ -430,6 +493,9 @@ class Resident {
     this.patrolAngle = Math.random()*Math.PI*2;
     this.patrolTimer = 0;
     this.eatTimer = 0; this.prodTimer = 0;
+    this.hidden = false;
+    this.buildTarget = null;
+    this.isEngineer = false;
   }
 }
 
@@ -471,7 +537,7 @@ function initGame() {
   G.townHall = th;
   G.cam.x = th.x + CFG.CELL; G.cam.y = th.y + CFG.CELL;
 
-  addBuilding('lumber', 37, 25);
+  addBuilding('lumber', 36, 24, true);
   G.buildings[1].assignedWorkers = 2; // lumber
   G.maxPop = CFG.MAX_POP_BASE;
 
@@ -487,12 +553,18 @@ function initGame() {
   G.residents[1].workplace = G.buildings[1]; G.residents[1].state = 'GOING_TO_WORK';
 }
 
-function addBuilding(type, col, row) {
+function addBuilding(type, col, row, skipBlueprint) {
   if (!canPlaceBuilding(type, col, row)) return null;
   const def = BLD_DEFS[type];
-  if (!canAfford(def.cost)) return null;
-  payCost(def.cost);
+  const hasCost = Object.keys(def.cost||{}).length > 0;
   const b = new Building(type, col, row);
+  if (hasCost && !skipBlueprint) {
+    b.blueprint = true;
+    b.constructCost = Object.assign({}, def.cost);
+    b.constructDelivered = {};
+    for (const k of Object.keys(def.cost)) b.constructDelivered[k] = 0;
+    b.hp = 1; b.maxHp = def.hp;
+  }
   G.buildings.push(b);
   if (type==='house') G.maxPop += BLD_DEFS[type].popBonus;
   return b;
@@ -542,7 +614,7 @@ function updateDayNight(dt) {
       G.enemies=[];
     } else if (G.phase==='dawn') {
       G.phase='day'; G.day++; showTimeIndicator('☀️ 第'+G.day+'天');
-      for (const r of G.residents) { r.state='IDLE'; r.tired=0; }
+      for (const r of G.residents) { r.state='IDLE'; r.tired=0; r.hidden=false; }
     }
   }
 }
@@ -683,7 +755,7 @@ function updateResidents(dt) {
 
     // Priority 1: Hungry
     if (r.hunger >= CFG.HUNGER_THRESHOLD && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
-      const storage = findNearestStorage(r);
+      const storage = findNearestStorage(r, 'food');
       if ((G.resources.food||0) > 0) {
         if (storage) {
           r.state = 'GOING_TO_EAT';
@@ -711,26 +783,25 @@ function updateResidents(dt) {
     switch (r.state) {
       case 'GOING_TO_EAT': {
         // Recalculate target each frame
-        const storage = findNearestStorage(r);
+        const storage = findNearestStorage(r, 'food');
         if (!storage) { r.state='EATING'; r.eatTimer=0.5; break; }
         const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
-        const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
-        if (dd<4) { r.state='EATING'; r.eatTimer=1.5; }
-        else { const nx=r.x+(dx/dd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(dy/dd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
+        if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='EATING'; r.eatTimer=1.5; }
+        else { const edx=r.targetX-r.x, edy=r.targetY-r.y, edd=Math.hypot(edx,edy)||1; const nx=r.x+(edx/edd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(edy/edd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
         break;
       }
       case 'EATING':
         if ((r.eatTimer-=dt)<=0) {
           if (G.resources.food>0) { G.resources.food--; r.hunger=0; }
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
-            : r.workplace?'GOING_TO_WORK':'IDLE';
+            : r.carrying?'HAULING' : r.workplace?'GOING_TO_WORK':'IDLE';
         }
         break;
       case 'GOING_HOME': {
         const home = r.home || findNearestHome(r);
         if (home) { const hc=home.center(); r.targetX=hc.x; r.targetY=hc.y; }
         const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
-        if (home && Math.hypot(r.x-home.center().x, r.y-home.center().y) < home.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='SLEEPING'; r.tired=0; }
+        if (home && Math.hypot(r.x-home.center().x, r.y-home.center().y) < home.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='SLEEPING'; r.tired=0; r.hidden=true; }
         else { const nx=r.x+(dx/dd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(dy/dd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
         break;
       }
@@ -744,6 +815,7 @@ function updateResidents(dt) {
       }
       case 'WORKING': {
         if (!r.workplace||r.workplace.hp<=0) { r.state='IDLE'; r.workplace=null; break; }
+        if (r.carrying) { r.state='HAULING'; break; } // still carrying, go deliver
         const b=r.workplace, def=BLD_DEFS[b.type];
         const eff=b.efficiency();
         if (eff<=0) break;
@@ -755,18 +827,20 @@ function updateResidents(dt) {
           b.stored[res]++;
           r.state = 'HAULING';
           r.carrying = { type:res, amount:1 };
-          const storage = findNearestStorage(r);
+          const storage = findNearestStorage(r, def.produces);
           if (storage) { const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y; }
         }
         break;
       }
       case 'HAULING': {
-        const storage = findNearestStorage(r);
+        const storage = findNearestStorage(r, r.carrying.type);
         if (!storage) { r.carrying=null; r.state='IDLE'; break; }
         const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) {
           if (r.carrying) {
             G.resources[r.carrying.type] = (G.resources[r.carrying.type]||0) + r.carrying.amount;
+            if (!storage.stored[r.carrying.type]) storage.stored[r.carrying.type]=0;
+            storage.stored[r.carrying.type] += r.carrying.amount;
             if (r.workplace && r.workplace.stored[r.carrying.type])
               r.workplace.stored[r.carrying.type] = Math.max(0, (r.workplace.stored[r.carrying.type]||0)-1);
           }
@@ -774,6 +848,73 @@ function updateResidents(dt) {
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
         } else { const hdx=r.targetX-r.x, hdy=r.targetY-r.y, hdd=Math.hypot(hdx,hdy)||1; const nx=r.x+(hdx/hdd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(hdy/hdd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
+        break;
+      }
+      case 'GATHERING': {
+        if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
+        const need = neededMaterials(r.buildTarget);
+        if (!need) { if(r.buildTarget.constructionTimer>0){r.state='CONSTRUCTING';}else{r.buildTarget.assignedEngineer=null;r.buildTarget=null;r.state=(r.workplace&&r.workplace.hp>0)?'GOING_TO_WORK':'IDLE';} break; }
+        const gs = findNearestStorage(r, need.type);
+        if (!gs) { r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
+        const gsc = gs.center(); r.targetX = gsc.x; r.targetY = gsc.y;
+        if (Math.hypot(r.x-gsc.x, r.y-gsc.y) < gs.collisionRadius() + RESIDENT_RADIUS + 3) {
+          const take = Math.min(5, need.amount);
+          if (!r.carrying) r.carrying = { type: need.type, amount: 0 };
+          r.carrying.type = need.type; r.carrying.amount = take;
+          G.resources[need.type] = Math.max(0, (G.resources[need.type]||0) - take);
+          if (gs.stored[need.type]) gs.stored[need.type] = Math.max(0, gs.stored[need.type] - take);
+          r.state = 'BUILDING'; break;
+        }
+        const gdx = r.targetX-r.x, gdy = r.targetY-r.y, gdd = Math.hypot(gdx,gdy)||1;
+        const gnx = r.x+(gdx/gdd)*CFG.RESIDENT_SPEED*dt, gny = r.y+(gdy/gdd)*CFG.RESIDENT_SPEED*dt;
+        const grs = resolveCollisions(r, gnx, gny); r.x = grs.x; r.y = grs.y;
+        break;
+      }
+      case 'BUILDING': {
+        if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.carrying=null; r.state='IDLE'; break; }
+        const bc = r.buildTarget.center(); r.targetX = bc.x; r.targetY = bc.y;
+        if (Math.hypot(r.x-bc.x, r.y-bc.y) < r.buildTarget.collisionRadius() + RESIDENT_RADIUS + 3) {
+          if (r.carrying && r.carrying.amount > 0) {
+            const t = r.carrying.type;
+            r.buildTarget.constructDelivered[t] = (r.buildTarget.constructDelivered[t]||0) + r.carrying.amount;
+            r.carrying = null;
+            let done = true;
+            for (const [k, v] of Object.entries(r.buildTarget.constructCost)) {
+              if ((r.buildTarget.constructDelivered[k]||0) < v) { done = false; break; }
+            }
+            if (done) {
+              r.buildTarget.blueprint = false;
+              r.buildTarget.constructCost = null; r.buildTarget.constructDelivered = null;
+              r.buildTarget.constructionTimer = BLD_DEFS[r.buildTarget.type].buildTime || 2;
+              r.state = 'CONSTRUCTING';
+              break;
+            }
+          }
+          r.state = 'GATHERING'; break;
+        }
+        const bdx = r.targetX-r.x, bdy = r.targetY-r.y, bdd = Math.hypot(bdx,bdy)||1;
+        const bnx = r.x+(bdx/bdd)*CFG.RESIDENT_SPEED*dt, bny = r.y+(bdy/bdd)*CFG.RESIDENT_SPEED*dt;
+        const brs = resolveCollisions(r, bnx, bny); r.x = brs.x; r.y = brs.y;
+        break;
+      }
+      case 'CONSTRUCTING': {
+        if (!r.buildTarget || r.buildTarget.hp <= 0 || r.buildTarget.constructionTimer <= 0) {
+          if (r.buildTarget && r.buildTarget.hp>0) r.buildTarget.assignedEngineer = null;
+          r.buildTarget = null;
+          const nbp = findNearestBlueprint(r);
+          if (nbp) { r.buildTarget = nbp; nbp.assignedEngineer = r; r.state = 'GATHERING'; }
+          else { r.state = 'IDLE'; }
+          break;
+        }
+        const cc = r.buildTarget.center();
+        if (Math.hypot(r.x-cc.x, r.y-cc.y) < r.buildTarget.collisionRadius() + RESIDENT_RADIUS + 5) {
+          // Stay near building while timer counts down
+        } else {
+          const cx = cc.x - r.x, cy = cc.y - r.y, cd = Math.hypot(cx,cy)||1;
+          const nx = r.x + (cx/cd)*CFG.RESIDENT_SPEED*dt;
+          const ny = r.y + (cy/cd)*CFG.RESIDENT_SPEED*dt;
+          const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
+        }
         break;
       }
       default: { // IDLE / PATROL
@@ -784,6 +925,11 @@ function updateResidents(dt) {
           break;
         }
         if (r.workplace && r.workplace.hp>0) { r.state='GOING_TO_WORK'; break; }
+        if (r.isEngineer) {
+          if (r.buildTarget && r.buildTarget.hp>0 && r.buildTarget.constructionTimer>0) { r.state='CONSTRUCTING'; break; }
+          const ebp = findNearestBlueprint(r);
+          if (ebp) { r.buildTarget = ebp; ebp.assignedEngineer = r; r.state = 'GATHERING'; break; }
+        }
         r.state='PATROL';
         if ((r.patrolTimer-=dt)<=0) {
           r.patrolTimer=2+Math.random()*4;
@@ -814,8 +960,15 @@ function updateResidents(dt) {
 
 function updateBuildings(dt) {
   for (const b of G.buildings) {
+    if (b.constructionTimer > 0) {
+      const hasEng = G.residents.some(r => r.buildTarget === b && (r.state==='CONSTRUCTING'||r.state==='GATHERING'||r.state==='BUILDING'));
+      if (hasEng) {
+        b.constructionTimer -= dt;
+        if (b.constructionTimer <= 0) { b.constructionTimer = 0; b.hp = b.maxHp; b.assignedEngineer = null; }
+      }
+    }
     if (b.upgrading) {
-      b.upgradeProgress += dt/15;
+      b.upgradeProgress += dt/(BLD_DEFS[b.type].buildTime||15);
       if (b.upgradeProgress>=1) {
         b.upgradeProgress=0; b.upgrading=false;
         b.level++;
@@ -894,7 +1047,11 @@ function setAllRes() {
 }
 function skipToNight() {
   G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
-  for (const r of G.residents) { r.state = 'SLEEPING'; }
+  for (const r of G.residents) {
+    r.tired = CFG.TIRED_THRESHOLD;
+    const home = r.home || findNearestHome(r);
+    if (home) { r.state = 'GOING_HOME'; const hc = home.center(); r.targetX = hc.x; r.targetY = hc.y; if (!r.home) assignHome(r, home); }
+  }
   spawnEnemyWave();
   showTimeIndicator('🌙 跳过至夜晚');
 }
@@ -914,7 +1071,7 @@ function upgradeTH() {
 }
 function skipToDay() {
   G.phase = 'day'; G.dayTime = 0; G.day++; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
-  for (const r of G.residents) { r.state = 'IDLE'; r.tired = 0; }
+  for (const r of G.residents) { r.state = 'IDLE'; r.tired = 0; r.hidden = false; }
   showTimeIndicator('☀️ 跳过至第'+G.day+'天');
 }
 // === In-game JSON Config Editor ===
@@ -944,6 +1101,13 @@ function cfgSelectCategory() {
       opt.value=k; opt.textContent=d.icon+' '+d.name+' ('+k+')';
       sel.appendChild(opt);
     }
+  } else if(cat==='resources') {
+    const rn = {food:'🍗 食物',wood:'🪵 木材',stone:'🪨 石材',iron:'⚒ 铁矿'};
+    for(const r of ['food','wood','stone','iron']) {
+      const opt=document.createElement('option');
+      opt.value=r; opt.textContent=rn[r]||r;
+      sel.appendChild(opt);
+    }
   }
   cfgSelectItem();
 }
@@ -960,7 +1124,8 @@ function cfgSelectItem() {
       html+=`<div style="display:flex;align-items:center;gap:8px;"><label style="width:100px;text-align:right;color:#aaa;">${f.label}</label><input id="cfg-fld-${f.k}" type="${f.type}" value="${val??''}" style="flex:1;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
     }
   } else if(cat==='resources') {
-    html+='<div style="color:#aaa;padding:8px;">初始资源编辑（建设中）</div>';
+    const resNames = {food:'食物',wood:'木材',stone:'石材',iron:'铁矿'};
+    html += `<div style="display:flex;align-items:center;gap:8px;"><label style="width:100px;text-align:right;color:#aaa;">${resNames[key]||key}</label><input id="cfg-fld-res" type="num" value="${CFG['START_'+key.toUpperCase()]||0}" style="flex:1;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
   }
   container.innerHTML=html;
 }
@@ -992,6 +1157,10 @@ function cfgApply() {
     }
     updateBuildingPanel();
     showTimeIndicator('✅ '+d.name+' 配置已应用');
+  } else if (cat==='resources') {
+    const el = document.getElementById('cfg-fld-res');
+    if (el) { CFG['START_'+key.toUpperCase()] = parseInt(el.value) || 0; }
+    showTimeIndicator('✅ '+key+' 初始值已更新');
   }
 }
 function cfgExportJSON() {
@@ -1029,6 +1198,24 @@ document.getElementById('config-file-import').addEventListener('change',function
   this.value='';
 });
 
+function assignEngineer() {
+  const idle = G.residents.find(r => (r.state === 'IDLE' || r.state === 'PATROL') && !r.workplace && !r.isEngineer);
+  if (idle) {
+    idle.isEngineer = true;
+    const bp = findNearestBlueprint(idle);
+    if (bp) {
+      idle.buildTarget = bp; bp.assignedEngineer = idle; idle.state = 'GATHERING';
+    }
+  }
+}
+function unassignEngineer() {
+  const eng = G.residents.find(r => r.isEngineer);
+  if (eng) {
+    eng.isEngineer = false;
+    if (eng.buildTarget) eng.buildTarget.assignedEngineer = null;
+    eng.buildTarget = null; eng.carrying = null; eng.state = 'IDLE';
+  }
+}
 function addPop(n) {
   if (n > 0) {
     for (let i=0; i<n; i++) {
@@ -1137,7 +1324,7 @@ function render() {
   }
 
   // Residents
-  for (const r of G.residents) drawResident(r);
+  for (const r of G.residents) if (!r.hidden) drawResident(r);
 
   // Enemies
   for (const e of G.enemies) if(e.alive) drawEnemy(e);
@@ -1179,14 +1366,52 @@ function drawBuilding(b, x, y) {
   const cr = b.collisionRadius();
   ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x, y, w, h);
   ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.setLineDash([3,6]); ctx.strokeRect(x+1,y+1,w-2,h-2); ctx.setLineDash([]);
+  if (b.blueprint) ctx.globalAlpha = 0.5;
   ctx.fillStyle=buildingColor(b.type); ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.fill();
   ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.stroke();
-  if (b.hp<b.maxHp) {
+  if (b.blueprint) ctx.globalAlpha = 1;
+  if (b.hp<b.maxHp && !b.blueprint) {
     const bw=w-8, bh=4;
     ctx.fillStyle='#333'; ctx.fillRect(x+4,y-8,bw,bh);
     ctx.fillStyle=b.hp/b.maxHp>0.5?'#4a4':'#a44'; ctx.fillRect(x+4,y-8,bw*(b.hp/b.maxHp),bh);
   }
-  ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+5);
+  if (b.blueprint) {
+    ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+5);
+    const totalCost = Object.values(b.constructCost||{}).reduce((a,v)=>a+v,0);
+    const totalDone = Object.values(b.constructDelivered||{}).reduce((a,v)=>a+v,0);
+    const ratio = totalCost > 0 ? totalDone / totalCost : 0;
+    const barW = w - 8, barH = 5;
+    ctx.fillStyle = '#333'; ctx.fillRect(x+4, y+h-12, barW, barH);
+    ctx.fillStyle = '#4af'; ctx.fillRect(x+4, y+h-12, barW * ratio, barH);
+    ctx.fillStyle = '#fff'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(Math.floor(totalDone)+'/'+totalCost, cx, y+h-7);
+  }
+  // Construction progress (bottom-to-top fill)
+  if (!b.blueprint && b.constructionTimer > 0) {
+    const bt = BLD_DEFS[b.type].buildTime || 2;
+    const prog = 1 - b.constructionTimer / bt;
+    ctx.fillStyle = 'rgba(100,180,255,0.5)';
+    ctx.fillRect(x, y + h*(1-prog), w, h*prog);
+    ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(Math.floor(prog*100)+'%', cx, cy);
+  }
+  if (!b.blueprint && b.constructionTimer <= 0) {
+    ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+5);
+  }
+
+  // Storage capacity bar (per-building)
+  if (isStorage(b.type) && def.capacity) {
+    const stored = Object.values(b.stored||{}).reduce((a,v)=>a+v, 0);
+    const cap = def.capacity;
+    const ratio = cap > 0 ? Math.min(1, stored / cap) : 0;
+    const barW = w - 8, barH = 6;
+    ctx.fillStyle = '#333'; ctx.fillRect(x+4, y+h-12, barW, barH);
+    ctx.fillStyle = ratio > 0.8 ? '#f84' : ratio > 0.5 ? '#fa4' : '#4a4';
+    ctx.fillRect(x+4, y+h-12, barW * ratio, barH);
+    ctx.fillStyle = '#fff'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText(`${stored}/${cap}`, cx, y+h-7);
+  }
+
   if (b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.upgradeProgress); ctx.lineTo(cx,cy); ctx.fill(); }
   if (b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.recruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
   if (def.maxWorkers>0) {
@@ -1204,7 +1429,7 @@ function drawBuilding(b, x, y) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',lumber:'#7a6b4a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',wall:'#7a7a6a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',lumber:'#7a6b4a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResident(r) {
@@ -1213,6 +1438,10 @@ function drawResident(r) {
     :r.state==='GOING_TO_EAT'||r.state==='EATING'?'#ffcc44'
     :r.state==='HAULING'?'#44ccff'
     :r.state==='WORKING'||r.state==='GOING_TO_WORK'?'#44cc88'
+	    :r.state==='GATHERING'?'#ff8800'
+	    :r.state==='BUILDING'?'#ff6600'
+		    :r.state==='CONSTRUCTING'?'#cc6600'
+	    :r.isEngineer?'#ff8800'
     :'#aaaaaa';
   const cr = RESIDENT_RADIUS;
   ctx.fillStyle='rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.arc(r.x,r.y,cr,0,Math.PI*2); ctx.fill();
@@ -1304,6 +1533,12 @@ function updateTopBar() {
   document.getElementById('r-stone').textContent = Math.floor(G.resources.stone);
   document.getElementById('r-iron').textContent = Math.floor(G.resources.iron);
   const homeless = G.residents.filter(r=>!r.home).length;
+  const engActive = G.residents.filter(r => r.isEngineer && (r.state==='GATHERING'||r.state==='BUILDING')).length;
+  const engTotal = G.residents.filter(r => r.isEngineer).length;
+  const hasIdle = G.residents.some(r => (r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer);
+  document.getElementById('eng-plus').style.display = hasIdle ? '' : 'none';
+  document.getElementById('eng-minus').style.display = engTotal > 0 ? '' : 'none';
+  document.getElementById('r-eng').textContent = engActive+'/'+engTotal;
   document.getElementById('r-pop').textContent = `${G.residents.length}/${G.maxPop}` + (homeless>0?` ⚠${homeless}`:'');
   document.getElementById('r-time').textContent = G.phase==='day'?`第${G.day}天`:G.phase==='night'?`第${G.day}夜`:`第${G.day}天·过渡`;
   document.getElementById('day-icon').textContent = G.phase==='day'?'☀️':G.phase==='night'?'🌙':'🌅';
@@ -1314,7 +1549,7 @@ function showContextMenu(building, mx, my) {
   let h=`<div class="info-line">${def.icon} ${def.name} Lv.${b.level}</div>`;
   h+=`<div class="info-line" style="font-size:10px">HP: ${Math.ceil(b.hp)}/${b.maxHp}</div>`;
   if (b.type==='house') h+=`<div class="info-line" style="font-size:10px">住户: ${b.residentCount}/${houseCapacity(b)}</div>`;
-  if(def.maxWorkers>0) h+=`<div class="info-line" style="font-size:10px">工人: ${b.assignedWorkers}/${def.maxWorkers}</div>`;
+  if(def.maxWorkers>0 && !b.blueprint) h+=`<div class="info-line" style="font-size:10px">工人: ${b.assignedWorkers}/${def.maxWorkers}</div>`;
 
   // 大本营特殊按钮：增加人口
   if(b.type==='town_hall') {
@@ -1338,7 +1573,7 @@ function showContextMenu(building, mx, my) {
     const maxLv = maxBuildingLevel(b.type);
     const capped = b.level >= maxLv;
     h+=`<button onclick="actionUpgrade()"${capped?' disabled':''}>⬆ 升级${b.upgrading?' (升级中...)':''}${capped?` [需大本营Lv.${b.level+1}]`:''}</button>`;
-    if(def.maxWorkers>0) {
+    if(def.maxWorkers>0 && !b.blueprint) {
       const full = b.assignedWorkers >= def.maxWorkers;
       const none = b.assignedWorkers <= 0;
       h+=`<button onclick="actionAddWorker()"${full?' disabled':''}>➕ 增加工人${full?' [满]':''}</button>`;
