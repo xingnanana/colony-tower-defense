@@ -124,6 +124,7 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
     <button class="bld-btn" data-type="farm">🌾 农场<div class="cost">5木</div></button>
     <button class="bld-btn" data-type="lumber">🪓 伐木场<div class="cost">5木</div></button>
     <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
+    <button class="bld-btn" data-type="auto_arrow_tower">🏹 自动箭塔<div class="cost">30木 20石</div></button>
     <button class="bld-btn" data-type="house">🏠 住房<div class="cost">10木 5石</div></button>
     <button class="bld-btn" data-type="wood_storage">🪵 木材仓库<div class="cost">10木 5石</div></button>
     <button class="bld-btn" data-type="food_storage">🍗 食物仓库<div class="cost">10木 5石</div></button>
@@ -143,6 +144,7 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
     <div class="top-res"><span class="icon">⚒</span><span class="val" id="r-iron">0</span></div>
     <div style="color:#aaa;">|</div>
     <div class="top-res"><span class="icon">👤</span><span class="val" id="r-pop">4/8</span></div>
+    <div class="top-res"><span class="icon">⚔️</span><span class="val" id="r-guard-top">0</span></div>
     <div style="color:#aaa;">|</div>
     <div class="top-res"><span class="icon" id="day-icon">☀️</span><span class="val" id="r-time">Day 1</span></div>
   </div>
@@ -155,6 +157,14 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
   <span id="eng-minus" style="cursor:pointer;color:#a44;display:none" onclick="unassignEngineer()" title="取消工程师">➖</span>
   <span>👷 <span id="r-eng">0/0</span></span>
   <span id="eng-plus" style="cursor:pointer;color:#4a4;display:none" onclick="assignEngineer()" title="指派工程师">➕</span>
+</div>
+
+  <div id="guard-bar" style="position:absolute; bottom:36px; right:132px;
+  display:flex; gap:6px; z-index:10; align-items:center;
+  background:rgba(0,0,0,0.7); padding:3px 10px; border-radius:6px; color:#fff; font-size:12px;">
+  <span id="guard-minus" style="cursor:pointer;color:#a44;display:none" onclick="unassignGuard()" title="取消守卫">➖</span>
+  <span>⚔️ <span id="r-guard">0/0</span></span>
+  <span id="guard-plus" style="cursor:pointer;color:#4a4;display:none" onclick="assignGuard()" title="指派守卫">➕</span>
 </div>
 </div>
 
@@ -244,7 +254,9 @@ const BLD_DEFS = {
 
   ingot_storage:{name:'铁锭仓库',icon:'🔩', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 , buildTime:11 },
 
-  arrow_tower: { name:'箭塔', icon:'🏹', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8, unlock:1 , buildTime:2 },
+  arrow_tower: { name:'箭塔', icon:'🏹', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8, unlock:1 , buildTime:2, needsManning:1 },
+
+  auto_arrow_tower:{ name:'自动箭塔',icon:'🏹', cat:'defense', sz:[1,1], cost:{wood:30,stone:20},hp:150, maxWorkers:0, range:160, damage:18, cooldown:0.7, unlock:5 , buildTime:14 },
 
   town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5}, unlock:1 , buildTime:2 },
 
@@ -428,7 +440,7 @@ function findNearestHome(pos) {
 }
 
 function getIdleResidents() {
-  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.isEngineer);
+  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.isEngineer && !r.isGuard);
 }
 function assignHome(r, house) {
   if (r.home && r.home.hp>0) r.home.residentCount--;
@@ -497,6 +509,13 @@ class Resident {
     this.hidden = false;
     this.buildTarget = null;
     this.isEngineer = false;
+    // Guard properties
+    this.isGuard = false;
+    this.guardHP = 50;
+    this.guardMaxHP = 50;
+    this.guardAttackCD = 0;
+    this.manningTower = null;
+    this.guardHealTimer = 0;
   }
 }
 
@@ -513,6 +532,7 @@ class Enemy {
     if (th) { this.targetX = th.x+th.size[0]*CFG.CELL/2; this.targetY = th.y+th.size[1]*CFG.CELL/2; }
     else { this.targetX = CFG.WORLD_W/2; this.targetY = CFG.WORLD_H/2; }
     this.attacking = null; this.attackTimer = 0;
+    this.fightingGuard = null;
     this.alive = true;
     this.size = 8 + Math.random()*4;
   }
@@ -578,6 +598,7 @@ function demolishBuilding(b) {
   for (const r of G.residents) {
     if (r.workplace===b) { r.workplace=null; r.state='IDLE'; }
     if (r.home===b) { assignHome(r, findNearestHome(r)); }
+    if (r.manningTower===b) { r.manningTower=null; r.state='GUARD_FIND_TOWER'; }
   }
   if (b.type==='house') G.maxPop = Math.max(CFG.MAX_POP_BASE, G.maxPop - BLD_DEFS[b.type].popBonus - (b.level-1)*2);
   G.buildings.splice(idx,1);
@@ -598,6 +619,7 @@ function updateDayNight(dt) {
       spawnEnemyWave();
       // 让居民回家睡觉
       for (const r of G.residents) {
+        if (r.isGuard) continue; // guards handle their own sleep
         r.tired = CFG.TIRED_THRESHOLD;
         const home = r.home || findNearestHome(r);
         if (home) {
@@ -606,16 +628,37 @@ function updateDayNight(dt) {
           r.targetX = hc.x; r.targetY = hc.y;
           if (!r.home) assignHome(r, home);
         }
-        // homeless residents stay IDLE → vulnerable to enemies
+      }
+      // Guards: wake up for night duty (unless already active)
+      for (const r of G.residents) {
+        if (r.isGuard) {
+          r.state = 'GUARD_FIND_TOWER'; r.hidden = false;
+          r.guardHealTimer = 0;
+        }
       }
     } else if (G.phase==='dusk') {
       G.phase='night'; showTimeIndicator('🌙 夜晚');
+      // Guards that were still sleeping (e.g. newly assigned): wake up
+      for (const r of G.residents) {
+        if (r.isGuard && r.state === 'GUARD_SLEEPING') {
+          r.state = 'GUARD_FIND_TOWER'; r.hidden = false;
+        }
+      }
     } else if (G.phase==='night') {
       G.phase='dawn'; showTimeIndicator('🌄 黎明');
       G.enemies=[];
     } else if (G.phase==='dawn') {
       G.phase='day'; G.day++; showTimeIndicator('☀️ 第'+G.day+'天');
-      for (const r of G.residents) { r.state='IDLE'; r.tired=0; r.hidden=false; }
+      for (const r of G.residents) {
+        if (r.isGuard) {
+          // Guards: go sleep for the day, heal fully
+          r.state = 'GUARD_SLEEPING'; r.hidden = true;
+          r.guardHP = r.guardMaxHP;
+          r.manningTower = null;
+        } else {
+          r.state='IDLE'; r.tired=0; r.hidden=false;
+        }
+      }
     }
   }
 }
@@ -648,6 +691,26 @@ function updateEnemies(dt) {
   }
   for (const e of G.enemies) {
     if (!e.alive) continue;
+    // Guard combat: enemy attacking a guard
+    if (e.fightingGuard) {
+      if (e.fightingGuard.guardHP <= 0) {
+        e.fightingGuard = null; continue;
+      }
+      e.attackTimer += dt;
+      if (e.attackTimer >= 0.5) {
+        e.attackTimer = 0;
+        e.fightingGuard.guardHP -= CFG.ENEMY_DAMAGE;
+        spawnParticles(e.x, e.y, '#ff4444', 2);
+        if (e.fightingGuard.guardHP <= 0) {
+          e.fightingGuard.guardHP = 0;
+          e.fightingGuard.state = 'GUARD_RETURNING';
+          e.fightingGuard.manningTower = null;
+          e.fightingGuard = null;
+        }
+      }
+      continue;
+    }
+    // Building attack
     if (e.attacking && e.attacking.hp>0) {
       e.attackTimer += dt;
       if (e.attackTimer >= 0.5) {
@@ -657,7 +720,20 @@ function updateEnemies(dt) {
         if (e.attacking.hp <= 0) { e.attacking.hp = 0; e.attacking = null; }
       }
     } else {
-      let blocked=false;
+      e.attacking = null;
+      // Priority 1: check for nearby fighting guards
+      let guardBlocked = false;
+      for (const r of G.residents) {
+        if (!r.isGuard) continue;
+        if (r.state !== 'GUARD_FIGHTING' && r.state !== 'GUARD_MANNING') continue;
+        const d = Math.hypot(e.x - r.x, e.y - r.y);
+        if (d < CFG.ENEMY_ATTACK_RANGE + 10) {
+          e.fightingGuard = r; e.attackTimer = 0; guardBlocked = true; break;
+        }
+      }
+      if (guardBlocked) continue;
+      // Priority 2: check buildings
+      let blocked = false;
       for (const b of G.buildings) {
         if (b.hp<=0) continue;
         const c = b.center();
@@ -675,14 +751,16 @@ function updateEnemies(dt) {
   }
   G.enemies = G.enemies.filter(e=>e.alive && e.hp>0);
 
+  // Homeless residents at night can be attacked (exclude guards)
   if (G.phase==='night') {
     for (const e of G.enemies) {
-      if (!e.alive || e.attacking) continue;
+      if (!e.alive || e.attacking || e.fightingGuard) continue;
       for (const r of G.residents) {
+        if (r.isGuard) continue;
         if (r.state==='SLEEPING') continue;
         if (r.home) continue;
         const d = Math.hypot(e.x-r.x, e.y-r.y);
-        if (d < 12) {
+        if (d < 20) {
           G.residents = G.residents.filter(rr => rr !== r);
           if (r.workplace) { r.workplace.assignedWorkers--; }
           removeHome(r);
@@ -692,47 +770,157 @@ function updateEnemies(dt) {
       }
     }
   }
+}
 
-  // Homeless residents at night can be attacked by enemies
-  if (G.phase==='night') {
-    for (const e of G.enemies) {
-      if (!e.alive || e.attacking) continue;
-      for (const r of G.residents) {
-        if (r.state==='SLEEPING') continue; // safe in bed
-        if (r.home) continue; // has home, safe
-        const d = Math.hypot(e.x-r.x, e.y-r.y);
-        if (d < 20) { // enemy close enough to attack
-          G.residents = G.residents.filter(rr => rr !== r);
-          if (r.workplace) { r.workplace.assignedWorkers--; }
-          removeHome(r);
-          spawnParticles(r.x, r.y, '#ff0000', 8);
-          break; // one kill per enemy per frame
+function findUnmannedTower(guard) {
+  let best = null, bestD = Infinity;
+  for (const b of G.buildings) {
+    if (b.hp <= 0 || b.blueprint) continue;
+    const def = BLD_DEFS[b.type];
+    if (!def.needsManning) continue;
+    // Check if already manned
+    const manned = G.residents.some(r => r.isGuard && r.manningTower === b);
+    if (manned) continue;
+    const c = b.center();
+    const d = Math.hypot(guard.x - c.x, guard.y - c.y);
+    if (d < bestD) { bestD = d; best = b; }
+  }
+  return best;
+}
+
+function guardUpdateAI(r, dt) {
+  const th = G.townHall; if (!th) return;
+  const thCenter = th.center();
+  const cycleLen = CFG.DAY_DURATION + CFG.NIGHT_DURATION + CFG.TRANSITION * 2;
+  const twoGameHours = cycleLen * 2 / 24;
+
+  switch (r.state) {
+    case 'GUARD_FIND_TOWER': {
+      const tower = findUnmannedTower(r);
+      if (tower) {
+        const tc = tower.center();
+        r.targetX = tc.x; r.targetY = tc.y;
+        const dx = tc.x - r.x, dy = tc.y - r.y, dd = Math.hypot(dx, dy) || 1;
+        if (Math.hypot(r.x - tc.x, r.y - tc.y) < tower.collisionRadius() + RESIDENT_RADIUS + 5) {
+          r.state = 'GUARD_MANNING'; r.manningTower = tower;
+        } else {
+          const nx = r.x + (dx / dd) * CFG.RESIDENT_SPEED * dt;
+          const ny = r.y + (dy / dd) * CFG.RESIDENT_SPEED * dt;
+          const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
         }
+      } else {
+        r.state = 'GUARD_FIGHTING';
       }
+      break;
+    }
+    case 'GUARD_MANNING': {
+      if (!r.manningTower || r.manningTower.hp <= 0) {
+        r.manningTower = null; r.state = 'GUARD_FIND_TOWER'; break;
+      }
+      // Stand at tower center
+      const tc = r.manningTower.center();
+      const dx = tc.x - r.x, dy = tc.y - r.y, dd = Math.hypot(dx, dy) || 1;
+      if (Math.hypot(r.x - tc.x, r.y - tc.y) > 3) {
+        const nx = r.x + (dx / dd) * CFG.RESIDENT_SPEED * 0.5 * dt;
+        const ny = r.y + (dy / dd) * CFG.RESIDENT_SPEED * 0.5 * dt;
+        r.x = nx; r.y = ny;
+      }
+      break;
+    }
+    case 'GUARD_FIGHTING': {
+      // Seek nearest enemy
+      let targetEnemy = null, bestD = 300;
+      for (const e of G.enemies) {
+        if (!e.alive) continue;
+        const d = Math.hypot(r.x - e.x, r.y - e.y);
+        if (d < bestD) { bestD = d; targetEnemy = e; }
+      }
+      if (targetEnemy) {
+        const dx = targetEnemy.x - r.x, dy = targetEnemy.y - r.y, dd = Math.hypot(dx, dy) || 1;
+        if (dd < 20) {
+          // Attack
+          r.guardAttackCD -= dt;
+          if (r.guardAttackCD <= 0) {
+            r.guardAttackCD = 1;
+            targetEnemy.hp -= 8;
+            spawnParticles(targetEnemy.x, targetEnemy.y, '#ffaa00', 2);
+            if (targetEnemy.hp <= 0) {
+              targetEnemy.alive = false;
+              spawnParticles(targetEnemy.x, targetEnemy.y, '#ff6600', 5);
+            }
+          }
+        } else {
+          // Move toward enemy
+          const nx = r.x + (dx / dd) * CFG.RESIDENT_SPEED * dt;
+          const ny = r.y + (dy / dd) * CFG.RESIDENT_SPEED * dt;
+          const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
+        }
+      } else {
+        // Patrol
+        if ((r.patrolTimer -= dt) <= 0) {
+          r.patrolTimer = 2 + Math.random() * 3;
+          r.patrolAngle = Math.random() * Math.PI * 2;
+        }
+        const pnx = r.x + Math.cos(r.patrolAngle) * 20 * dt;
+        const pny = r.y + Math.sin(r.patrolAngle) * 20 * dt;
+        const prs = resolveCollisions(r, pnx, pny);
+        r.x = prs.x; r.y = prs.y;
+      }
+      break;
+    }
+    case 'GUARD_RETURNING': {
+      // Return to town hall
+      const dx = thCenter.x - r.x, dy = thCenter.y - r.y, dd = Math.hypot(dx, dy) || 1;
+      if (Math.hypot(r.x - thCenter.x, r.y - thCenter.y) < th.collisionRadius() + RESIDENT_RADIUS + 3) {
+        r.state = 'GUARD_HEALING'; r.guardHealTimer = twoGameHours; r.hidden = true;
+      } else {
+        const nx = r.x + (dx / dd) * CFG.RESIDENT_SPEED * dt;
+        const ny = r.y + (dy / dd) * CFG.RESIDENT_SPEED * dt;
+        const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
+      }
+      break;
+    }
+    case 'GUARD_HEALING': {
+      r.guardHealTimer = Math.max(0, r.guardHealTimer - dt);
+      if (r.guardHealTimer <= 0) {
+        r.guardHP = r.guardMaxHP;
+        r.hidden = false;
+        // Go back to fighting or find a tower
+        const tower = findUnmannedTower(r);
+        if (tower) { r.state = 'GUARD_FIND_TOWER'; }
+        else { r.state = 'GUARD_FIGHTING'; }
+      }
+      break;
     }
   }
 }
 
 function updateTowers(dt) {
   for (const b of G.buildings) {
-    if (b.type!=='arrow_tower'||b.hp<=0) continue;
+    const def = BLD_DEFS[b.type];
+    if (!def.range || b.hp <= 0) continue;
+    // Arrow tower: needs manning by a guard
+    if (def.needsManning) {
+      const manned = G.residents.some(r => r.isGuard && r.manningTower === b && r.state === 'GUARD_MANNING');
+      if (!manned) continue;
+    }
     b.attackCooldown -= dt;
     if (b.attackCooldown > 0) continue;
-    const def=BLD_DEFS[b.type], center=b.center();
+    const center = b.center();
     const range = def.range + 0;
     const damage = def.damage + 0;
-    let closest=null, closestD=Infinity;
+    let closest = null, closestD = Infinity;
     for (const e of G.enemies) {
       if (!e.alive) continue;
-      const d=dist(center,e);
-      if (d<range && d<closestD) { closestD=d; closest=e; }
+      const d = dist(center, e);
+      if (d < range && d < closestD) { closestD = d; closest = e; }
     }
     if (closest) {
       closest.hp -= damage;
       b.attackCooldown = def.cooldown;
       spawnParticles(closest.x, closest.y, '#ffaa00', 2);
-      if (closest.hp<=0) {
-        closest.alive=false;
+      if (closest.hp <= 0) {
+        closest.alive = false;
         spawnParticles(closest.x, closest.y, '#ff6600', 6);
       }
     }
@@ -751,6 +939,16 @@ function updateResidents(dt) {
   for (const r of G.residents) {
     if (r.state==='SLEEPING') {
       if (G.phase==='day'||G.phase==='dawn') { r.state='IDLE'; r.tired=0; }
+      continue;
+    }
+    if (r.state==='GUARD_SLEEPING') {
+      if (G.phase==='day'||G.phase==='dawn') { r.guardHP = r.guardMaxHP; }
+      continue;
+    }
+
+    // === Guard AI ===
+    if (r.isGuard) {
+      guardUpdateAI(r, dt);
       continue;
     }
 
@@ -999,6 +1197,7 @@ function updateBuildings(dt) {
       for (const r of G.residents) {
         if (r.workplace===b) { r.workplace=null; r.state='IDLE'; }
         if (r.home===b) removeHome(r);
+        if (r.manningTower===b) { r.manningTower=null; r.state='GUARD_FIND_TOWER'; }
       }
       if (b.type==='house') G.maxPop=Math.max(CFG.MAX_POP_BASE, G.maxPop-BLD_DEFS[b.type].popBonus-(b.level-1)*2);
       return false;
@@ -1049,6 +1248,7 @@ function setAllRes() {
 function skipToNight() {
   G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   for (const r of G.residents) {
+    if (r.isGuard) { r.state = 'GUARD_FIND_TOWER'; r.hidden = false; continue; }
     r.tired = CFG.TIRED_THRESHOLD;
     const home = r.home || findNearestHome(r);
     if (home) { r.state = 'GOING_HOME'; const hc = home.center(); r.targetX = hc.x; r.targetY = hc.y; if (!r.home) assignHome(r, home); }
@@ -1058,7 +1258,7 @@ function skipToNight() {
 }
 function unlockAll() {
   const th = G.townHall; if (!th) return;
-  th.level = 4; th.maxHp = Math.floor(500 * Math.pow(1.3, 3)); th.hp = th.maxHp;
+  th.level = 5; th.maxHp = Math.floor(500 * Math.pow(1.3, 4)); th.hp = th.maxHp;
   G.maxPop = CFG.MAX_POP_BASE;
   for (const b of G.buildings) { if (b.type==='house') G.maxPop += BLD_DEFS.house.popBonus + (b.level-1)*2; }
   G.maxPop += 4 + (th.level-1)*4;
@@ -1072,7 +1272,13 @@ function upgradeTH() {
 }
 function skipToDay() {
   G.phase = 'day'; G.dayTime = 0; G.day++; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
-  for (const r of G.residents) { r.state = 'IDLE'; r.tired = 0; r.hidden = false; }
+  for (const r of G.residents) {
+    if (r.isGuard) {
+      r.state = 'GUARD_SLEEPING'; r.hidden = true; r.guardHP = r.guardMaxHP; r.manningTower = null;
+    } else {
+      r.state = 'IDLE'; r.tired = 0; r.hidden = false;
+    }
+  }
   showTimeIndicator('☀️ 跳过至第'+G.day+'天');
 }
 // === In-game JSON Config Editor ===
@@ -1216,6 +1422,23 @@ function unassignEngineer() {
     if (eng.buildTarget) eng.buildTarget.assignedEngineer = null;
     eng.buildTarget = null; eng.carrying = null; eng.state = 'IDLE';
   }
+}
+function assignGuard() {
+  const idle = G.residents.find(r => (r.state === 'IDLE' || r.state === 'PATROL') && !r.workplace && !r.isEngineer && !r.isGuard);
+  if (!idle) return;
+  idle.isGuard = true;
+  if (G.phase === 'night' || G.phase === 'dusk') {
+    idle.state = 'GUARD_FIND_TOWER'; idle.hidden = false;
+  } else {
+    idle.state = 'GUARD_SLEEPING'; idle.hidden = true;
+  }
+}
+function unassignGuard() {
+  const g = G.residents.find(r => r.isGuard);
+  if (!g) return;
+  g.isGuard = false;
+  if (g.manningTower) g.manningTower = null;
+  g.state = 'IDLE'; g.hidden = false;
 }
 function addPop(n) {
   if (n > 0) {
@@ -1462,11 +1685,14 @@ function drawBuilding(b, x, y) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',lumber:'#7a6b4a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',wall:'#7a7a6a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',lumber:'#7a6b4a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResident(r) {
-  const bodyColor = !r.home && (G.phase==='night'||G.phase==='dusk')?'#ff4444'
+  const bodyColor = r.isGuard
+    ? {GUARD_SLEEPING:'#6688aa',GUARD_FIND_TOWER:'#ff6644',GUARD_MANNING:'#4488ff',
+       GUARD_FIGHTING:'#ff3333',GUARD_RETURNING:'#ff8800',GUARD_HEALING:'#44cc44'}[r.state]||'#ff6644'
+    : !r.home && (G.phase==='night'||G.phase==='dusk')?'#ff4444'
     :r.state==='SLEEPING'||r.state==='GOING_HOME'?'#8899cc'
     :r.state==='GOING_TO_EAT'||r.state==='EATING'?'#ffcc44'
     :r.state==='HAULING'?'#44ccff'
@@ -1484,6 +1710,17 @@ function drawResident(r) {
   ctx.restore();
   ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(r.x+2, r.y-14, 1.5, 0, Math.PI*2); ctx.fill();
   if (r.carrying) { ctx.fillStyle=rc(r.carrying.type); ctx.beginPath(); ctx.arc(r.x, r.y-22, 3, 0, Math.PI*2); ctx.fill(); }
+  if (r.isGuard) {
+    // Draw shield icon above guard
+    ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
+    ctx.fillText('🛡️', r.x, r.y - 23);
+    // Guard HP bar
+    const gbw = 14, gbh = 2;
+    ctx.fillStyle = '#333'; ctx.fillRect(r.x - gbw/2, r.y + cr + 4, gbw, gbh);
+    const gpct = Math.max(0, r.guardHP / r.guardMaxHP);
+    ctx.fillStyle = gpct > 0.5 ? '#4a4' : gpct > 0.25 ? '#fa4' : '#f44';
+    ctx.fillRect(r.x - gbw/2, r.y + cr + 4, gbw * gpct, gbh);
+  }
   if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='8px sans-serif'; ctx.fillText('🍗',r.x-8,r.y-20); }
   if (r.tired>CFG.TIRED_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='8px sans-serif'; ctx.fillText('💤',r.x+5,r.y-20); }
 }
@@ -1568,10 +1805,16 @@ function updateTopBar() {
   const homeless = G.residents.filter(r=>!r.home).length;
   const engActive = G.residents.filter(r => r.isEngineer && (r.state==='GATHERING'||r.state==='BUILDING')).length;
   const engTotal = G.residents.filter(r => r.isEngineer).length;
-  const hasIdle = G.residents.some(r => (r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer);
-  document.getElementById('eng-plus').style.display = hasIdle ? '' : 'none';
+  const hasIdleNonGuard = G.residents.some(r => (r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer && !r.isGuard);
+  document.getElementById('eng-plus').style.display = hasIdleNonGuard ? '' : 'none';
   document.getElementById('eng-minus').style.display = engTotal > 0 ? '' : 'none';
   document.getElementById('r-eng').textContent = engActive+'/'+engTotal;
+  const guardTotal = G.residents.filter(r => r.isGuard).length;
+  document.getElementById('r-guard-top').textContent = guardTotal;
+  document.getElementById('r-guard').textContent = guardTotal;
+  const hasIdleNonEng = G.residents.some(r => (r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer && !r.isGuard);
+  document.getElementById('guard-plus').style.display = hasIdleNonEng ? '' : 'none';
+  document.getElementById('guard-minus').style.display = guardTotal > 0 ? '' : 'none';
   document.getElementById('r-pop').textContent = `${G.residents.length}/${G.maxPop}` + (homeless>0?` ⚠${homeless}`:'');
   document.getElementById('r-time').textContent = G.phase==='day'?`第${G.day}天`:G.phase==='night'?`第${G.day}夜`:`第${G.day}天·过渡`;
   document.getElementById('day-icon').textContent = G.phase==='day'?'☀️':G.phase==='night'?'🌙':'🌅';
