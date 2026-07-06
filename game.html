@@ -8,10 +8,11 @@
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
   background:#1a1a2e; display:flex; justify-content:center; align-items:center;
-  height:100vh; font-family:'Microsoft YaHei',sans-serif; user-select:none; overflow:hidden;
+  width:100vw; height:100vh; margin:0; padding:4px;
+  font-family:'Microsoft YaHei',sans-serif; user-select:none; overflow:hidden;
 }
-#game-container { position:relative; display:flex; gap:8px; }
-canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; }
+#game-container { position:relative; display:flex; gap:8px; width:100%; height:100%; }
+canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min-width:0; min-height:0; }
 
 #topbar {
   position:absolute; top:8px; left:50%; transform:translateX(-50%);
@@ -1267,8 +1268,41 @@ function update(dt) {
 // ============================================================
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
-canvas.width = CFG.CANVAS_W;
-canvas.height = CFG.CANVAS_H;
+
+function resizeCanvas() {
+  const container = document.getElementById('game-container');
+  const debugPanel = document.getElementById('debug-panel');
+  const buildingPanel = document.getElementById('building-panel');
+  const gap = 8 * 2; // gap between panels
+  const availW = container.clientWidth - debugPanel.offsetWidth - buildingPanel.offsetWidth - gap;
+  const availH = container.clientHeight;
+  const w = Math.max(400, availW);
+  const h = Math.max(300, availH);
+  canvas.width = w;
+  canvas.height = h;
+  CFG.CANVAS_W = w;
+  CFG.CANVAS_H = h;
+}
+window.addEventListener('resize', () => {
+  clearTimeout(window._resizeTimer);
+  window._resizeTimer = setTimeout(resizeCanvas, 200);
+});
+resizeCanvas();
+
+function clampCamera() {
+  const halfW = CFG.CANVAS_W / (2 * G.cam.zoom);
+  const halfH = CFG.CANVAS_H / (2 * G.cam.zoom);
+  if (halfW * 2 >= CFG.WORLD_W) {
+    G.cam.x = CFG.WORLD_W / 2;
+  } else {
+    G.cam.x = clamp(G.cam.x, halfW, CFG.WORLD_W - halfW);
+  }
+  if (halfH * 2 >= CFG.WORLD_H) {
+    G.cam.y = CFG.WORLD_H / 2;
+  } else {
+    G.cam.y = clamp(G.cam.y, halfH, CFG.WORLD_H - halfH);
+  }
+}
 
 function getAlpha() {
   if (G.phase==='day') return 0;
@@ -1335,6 +1369,22 @@ function render() {
     ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
   }
 
+  // Selection outline & range (world space)
+  if (G.selectedBuilding && !G.placingMode) {
+    const b=G.selectedBuilding;
+    if (b.type==='arrow_tower') {
+      const def=BLD_DEFS[b.type];
+      const center=b.center();
+      ctx.fillStyle='rgba(255,255,255,0.08)';
+      ctx.beginPath(); ctx.arc(center.x, center.y, def.range, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1/G.cam.zoom;
+      ctx.beginPath(); ctx.arc(center.x, center.y, def.range, 0, Math.PI*2); ctx.stroke();
+    }
+    ctx.strokeStyle='#ffd700'; ctx.lineWidth=2/G.cam.zoom; ctx.setLineDash([4,4]);
+    ctx.strokeRect(b.x-2,b.y-2,b.size[0]*CFG.CELL+4,b.size[1]*CFG.CELL+4);
+    ctx.setLineDash([]);
+  }
+
   ctx.restore();
 
   // Night overlay (screen space)
@@ -1342,23 +1392,6 @@ function render() {
 
   // Clock (screen space)
   drawClock();
-
-  // Selection outline & range
-  if (G.selectedBuilding && !G.placingMode) {
-    const b=G.selectedBuilding;
-    // Attack range for defense buildings
-    if (b.type==='arrow_tower') {
-      const def=BLD_DEFS[b.type];
-      const center=b.center();
-      ctx.fillStyle='rgba(255,255,255,0.08)';
-      ctx.beginPath(); ctx.arc(center.x, center.y, (def.range + 0), 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1;
-      ctx.beginPath(); ctx.arc(center.x, center.y, (def.range + 0), 0, Math.PI*2); ctx.stroke();
-    }
-    ctx.strokeStyle='#ffd700'; ctx.lineWidth=2; ctx.setLineDash([4,4]);
-    ctx.strokeRect(b.x-2,b.y-2,b.size[0]*CFG.CELL+4,b.size[1]*CFG.CELL+4);
-    ctx.setLineDash([]);
-  }
 }
 
 function drawBuilding(b, x, y) {
@@ -1680,6 +1713,7 @@ canvas.addEventListener('mousemove', e => {
   if (G.dragging) {
     G.cam.x = G.dragCamStartX - (mx - G.dragStartX) / G.cam.zoom;
     G.cam.y = G.dragCamStartY - (my - G.dragStartY) / G.cam.zoom;
+    clampCamera();
   }
 });
 canvas.addEventListener('mousedown', e => {
@@ -1759,6 +1793,7 @@ canvas.addEventListener('wheel', e => {
   const wp2=screenToWorld(mx, my);
   G.cam.x += wp.x - wp2.x;
   G.cam.y += wp.y - wp2.y;
+  clampCamera();
 }, {passive: false});
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
