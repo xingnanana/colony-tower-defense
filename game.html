@@ -159,13 +159,6 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
   <span id="eng-plus" style="cursor:pointer;color:#4a4;display:none" onclick="assignEngineer()" title="指派工程师">➕</span>
 </div>
 
-  <div id="guard-bar" style="position:absolute; bottom:36px; right:132px;
-  display:flex; gap:6px; z-index:10; align-items:center;
-  background:rgba(0,0,0,0.7); padding:3px 10px; border-radius:6px; color:#fff; font-size:12px;">
-  <span id="guard-minus" style="cursor:pointer;color:#a44;display:none" onclick="unassignGuard()" title="取消守卫">➖</span>
-  <span>⚔️ <span id="r-guard">0/0</span></span>
-  <span id="guard-plus" style="cursor:pointer;color:#4a4;display:none" onclick="assignGuard()" title="指派守卫">➕</span>
-</div>
 </div>
 
 <input type="file" id="config-file-import" accept=".json" style="display:none">
@@ -258,7 +251,7 @@ const BLD_DEFS = {
 
   auto_arrow_tower:{ name:'自动箭塔',icon:'🏹', cat:'defense', sz:[1,1], cost:{wood:30,stone:20},hp:150, maxWorkers:0, range:160, damage:18, cooldown:0.7, unlock:5 , buildTime:14 },
 
-  town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5}, unlock:1 , buildTime:2 },
+  town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5}, guardRecruitTime:15, guardRecruitCost:{food:20}, unlock:1 , buildTime:2 },
 
   wall:        { name:'城墙', icon:'🧱', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0, unlock:3 , buildTime:8 },
 
@@ -440,7 +433,7 @@ function findNearestHome(pos) {
 }
 
 function getIdleResidents() {
-  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.isEngineer && !r.isGuard);
+  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.isEngineer);
 }
 function assignHome(r, house) {
   if (r.home && r.home.hp>0) r.home.residentCount--;
@@ -470,6 +463,8 @@ class Building {
     this.size = def.sz;
     this.recruitQueue = 0;
     this.recruitProgress = 0;
+    this.guardRecruitQueue = 0;
+    this.guardRecruitProgress = 0;
     this.residentCount = 0;
     this.blueprint = false;
     this.constructCost = null;
@@ -1177,7 +1172,7 @@ function updateBuildings(dt) {
         if (b.type==='town_hall') updateBuildingPanel();
       }
     }
-    // Recruiting (大本营)
+    // Recruiting (工人 - 大本营)
     if (b.type==='town_hall' && b.recruitQueue > 0) {
       b.recruitProgress += dt / BLD_DEFS[b.type].recruitTime;
       if (b.recruitProgress >= 1) {
@@ -1186,6 +1181,22 @@ function updateBuildings(dt) {
           const hc = b.center();
           const nr = new Resident(hc.x+(Math.random()-0.5)*40, hc.y+(Math.random()-0.5)*40);
           assignHome(nr, findNearestHome(nr));
+          G.residents.push(nr);
+        }
+      }
+    }
+    // Recruiting (守卫 - 大本营)
+    if (b.type==='town_hall' && b.guardRecruitQueue > 0) {
+      b.guardRecruitProgress += dt / BLD_DEFS[b.type].guardRecruitTime;
+      if (b.guardRecruitProgress >= 1) {
+        b.guardRecruitProgress = 0; b.guardRecruitQueue--;
+        if (G.residents.length < G.maxPop) {
+          const hc = b.center();
+          const nr = new Resident(hc.x+(Math.random()-0.5)*40, hc.y+(Math.random()-0.5)*40);
+          nr.isGuard = true;
+          assignHome(nr, findNearestHome(nr));
+          nr.state = (G.phase==='night'||G.phase==='dusk') ? 'GUARD_FIND_TOWER' : 'GUARD_SLEEPING';
+          nr.hidden = (G.phase!=='night'&&G.phase!=='dusk');
           G.residents.push(nr);
         }
       }
@@ -1423,23 +1434,6 @@ function unassignEngineer() {
     eng.buildTarget = null; eng.carrying = null; eng.state = 'IDLE';
   }
 }
-function assignGuard() {
-  const idle = G.residents.find(r => (r.state === 'IDLE' || r.state === 'PATROL') && !r.workplace && !r.isEngineer && !r.isGuard);
-  if (!idle) return;
-  idle.isGuard = true;
-  if (G.phase === 'night' || G.phase === 'dusk') {
-    idle.state = 'GUARD_FIND_TOWER'; idle.hidden = false;
-  } else {
-    idle.state = 'GUARD_SLEEPING'; idle.hidden = true;
-  }
-}
-function unassignGuard() {
-  const g = G.residents.find(r => r.isGuard);
-  if (!g) return;
-  g.isGuard = false;
-  if (g.manningTower) g.manningTower = null;
-  g.state = 'IDLE'; g.hidden = false;
-}
 function addPop(n) {
   if (n > 0) {
     for (let i=0; i<n; i++) {
@@ -1669,7 +1663,8 @@ function drawBuilding(b, x, y) {
   }
 
   if (b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.upgradeProgress); ctx.lineTo(cx,cy); ctx.fill(); }
-  if (b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.recruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
+  if (b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr-3,-Math.PI/2,-Math.PI/2+Math.PI*2*b.recruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
+  if (b.type==='town_hall' && b.guardRecruitQueue>0) { ctx.fillStyle='rgba(100,150,255,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.guardRecruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
   if (def.maxWorkers>0) {
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
@@ -1805,16 +1800,12 @@ function updateTopBar() {
   const homeless = G.residents.filter(r=>!r.home).length;
   const engActive = G.residents.filter(r => r.isEngineer && (r.state==='GATHERING'||r.state==='BUILDING')).length;
   const engTotal = G.residents.filter(r => r.isEngineer).length;
-  const hasIdleNonGuard = G.residents.some(r => (r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer && !r.isGuard);
-  document.getElementById('eng-plus').style.display = hasIdleNonGuard ? '' : 'none';
+  const hasIdle = G.residents.some(r => (r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer);
+  document.getElementById('eng-plus').style.display = hasIdle ? '' : 'none';
   document.getElementById('eng-minus').style.display = engTotal > 0 ? '' : 'none';
   document.getElementById('r-eng').textContent = engActive+'/'+engTotal;
   const guardTotal = G.residents.filter(r => r.isGuard).length;
   document.getElementById('r-guard-top').textContent = guardTotal;
-  document.getElementById('r-guard').textContent = guardTotal;
-  const hasIdleNonEng = G.residents.some(r => (r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer && !r.isGuard);
-  document.getElementById('guard-plus').style.display = hasIdleNonEng ? '' : 'none';
-  document.getElementById('guard-minus').style.display = guardTotal > 0 ? '' : 'none';
   document.getElementById('r-pop').textContent = `${G.residents.length}/${G.maxPop}` + (homeless>0?` ⚠${homeless}`:'');
   document.getElementById('r-time').textContent = G.phase==='day'?`第${G.day}天`:G.phase==='night'?`第${G.day}夜`:`第${G.day}天·过渡`;
   document.getElementById('day-icon').textContent = G.phase==='day'?'☀️':G.phase==='night'?'🌙':'🌅';
@@ -1829,10 +1820,12 @@ function showContextMenu(building, mx, my) {
 
   // 大本营特殊按钮：增加人口
   if(b.type==='town_hall') {
-    const slots = G.maxPop - G.residents.length - b.recruitQueue;
+    const slots = G.maxPop - G.residents.length - b.recruitQueue - b.guardRecruitQueue;
     const full = slots <= 0;
-    h+=`<div class="info-line" style="font-size:10px">人口: ${G.residents.length}/${G.maxPop} | 住户: ${b.residentCount}/${houseCapacity(b)} | 队列: ${b.recruitQueue}</div>`;
-    h+=`<button onclick="actionRecruit()"${full?' disabled':''}>👤 增加人口 (消耗${def.recruitCost.food}食物)${b.recruitQueue>0?` (${b.recruitQueue}人排队中)`:''}${full?' [已满]':''}</button>`;
+    const guardFull = G.residents.length + b.guardRecruitQueue >= G.maxPop;
+    h+=`<div class="info-line" style="font-size:10px">人口: ${G.residents.length}/${G.maxPop} | 住户: ${b.residentCount}/${houseCapacity(b)} | 工人队列: ${b.recruitQueue} | 守卫队列: ${b.guardRecruitQueue}</div>`;
+    h+=`<button onclick="actionRecruit()"${full?' disabled':''}>👤 招募工人 (消耗${def.recruitCost.food}食物)${b.recruitQueue>0?` (${b.recruitQueue}人排队中)`:''}${full?' [已满]':''}</button>`;
+    h+=`<button onclick="actionRecruitGuard()"${guardFull?' disabled':''}>⚔️ 招募守卫 (消耗${def.guardRecruitCost.food}食物)${b.guardRecruitQueue>0?` (${b.guardRecruitQueue}人排队中)`:''}${guardFull?' [已满]':''}</button>`;
     const nextLv = b.level + 1;
     const unlocks = [];
     for (const [k, d] of Object.entries(BLD_DEFS)) {
@@ -1899,14 +1892,25 @@ function actionRemoveWorker() {
 }
 function actionRecruit() {
   const b=G.selectedBuilding; if(!b||b.type!=='town_hall') return;
-  const slots = G.maxPop - G.residents.length - b.recruitQueue;
+  const slots = G.maxPop - G.residents.length - b.recruitQueue - b.guardRecruitQueue;
   if (slots <= 0) return;
   const cost=BLD_DEFS[b.type].recruitCost;
   if(!canAfford(cost)) return;
   payCost(cost);
   b.recruitQueue++;
   if (b.recruitProgress <= 0) b.recruitProgress = 0;
-  // Refresh menu
+  const menu=document.getElementById('context-menu');
+  showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
+}
+function actionRecruitGuard() {
+  const b=G.selectedBuilding; if(!b||b.type!=='town_hall') return;
+  const slots = G.maxPop - G.residents.length - b.guardRecruitQueue - b.recruitQueue;
+  if (slots <= 0) return;
+  const cost=BLD_DEFS[b.type].guardRecruitCost;
+  if(!canAfford(cost)) return;
+  payCost(cost);
+  b.guardRecruitQueue++;
+  if (b.guardRecruitProgress <= 0) b.guardRecruitProgress = 0;
   const menu=document.getElementById('context-menu');
   showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
 }
