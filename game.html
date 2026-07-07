@@ -296,6 +296,20 @@ function payCost(cost) {
 // ============================================================
 // FLOW FIELD PATHFINDING
 // ============================================================
+class MinHeap {
+  constructor() { this.data = [null]; }
+  push(d, id) { this.data.push([d, id]); this._up(this.data.length - 1); }
+  pop() {
+    if (this.data.length <= 1) return null;
+    const top = this.data[1];
+    this.data[1] = this.data[this.data.length - 1]; this.data.pop();
+    this._down(1);
+    return top;
+  }
+  get size() { return this.data.length - 1; }
+  _up(i) { while (i > 1) { const p = i >> 1; if (this.data[i][0] >= this.data[p][0]) break; [this.data[i], this.data[p]] = [this.data[p], this.data[i]]; i = p; } }
+  _down(i) { const n = this.data.length - 1; while (true) { let s = i, l = i << 1, r = l | 1; if (l <= n && this.data[l][0] < this.data[s][0]) s = l; if (r <= n && this.data[r][0] < this.data[s][0]) s = r; if (s === i) break; [this.data[i], this.data[s]] = [this.data[s], this.data[i]]; i = s; } }
+}
 function initCostGrid() {
   G.costGrid = new Uint8Array(CFG.WORLD_COLS * CFG.WORLD_ROWS);
   G.flowCache = new Map();
@@ -327,14 +341,9 @@ function getFlowField(tx, ty) {
   if (G.costGrid[tidx] === 0) { G.flowCache.set(key, field); return field; }
   const dist = new Float32Array(N).fill(1e9);
   dist[tidx] = 0;
-  // Simple Dijkstra with array-based priority (small cost range: 1~4.2)
-  const heap = []; heap.push([0, tidx]);
-  while (heap.length > 0) {
-    // extract min (simple for small constant-cost grid)
-    let mi = 0;
-    for (let i = 1; i < heap.length; i++) if (heap[i][0] < heap[mi][0]) mi = i;
-    const [d, idx] = heap[mi];
-    heap[mi] = heap[heap.length - 1]; heap.pop();
+  const heap = new MinHeap(); heap.push(0, tidx);
+  while (heap.size > 0) {
+    const [d, idx] = heap.pop();
     if (d > dist[idx]) continue;
     const cx = idx % W, cy = Math.floor(idx / W);
     for (let dx = -1; dx <= 1; dx++) {
