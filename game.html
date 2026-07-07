@@ -775,6 +775,25 @@ function findUnmannedTower(guard) {
   return best;
 }
 
+function getGuardPatrol() {
+  let cx = 0, cy = 0, n = 0;
+  for (const b of G.buildings) {
+    if (b.hp <= 0 || b.blueprint) continue;
+    const c = b.center();
+    cx += c.x; cy += c.y; n++;
+  }
+  if (n === 0) { const th = G.townHall; if (!th) return { x:3000, y:3000, r:500 }; const tc = th.center(); return { x: tc.x, y: tc.y, r: 200 }; }
+  cx /= n; cy /= n;
+  let maxR = 0;
+  for (const b of G.buildings) {
+    if (b.hp <= 0 || b.blueprint) continue;
+    const c = b.center();
+    const d = Math.hypot(c.x - cx, c.y - cy) + b.collisionRadius();
+    if (d > maxR) maxR = d;
+  }
+  return { x: cx, y: cy, r: maxR + 100 };
+}
+
 function guardUpdateAI(r, dt) {
   const th = G.townHall; if (!th) return;
   const thCenter = th.center();
@@ -852,15 +871,33 @@ function guardUpdateAI(r, dt) {
           const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
         }
       } else {
-        // Patrol
+        // Patrol within building boundary
+        const pb = getGuardPatrol();
         if ((r.patrolTimer -= dt) <= 0) {
           r.patrolTimer = 2 + Math.random() * 3;
-          r.patrolAngle = Math.random() * Math.PI * 2;
+          const toC = Math.atan2(pb.y - r.y, pb.x - r.x);
+          r.patrolAngle = toC + (Math.random() - 0.5) * Math.PI;
+        }
+        // Stay within patrol circle
+        const dxc = r.x - pb.x, dyc = r.y - pb.y;
+        const dc = Math.hypot(dxc, dyc);
+        if (dc > pb.r) {
+          r.patrolAngle = Math.atan2(-dyc, -dxc);
         }
         const pnx = r.x + Math.cos(r.patrolAngle) * 20 * dt;
         const pny = r.y + Math.sin(r.patrolAngle) * 20 * dt;
-        const prs = resolveCollisions(r, pnx, pny);
-        r.x = prs.x; r.y = prs.y;
+        // Clamp to boundary
+        const ndc = Math.hypot(pnx - pb.x, pny - pb.y);
+        const fx = Math.max(0, ndc - pb.r);
+        if (fx > 0) {
+          const fnx = pnx - (pnx - pb.x) / ndc * fx;
+          const fny = pny - (pny - pb.y) / ndc * fx;
+          const prs = resolveCollisions(r, fnx, fny);
+          r.x = prs.x; r.y = prs.y;
+        } else {
+          const prs = resolveCollisions(r, pnx, pny);
+          r.x = prs.x; r.y = prs.y;
+        }
       }
       break;
     }
@@ -1611,7 +1648,7 @@ function drawBuilding(b, x, y) {
   ctx.fillStyle=buildingColor(b.type); ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.fill();
   ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.stroke();
   if (b.blueprint) ctx.globalAlpha = 1;
-  if (b.hp<b.maxHp && !b.blueprint) {
+  if (b.hp<b.maxHp && !b.blueprint && b.constructionTimer <= 0) {
     const bw=w-8, bh=4;
     ctx.fillStyle='#333'; ctx.fillRect(x+4,y-8,bw,bh);
     ctx.fillStyle=b.hp/b.maxHp>0.5?'#4a4':'#a44'; ctx.fillRect(x+4,y-8,bw*(b.hp/b.maxHp),bh);
