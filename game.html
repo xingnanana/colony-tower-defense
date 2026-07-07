@@ -484,7 +484,7 @@ function findNearestBlueprint(resident) {
 }
 function resolveCollisions(r, nx, ny) {
   for (const b of G.buildings) {
-    if (b.hp <= 0) continue;
+    if (b.hp <= 0 || b.type === 'road') continue;
     const c = b.center();
     const minDist = b.collisionRadius() + RESIDENT_RADIUS;
     const dx = nx - c.x, dy = ny - c.y;
@@ -2233,7 +2233,7 @@ canvas.addEventListener('wheel', e => {
 }, {passive: false});
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
-  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null; G.drawingRoad=false;
+  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null; G.drawingRoad=false; computeBuildableMask(null);
   document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected')); hideContextMenu();
 });
 canvas.addEventListener('mouseleave', () => { G.dragging = false; });
