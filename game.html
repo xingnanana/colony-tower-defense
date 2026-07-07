@@ -450,7 +450,6 @@ function findNearestBlueprint(resident) {
 function resolveCollisions(r, nx, ny) {
   for (const b of G.buildings) {
     if (b.hp <= 0) continue;
-    if (r.workplace === b || r.home === b) continue;
     const c = b.center();
     const minDist = b.collisionRadius() + RESIDENT_RADIUS;
     const dx = nx - c.x, dy = ny - c.y;
