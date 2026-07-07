@@ -574,7 +574,7 @@ function addBuilding(type, col, row, skipBlueprint) {
     b.hp = 1; b.maxHp = def.hp;
   }
   G.buildings.push(b);
-  if (type==='house') G.maxPop += BLD_DEFS[type].popBonus;
+  if (type==='house' && !b.blueprint) G.maxPop += BLD_DEFS[type].popBonus;
   return b;
 }
 
@@ -1080,6 +1080,7 @@ function updateResidents(dt) {
             }
             if (done) {
               r.buildTarget.blueprint = false;
+              if (r.buildTarget.type==='house') G.maxPop += BLD_DEFS.house.popBonus;
               r.buildTarget.constructCost = null; r.buildTarget.constructDelivered = null;
               r.buildTarget.constructionTimer = BLD_DEFS[r.buildTarget.type].buildTime || 2;
               r.state = 'CONSTRUCTING';
@@ -1640,8 +1641,8 @@ function drawBuilding(b, x, y) {
     ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+5);
   }
 
-  // Storage capacity bar (per-building)
-  if (isStorage(b.type) && def.capacity) {
+  // Storage capacity bar (per-building) - skip for blueprints
+  if (!b.blueprint && isStorage(b.type) && def.capacity) {
     const stored = Object.values(b.stored||{}).reduce((a,v)=>a+v, 0);
     const cap = def.capacity;
     const ratio = cap > 0 ? Math.min(1, stored / cap) : 0;
@@ -1653,21 +1654,23 @@ function drawBuilding(b, x, y) {
     ctx.fillText(`${stored}/${cap}`, cx, y+h-7);
   }
 
-  if (b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.upgradeProgress); ctx.lineTo(cx,cy); ctx.fill(); }
-  if (b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr-3,-Math.PI/2,-Math.PI/2+Math.PI*2*b.recruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
-  if (b.type==='town_hall' && b.guardRecruitQueue>0) { ctx.fillStyle='rgba(100,150,255,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.guardRecruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
-  if (def.maxWorkers>0) {
+  if (!b.blueprint && b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.upgradeProgress); ctx.lineTo(cx,cy); ctx.fill(); }
+  if (!b.blueprint && b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr-3,-Math.PI/2,-Math.PI/2+Math.PI*2*b.recruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
+  if (!b.blueprint && b.type==='town_hall' && b.guardRecruitQueue>0) { ctx.fillStyle='rgba(100,150,255,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.guardRecruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
+  if (!b.blueprint && def.maxWorkers>0) {
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
     ctx.fillText(`👤${b.assignedWorkers}/${def.maxWorkers}`,cx,cy+h/2-6);
   }
-  if (b.type==='house'||b.type==='town_hall') {
+  if (!b.blueprint && (b.type==='house'||b.type==='town_hall')) {
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
     ctx.fillText(`🏠${b.residentCount}/${houseCapacity(b)}`,cx,cy+h/2-6);
   }
-  const ts=b.stored?Object.values(b.stored).reduce((a,c)=>a+c,0):0;
-  if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='9px sans-serif'; ctx.fillText(`📦${ts}`,cx,y-4); }
+  if (!b.blueprint) {
+    const ts=b.stored?Object.values(b.stored).reduce((a,c)=>a+c,0):0;
+    if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='9px sans-serif'; ctx.fillText(`📦${ts}`,cx,y-4); }
+  }
 }
 
 function buildingColor(t) {
