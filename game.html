@@ -121,7 +121,7 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
   <canvas id="game"></canvas>
   <div id="building-panel">
     <h3>🏘 建筑</h3>
-    <button class="bld-btn" data-type="road">🛤 道路<div class="cost">1石</div></button>
+    <button class="bld-btn" data-type="road">🛤 道路<div class="cost">1木</div></button>
     <button class="bld-btn" data-type="farm">🌾 农场<div class="cost">5木</div></button>
     <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
     <button class="bld-btn" data-type="auto_arrow_tower">🏹 自动箭塔<div class="cost">30木 20石</div></button>
@@ -225,7 +225,7 @@ const CFG = {
 // BUILDING DEFINITIONS
 // ============================================================
 const BLD_DEFS = {
-  road:        { name:'道路', icon:'🛤', cat:'facility',  sz:[1,1], cost:{stone:1},       hp:50,  maxWorkers:0, unlock:1 , buildTime:1 },
+  road:        { name:'道路', icon:'🛤', cat:'facility',  sz:[1,1], cost:{wood:1},        hp:50,  maxWorkers:0, unlock:1 , buildTime:0.5 },
 
   house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 , buildTime:5 },
 
@@ -2125,7 +2125,7 @@ canvas.addEventListener('mousemove', e => {
     const cp = pixelCenterPlacement('road', wp.x, wp.y);
     const key = cp.col + ',' + cp.row;
     if (key !== G.lastRoadCell && canPlaceBuilding('road', cp.col, cp.row)) {
-      addBuilding('road', cp.col, cp.row, true);
+      addBuilding('road', cp.col, cp.row);
       G.lastRoadCell = key;
     }
     return; // don't drag camera while drawing road
@@ -2159,7 +2159,7 @@ canvas.addEventListener('mousedown', e => {
     const cp = pixelCenterPlacement('road', wp.x, wp.y);
     if (canPlaceBuilding('road', cp.col, cp.row)) {
       const key = cp.col + ',' + cp.row;
-      addBuilding('road', cp.col, cp.row, true); // instant placement, no blueprint
+      addBuilding('road', cp.col, cp.row); // blueprint, engineer builds in 0.5s
       G.lastRoadCell = key;
     }
     G.dragging = false;
