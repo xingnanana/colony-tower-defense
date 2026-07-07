@@ -815,12 +815,21 @@ function guardUpdateAI(r, dt) {
       break;
     }
     case 'GUARD_FIGHTING': {
-      // Seek nearest enemy
-      let targetEnemy = null, bestD = 300;
+      // Seek nearest enemy within vision range (450px)
+      let targetEnemy = null, bestD = 450;
       for (const e of G.enemies) {
         if (!e.alive) continue;
         const d = Math.hypot(r.x - e.x, r.y - e.y);
         if (d < bestD) { bestD = d; targetEnemy = e; }
+      }
+      // If no enemy in vision, prioritize enemies attacking buildings
+      if (!targetEnemy) {
+        for (const e of G.enemies) {
+          if (!e.alive) continue;
+          if (e.attacking && e.attacking.hp > 0) {
+            targetEnemy = e; break;
+          }
+        }
       }
       if (targetEnemy) {
         const dx = targetEnemy.x - r.x, dy = targetEnemy.y - r.y, dd = Math.hypot(dx, dy) || 1;
@@ -1131,18 +1140,7 @@ function updateResidents(dt) {
     }
   }
 
-  // Population growth
-  G.popGrowthTimer += dt;
-  if (G.popGrowthTimer >= 30 && G.residents.length < G.maxPop && G.resources.food>0) {
-    G.popGrowthTimer = 0;
-    const home = G.buildings.find(b=>b.type==='house'&&b.hp>0);
-    if (home) {
-      const hc=home.center();
-      const r = new Resident(hc.x+(Math.random()-0.5)*40, hc.y+(Math.random()-0.5)*40);
-      assignHome(r, home);
-      G.residents.push(r);
-    }
-  }
+  // Population growth is manual via town hall recruitment
 }
 
 function updateBuildings(dt) {
