@@ -270,6 +270,7 @@ const G = {
   enemySpawnQueue: [], enemySpawnTimer: 0,
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
   dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
+  costGrid: null, flowCache: null,
 };
 
 // ============================================================
@@ -292,6 +293,87 @@ function payCost(cost) {
   for (const [k,v] of Object.entries(cost||{})) G.resources[k] -= v;
 }
 
+// ============================================================
+// FLOW FIELD PATHFINDING
+// ============================================================
+function initCostGrid() {
+  G.costGrid = new Uint8Array(CFG.WORLD_COLS * CFG.WORLD_ROWS);
+  G.flowCache = new Map();
+  buildCostGrid();
+}
+function buildCostGrid() {
+  const grid = G.costGrid; grid.fill(3);
+  for (const b of G.buildings) {
+    if (b.hp <= 0 || b.blueprint) continue;
+    const def = BLD_DEFS[b.type];
+    for (let dc = 0; dc < def.sz[0]; dc++)
+      for (let dr = 0; dr < def.sz[1]; dr++)
+        grid[(b.col + dc) + (b.row + dr) * CFG.WORLD_COLS] = 0;
+  }
+  for (const b of G.buildings) {
+    if (b.hp <= 0 || b.blueprint) continue;
+    if (b.type === 'road') grid[b.col + b.row * CFG.WORLD_COLS] = 1;
+  }
+  G.flowCache.clear();
+}
+function invalidateFlowCache() { G.flowCache.clear(); }
+function getFlowField(tx, ty) {
+  const W = CFG.WORLD_COLS, key = tx + ',' + ty;
+  if (G.flowCache.has(key)) return G.flowCache.get(key);
+  const N = W * CFG.WORLD_ROWS;
+  const field = new Int8Array(N * 2);
+  if (tx < 0 || ty < 0 || tx >= W || ty >= CFG.WORLD_ROWS) { G.flowCache.set(key, field); return field; }
+  const tidx = tx + ty * W;
+  if (G.costGrid[tidx] === 0) { G.flowCache.set(key, field); return field; }
+  const dist = new Float32Array(N).fill(1e9);
+  dist[tidx] = 0;
+  // Simple Dijkstra with array-based priority (small cost range: 1~4.2)
+  const heap = []; heap.push([0, tidx]);
+  while (heap.length > 0) {
+    // extract min (simple for small constant-cost grid)
+    let mi = 0;
+    for (let i = 1; i < heap.length; i++) if (heap[i][0] < heap[mi][0]) mi = i;
+    const [d, idx] = heap[mi];
+    heap[mi] = heap[heap.length - 1]; heap.pop();
+    if (d > dist[idx]) continue;
+    const cx = idx % W, cy = Math.floor(idx / W);
+    for (let dx = -1; dx <= 1; dx++) {
+      for (let dy = -1; dy <= 1; dy++) {
+        if (dx === 0 && dy === 0) continue;
+        const nx = cx + dx, ny = cy + dy;
+        if (nx < 0 || nx >= W || ny < 0 || ny >= CFG.WORLD_ROWS) continue;
+        const nidx = nx + ny * W;
+        if (G.costGrid[nidx] === 0) continue;
+        const base = G.costGrid[nidx];
+        const moveCost = (dx !== 0 && dy !== 0) ? base * 1.414 : base;
+        const nd = d + moveCost;
+        if (nd < dist[nidx]) {
+          dist[nidx] = nd;
+          field[nidx * 2] = -dx; field[nidx * 2 + 1] = -dy;
+          heap.push([nd, nidx]);
+        }
+      }
+    }
+  }
+  if (G.flowCache.size > 20) { const first = G.flowCache.keys().next().value; G.flowCache.delete(first); }
+  G.flowCache.set(key, field);
+  return field;
+}
+function flowMove(r, tx, ty, speed, dt) {
+  if (!G.costGrid) initCostGrid();
+  const field = getFlowField(gridCol(tx), gridRow(ty));
+  const idx = (gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS) * 2;
+  let dx = field[idx] || 0, dy = field[idx + 1] || 0;
+  if (dx === 0 && dy === 0) { dx = tx - r.x; dy = ty - r.y; }
+  const mag = Math.hypot(dx, dy) || 1;
+  const nx = r.x + (dx / mag) * speed * dt;
+  const ny = r.y + (dy / mag) * speed * dt;
+  return resolveCollisions(r, nx, ny);
+}
+function moveViaFlow(r, tx, ty, speed, dt) {
+  const rs = flowMove(r, tx, ty, speed, dt);
+  r.x = rs.x; r.y = rs.y;
+}
 function isCellBlocked(col, row, excludeBld) {
   if (col<0 || row<0 || col>=CFG.WORLD_COLS || row>=CFG.WORLD_ROWS) return true;
   for (const b of G.buildings) {
@@ -559,6 +641,7 @@ function initGame() {
     assignHome(r, th);
     G.residents.push(r);
   }
+  initCostGrid();
 }
 
 function addBuilding(type, col, row, skipBlueprint) {
@@ -575,6 +658,7 @@ function addBuilding(type, col, row, skipBlueprint) {
   }
   G.buildings.push(b);
   if (type==='house' && !b.blueprint) G.maxPop += BLD_DEFS[type].popBonus;
+  buildCostGrid();
   return b;
 }
 
@@ -589,6 +673,7 @@ function demolishBuilding(b) {
   }
   if (b.type==='house') G.maxPop = Math.max(CFG.MAX_POP_BASE, G.maxPop - BLD_DEFS[b.type].popBonus - (b.level-1)*2);
   G.buildings.splice(idx,1);
+  buildCostGrid();
 }
 
 // ============================================================
@@ -810,9 +895,7 @@ function guardUpdateAI(r, dt) {
         if (Math.hypot(r.x - tc.x, r.y - tc.y) < tower.collisionRadius() + RESIDENT_RADIUS + 5) {
           r.state = 'GUARD_MANNING'; r.manningTower = tower;
         } else {
-          const nx = r.x + (dx / dd) * CFG.RESIDENT_SPEED * dt;
-          const ny = r.y + (dy / dd) * CFG.RESIDENT_SPEED * dt;
-          const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
+          moveViaFlow(r, tc.x, tc.y, CFG.RESIDENT_SPEED, dt);
         }
       } else {
         r.state = 'GUARD_FIGHTING';
@@ -866,9 +949,7 @@ function guardUpdateAI(r, dt) {
           }
         } else {
           // Move toward enemy
-          const nx = r.x + (dx / dd) * CFG.RESIDENT_SPEED * dt;
-          const ny = r.y + (dy / dd) * CFG.RESIDENT_SPEED * dt;
-          const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
+          moveViaFlow(r, targetEnemy.x, targetEnemy.y, CFG.RESIDENT_SPEED, dt);
         }
       } else {
         // Patrol within building boundary
@@ -907,9 +988,7 @@ function guardUpdateAI(r, dt) {
       if (Math.hypot(r.x - thCenter.x, r.y - thCenter.y) < th.collisionRadius() + RESIDENT_RADIUS + 3) {
         r.state = 'GUARD_HEALING'; r.guardHealTimer = twoGameHours; r.hidden = true;
       } else {
-        const nx = r.x + (dx / dd) * CFG.RESIDENT_SPEED * dt;
-        const ny = r.y + (dy / dd) * CFG.RESIDENT_SPEED * dt;
-        const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
+        moveViaFlow(r, thCenter.x, thCenter.y, CFG.RESIDENT_SPEED, dt);
       }
       break;
     }
@@ -1020,7 +1099,7 @@ function updateResidents(dt) {
         if (!storage) { r.state='EATING'; r.eatTimer=0.5; break; }
         const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='EATING'; r.eatTimer=1.5; }
-        else { const edx=r.targetX-r.x, edy=r.targetY-r.y, edd=Math.hypot(edx,edy)||1; const nx=r.x+(edx/edd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(edy/edd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
+        else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
       case 'EATING':
@@ -1035,7 +1114,7 @@ function updateResidents(dt) {
         if (home) { const hc=home.center(); r.targetX=hc.x; r.targetY=hc.y; }
         const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
         if (home && Math.hypot(r.x-home.center().x, r.y-home.center().y) < home.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='SLEEPING'; r.tired=0; r.hidden=true; }
-        else { const nx=r.x+(dx/dd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(dy/dd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
+        else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
       case 'GOING_TO_WORK': {
@@ -1043,7 +1122,7 @@ function updateResidents(dt) {
         const wc=r.workplace.center();
         const dx=wc.x-r.x, dy=wc.y-r.y, dd=Math.hypot(dx,dy)||1;
         if (Math.hypot(r.x-wc.x, r.y-wc.y) < r.workplace.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='WORKING'; r.prodTimer=0; }
-        else { const nx=r.x+(dx/dd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(dy/dd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
+        else { moveViaFlow(r, wc.x, wc.y, CFG.RESIDENT_SPEED, dt); }
         break;
       }
       case 'WORKING': {
@@ -1080,7 +1159,7 @@ function updateResidents(dt) {
           r.carrying=null;
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
-        } else { const hdx=r.targetX-r.x, hdy=r.targetY-r.y, hdd=Math.hypot(hdx,hdy)||1; const nx=r.x+(hdx/hdd)*(CFG.RESIDENT_SPEED)*dt; const ny=r.y+(hdy/hdd)*(CFG.RESIDENT_SPEED)*dt; const rs=resolveCollisions(r,nx,ny); r.x=rs.x; r.y=rs.y; }
+        } else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
       case 'GATHERING': {
@@ -1098,9 +1177,7 @@ function updateResidents(dt) {
           if (gs.stored[need.type]) gs.stored[need.type] = Math.max(0, gs.stored[need.type] - take);
           r.state = 'BUILDING'; break;
         }
-        const gdx = r.targetX-r.x, gdy = r.targetY-r.y, gdd = Math.hypot(gdx,gdy)||1;
-        const gnx = r.x+(gdx/gdd)*CFG.RESIDENT_SPEED*dt, gny = r.y+(gdy/gdd)*CFG.RESIDENT_SPEED*dt;
-        const grs = resolveCollisions(r, gnx, gny); r.x = grs.x; r.y = grs.y;
+        moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt);
         break;
       }
       case 'BUILDING': {
@@ -1125,9 +1202,7 @@ function updateResidents(dt) {
           }
           r.state = 'GATHERING'; break;
         }
-        const bdx = r.targetX-r.x, bdy = r.targetY-r.y, bdd = Math.hypot(bdx,bdy)||1;
-        const bnx = r.x+(bdx/bdd)*CFG.RESIDENT_SPEED*dt, bny = r.y+(bdy/bdd)*CFG.RESIDENT_SPEED*dt;
-        const brs = resolveCollisions(r, bnx, bny); r.x = brs.x; r.y = brs.y;
+        moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt);
         break;
       }
       case 'CONSTRUCTING': {
@@ -1143,10 +1218,7 @@ function updateResidents(dt) {
         if (Math.hypot(r.x-cc.x, r.y-cc.y) < r.buildTarget.collisionRadius() + RESIDENT_RADIUS + 5) {
           // Stay near building while timer counts down
         } else {
-          const cx = cc.x - r.x, cy = cc.y - r.y, cd = Math.hypot(cx,cy)||1;
-          const nx = r.x + (cx/cd)*CFG.RESIDENT_SPEED*dt;
-          const ny = r.y + (cy/cd)*CFG.RESIDENT_SPEED*dt;
-          const rs = resolveCollisions(r, nx, ny); r.x = rs.x; r.y = rs.y;
+          moveViaFlow(r, cc.x, cc.y, CFG.RESIDENT_SPEED, dt);
         }
         break;
       }
@@ -1186,7 +1258,7 @@ function updateBuildings(dt) {
       const hasEng = G.residents.some(r => r.buildTarget === b && (r.state==='CONSTRUCTING'||r.state==='GATHERING'||r.state==='BUILDING'));
       if (hasEng) {
         b.constructionTimer -= dt;
-        if (b.constructionTimer <= 0) { b.constructionTimer = 0; b.hp = b.maxHp; b.assignedEngineer = null; if (b.type==='house') G.maxPop += BLD_DEFS.house.popBonus; }
+        if (b.constructionTimer <= 0) { b.constructionTimer = 0; b.hp = b.maxHp; b.assignedEngineer = null; if (b.type==='house') G.maxPop += BLD_DEFS.house.popBonus; buildCostGrid(); }
       }
     }
     if (b.upgrading) {
@@ -1230,6 +1302,7 @@ function updateBuildings(dt) {
       }
     }
   }
+  const prevLen = G.buildings.length;
   G.buildings = G.buildings.filter(b=>{
     if (b.hp<=0) {
       if (b.type==='town_hall') { gameOver('大本营被摧毁！'); return false; }
@@ -1243,6 +1316,7 @@ function updateBuildings(dt) {
     }
     return true;
   });
+  if (G.buildings.length < prevLen) buildCostGrid();
 }
 
 function updateParticles(dt) {
