@@ -121,6 +121,7 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
   <canvas id="game"></canvas>
   <div id="building-panel">
     <h3>🏘 建筑</h3>
+    <button class="bld-btn" data-type="road">🛤 道路<div class="cost">1石</div></button>
     <button class="bld-btn" data-type="farm">🌾 农场<div class="cost">5木</div></button>
     <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
     <button class="bld-btn" data-type="auto_arrow_tower">🏹 自动箭塔<div class="cost">30木 20石</div></button>
@@ -224,6 +225,8 @@ const CFG = {
 // BUILDING DEFINITIONS
 // ============================================================
 const BLD_DEFS = {
+  road:        { name:'道路', icon:'🛤', cat:'facility',  sz:[1,1], cost:{stone:1},       hp:50,  maxWorkers:0, unlock:1 , buildTime:1 },
+
   house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 , buildTime:5 },
 
   farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, unlock:1 , buildTime:2 },
@@ -271,6 +274,9 @@ const G = {
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
   dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
   costGrid: null, flowCache: null,
+  drawingRoad: false, lastRoadCell: '',
+  buildableMask: null,
+  chopMode: false, chopSelection: null,
 };
 
 // ============================================================
@@ -329,6 +335,7 @@ function buildCostGrid() {
     if (b.type === 'road') grid[b.col + b.row * CFG.WORLD_COLS] = 1;
   }
   G.flowCache.clear();
+  if (G.selectedBldType) computeBuildableMask(G.selectedBldType);
 }
 function invalidateFlowCache() { G.flowCache.clear(); }
 function getFlowField(tx, ty) {
@@ -417,11 +424,39 @@ function pixelCenterPlacement(type, mx, my) {
     row: Math.round((my - def.sz[1]*CFG.CELL/2) / CFG.CELL)
   };
 }
+function isNearRoad(type, col, row) {
+  if (type === 'town_hall' || type === 'road') return true;
+  const def = BLD_DEFS[type];
+  const minC = col - 3, maxC = col + def.sz[0] + 2;
+  const minR = row - 3, maxR = row + def.sz[1] + 2;
+  for (const b of G.buildings) {
+    if (b.type !== 'road' || b.hp <= 0 || b.blueprint) continue;
+    if (b.col >= minC && b.col <= maxC && b.row >= minR && b.row <= maxR) return true;
+  }
+  return false;
+}
+function computeBuildableMask(type) {
+  if (!type) { G.buildableMask = null; return; }
+  const N = CFG.WORLD_COLS * CFG.WORLD_ROWS;
+  if (!G.buildableMask) G.buildableMask = new Uint8Array(N);
+  const def = BLD_DEFS[type];
+  for (let i = 0; i < N; i++) G.buildableMask[i] = 0;
+  for (let col = 0; col <= CFG.WORLD_COLS - def.sz[0]; col++) {
+    for (let row = 0; row <= CFG.WORLD_ROWS - def.sz[1]; row++) {
+      if (canPlaceBuilding(type, col, row)) {
+        for (let dc = 0; dc < def.sz[0]; dc++)
+          for (let dr = 0; dr < def.sz[1]; dr++)
+            G.buildableMask[(col + dc) + (row + dr) * CFG.WORLD_COLS] = 1;
+      }
+    }
+  }
+}
 function canPlaceBuilding(type, col, row, excludeBld) {
   const def = BLD_DEFS[type];
   for (let dc=0; dc<def.sz[0]; dc++)
     for (let dr=0; dr<def.sz[1]; dr++)
       if (isCellBlocked(col+dc, row+dr, excludeBld)) return false;
+  if (!isNearRoad(type, col, row)) return false;
   return true;
 }
 
@@ -1658,6 +1693,20 @@ function render() {
   for (let c=0;c<=CFG.WORLD_COLS;c++) { ctx.beginPath(); ctx.moveTo(c*CFG.CELL,0); ctx.lineTo(c*CFG.CELL,CFG.WORLD_H); ctx.stroke(); }
   for (let r=0;r<=CFG.WORLD_ROWS;r++) { ctx.beginPath(); ctx.moveTo(0,r*CFG.CELL); ctx.lineTo(CFG.WORLD_W,r*CFG.CELL); ctx.stroke(); }
 
+  // Buildable area overlay (viewport-culled)
+  if (G.buildableMask) {
+    const vpW = CFG.CANVAS_W / G.cam.zoom, vpH = CFG.CANVAS_H / G.cam.zoom;
+    const vpL = Math.max(0, Math.floor((G.cam.x - vpW/2) / CFG.CELL));
+    const vpT = Math.max(0, Math.floor((G.cam.y - vpH/2) / CFG.CELL));
+    const vpR = Math.min(CFG.WORLD_COLS - 1, Math.ceil((G.cam.x + vpW/2) / CFG.CELL));
+    const vpB = Math.min(CFG.WORLD_ROWS - 1, Math.ceil((G.cam.y + vpH/2) / CFG.CELL));
+    ctx.fillStyle = 'rgba(0,255,0,0.12)';
+    for (let c = vpL; c <= vpR; c++)
+      for (let r = vpT; r <= vpB; r++)
+        if (G.buildableMask[c + r * CFG.WORLD_COLS])
+          ctx.fillRect(gridX(c), gridY(r), CFG.CELL, CFG.CELL);
+  }
+
   // Placement hover
   if (G.hoveredCell && !G.placingMode && G.selectedBldType) {
     const def=BLD_DEFS[G.selectedBldType];
@@ -1792,7 +1841,7 @@ function drawBuilding(b, x, y) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',road:'#8a8a7a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResident(r) {
@@ -2049,12 +2098,15 @@ buildingPanel.addEventListener('click', e => {
   const btn=e.target.closest('.bld-btn'); if(!btn) return;
   const type=btn.dataset.type;
   if(G.placingMode){G.placingMode=false;G.movingBuilding=null;}
+  G.drawingRoad=false;
   if(G.selectedBldType===type){
     G.selectedBldType=null; btn.classList.remove('selected');
+    computeBuildableMask(null);
   } else {
     document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected'));
     G.selectedBldType=type; btn.classList.add('selected');
     G.selectedBuilding=null; hideContextMenu();
+    computeBuildableMask(type);
   }
 });
 
@@ -2067,6 +2119,17 @@ canvas.addEventListener('mousemove', e => {
   G.mouseX=mx; G.mouseY=my;
   const wp=screenToWorld(mx, my);
   G.hoveredCell={col:gridCol(wp.x),row:gridRow(wp.y)};
+
+  // Road drawing
+  if (G.drawingRoad) {
+    const cp = pixelCenterPlacement('road', wp.x, wp.y);
+    const key = cp.col + ',' + cp.row;
+    if (key !== G.lastRoadCell && canPlaceBuilding('road', cp.col, cp.row)) {
+      addBuilding('road', cp.col, cp.row, true);
+      G.lastRoadCell = key;
+    }
+    return; // don't drag camera while drawing road
+  }
 
   // Camera drag
   if (G.dragging) {
@@ -2089,7 +2152,18 @@ canvas.addEventListener('mousedown', e => {
     if(col>=b.col&&col<b.col+d.sz[0]&&row>=b.row&&row<b.row+d.sz[1]){clickedBld=b;break;}
   }
 
-  if (!clickedBld && !G.selectedBldType && !G.placingMode) {
+  if (G.selectedBldType === 'road' && !clickedBld) {
+    // Start road drawing
+    G.drawingRoad = true;
+    G.lastRoadCell = '';
+    const cp = pixelCenterPlacement('road', wp.x, wp.y);
+    if (canPlaceBuilding('road', cp.col, cp.row)) {
+      const key = cp.col + ',' + cp.row;
+      addBuilding('road', cp.col, cp.row, true); // instant placement, no blueprint
+      G.lastRoadCell = key;
+    }
+    G.dragging = false;
+  } else if (!clickedBld && !G.selectedBldType && !G.placingMode) {
     // Start camera drag on empty ground with no build selection
     G.dragging = true;
     G.dragStartX = mx; G.dragStartY = my;
@@ -2101,6 +2175,9 @@ canvas.addEventListener('click', e => {
   const mx=e.clientX-r.left, my=e.clientY-r.top;
   const wp=screenToWorld(mx, my);
   const col=gridCol(wp.x), row=gridRow(wp.y);
+
+  // Stop road drawing on click
+  if (G.drawingRoad) { G.drawingRoad = false; return; }
 
   if (G.dragging) {
     G.dragging = false;
@@ -2156,7 +2233,7 @@ canvas.addEventListener('wheel', e => {
 }, {passive: false});
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
-  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null;
+  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null; G.drawingRoad=false;
   document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected')); hideContextMenu();
 });
 canvas.addEventListener('mouseleave', () => { G.dragging = false; });
