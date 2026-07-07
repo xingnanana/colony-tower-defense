@@ -122,7 +122,6 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
   <div id="building-panel">
     <h3>🏘 建筑</h3>
     <button class="bld-btn" data-type="farm">🌾 农场<div class="cost">5木</div></button>
-    <button class="bld-btn" data-type="lumber">🪓 伐木场<div class="cost">5木</div></button>
     <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
     <button class="bld-btn" data-type="auto_arrow_tower">🏹 自动箭塔<div class="cost">30木 20石</div></button>
     <button class="bld-btn" data-type="house">🏠 住房<div class="cost">10木 5石</div></button>
@@ -209,8 +208,8 @@ window.onerror = function(msg, src, line, col, err) {
 // ============================================================
 const CFG = {
   CANVAS_W: 1200, CANVAS_H: 800,
-  CELL: 40, WORLD_COLS: 80, WORLD_ROWS: 50,
-  WORLD_W: 3200, WORLD_H: 2000,
+  CELL: 40, WORLD_COLS: 150, WORLD_ROWS: 150,
+  WORLD_W: 6000, WORLD_H: 6000,
   DAY_DURATION: 162, NIGHT_DURATION: 78, TRANSITION: 8,
   START_FOOD: 50, START_WOOD: 40, START_STONE: 20, START_IRON: 0,
   START_POP: 4, MAX_POP_BASE: 4,
@@ -228,8 +227,6 @@ const BLD_DEFS = {
   house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 , buildTime:5 },
 
   farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, unlock:1 , buildTime:2 },
-
-  lumber:      { name:'伐木场',icon:'🪓', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'wood',  baseTime:6, unlock:1 , buildTime:2 },
 
   quarry:      { name:'采石场',icon:'⛏', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', baseTime:10, unlock:3 , buildTime:8 },
 
@@ -506,8 +503,8 @@ class Resident {
     this.isEngineer = false;
     // Guard properties
     this.isGuard = false;
-    this.guardHP = 50;
-    this.guardMaxHP = 50;
+    this.guardHP = 80;
+    this.guardMaxHP = 80;
     this.guardAttackCD = 0;
     this.manningTower = null;
     this.guardHealTimer = 0;
@@ -548,13 +545,10 @@ class Particle {
 // ============================================================
 function initGame() {
   // 大本营在正中央
-  const th = new Building('town_hall', 39, 24);
+  const th = new Building('town_hall', 74, 74);
   G.buildings.push(th);
   G.townHall = th;
   G.cam.x = th.x + CFG.CELL; G.cam.y = th.y + CFG.CELL;
-
-  addBuilding('lumber', 36, 24, true);
-  G.buildings[1].assignedWorkers = 2; // lumber
   G.maxPop = CFG.MAX_POP_BASE;
 
   for (let i=0; i<CFG.START_POP; i++) {
@@ -565,8 +559,6 @@ function initGame() {
     assignHome(r, th);
     G.residents.push(r);
   }
-  G.residents[0].workplace = G.buildings[1]; G.residents[0].state = 'GOING_TO_WORK';
-  G.residents[1].workplace = G.buildings[1]; G.residents[1].state = 'GOING_TO_WORK';
 }
 
 function addBuilding(type, col, row, skipBlueprint) {
@@ -836,8 +828,8 @@ function guardUpdateAI(r, dt) {
           // Attack
           r.guardAttackCD -= dt;
           if (r.guardAttackCD <= 0) {
-            r.guardAttackCD = 1;
-            targetEnemy.hp -= 8;
+            r.guardAttackCD = 0.6;
+            targetEnemy.hp -= 12;
             spawnParticles(targetEnemy.x, targetEnemy.y, '#ffaa00', 2);
             if (targetEnemy.hp <= 0) {
               targetEnemy.alive = false;
@@ -924,6 +916,7 @@ function updateTowers(dt) {
 
 function updateResidents(dt) {
   for (const r of G.residents) {
+    if (r.isGuard) continue; // guards don't get hungry or tired
     if (r.state!=='SLEEPING') {
       r.hunger += CFG.HUNGER_RATE * dt;
       r.tired += CFG.TIRED_RATE * dt;
@@ -1680,7 +1673,7 @@ function drawBuilding(b, x, y) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',lumber:'#7a6b4a',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResident(r) {
