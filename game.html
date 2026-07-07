@@ -377,8 +377,10 @@ function getFlowField(tx, ty) {
 }
 function flowMove(r, tx, ty, speed, dt) {
   if (!G.costGrid) initCostGrid();
+  const gidx = gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS;
+  if (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 1) speed *= 2; // road speed bonus
   const field = getFlowField(gridCol(tx), gridRow(ty));
-  const idx = (gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS) * 2;
+  const idx = gidx * 2;
   let dx = field[idx] || 0, dy = field[idx + 1] || 0;
   if (dx === 0 && dy === 0) { dx = tx - r.x; dy = ty - r.y; }
   const mag = Math.hypot(dx, dy) || 1;
