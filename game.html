@@ -158,7 +158,7 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
   <span id="unchop-btn" style="cursor:pointer;color:#a84;padding:2px 6px;" onclick="toggleUnchopMode()" title="取消砍伐">❌</span>
 </div>
 
-  <div id="eng-bar" style="position:absolute; bottom:36px; right:170px;
+  <div id="eng-bar" style="position:absolute; bottom:36px; right:210px;
   display:flex; gap:6px; z-index:10; align-items:center;
   background:rgba(0,0,0,0.7); padding:3px 10px; border-radius:6px; color:#fff; font-size:12px;">
   <span id="eng-minus" style="cursor:pointer;color:#a44;display:none" onclick="unassignEngineer()" title="取消工程师">➖</span>
@@ -2202,13 +2202,15 @@ canvas.addEventListener('click', e => {
 
   // Apply chop selection on mouse release
   if (G.chopMode && G.chopStartX >= 0) {
-    const minC = Math.min(G.chopStartX, G.chopEndX), maxC = Math.max(G.chopStartX, G.chopEndX);
-    const minR = Math.min(G.chopStartY, G.chopEndY), maxR = Math.max(G.chopStartY, G.chopEndY);
+    const ex = G.chopEndX >= 0 ? G.chopEndX : G.chopStartX;
+    const ey = G.chopEndY >= 0 ? G.chopEndY : G.chopStartY;
+    const minC = Math.min(G.chopStartX, ex), maxC = Math.max(G.chopStartX, ex);
+    const minR = Math.min(G.chopStartY, ey), maxR = Math.max(G.chopStartY, ey);
     for (const node of G.resourceNodes) {
       if (node.type === 'tree' && node.alive && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR)
         node.marked = true;
     }
-    G.chopEndX = -1; // reset selection visual
+    G.chopStartX = -1; G.chopEndX = -1; // reset selection
     return;
   }
 
