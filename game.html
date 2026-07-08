@@ -322,7 +322,7 @@ function initCostGrid() {
   buildCostGrid();
 }
 function buildCostGrid() {
-  const grid = G.costGrid; grid.fill(3);
+  const grid = G.costGrid; grid.fill(5);
   for (const b of G.buildings) {
     if (b.hp <= 0 || b.blueprint) continue;
     const def = BLD_DEFS[b.type];
@@ -1240,6 +1240,7 @@ function updateResidents(dt) {
             if (done) {
               r.buildTarget.blueprint = false;
               r.buildTarget.constructCost = null; r.buildTarget.constructDelivered = null;
+              buildCostGrid();
               r.buildTarget.constructionTimer = BLD_DEFS[r.buildTarget.type].buildTime || 2;
               r.state = 'CONSTRUCTING';
               break;
