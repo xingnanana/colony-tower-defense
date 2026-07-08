@@ -282,7 +282,7 @@ const G = {
   dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
   floorMask: null, drawingFloor: false, lastFloorCell: '',
   resourceNodes: [],
-  chopMode: false, chopStartX: -1, chopStartY: -1, chopEndX: -1, chopEndY: -1,
+  chopMode: false, unchopMode: false, chopStartX: -1, chopStartY: -1, chopEndX: -1, chopEndY: -1,
 };
 
 // ============================================================
@@ -358,22 +358,15 @@ function generateResources() {
   }
 }
 function toggleChopMode() {
-  G.chopMode = !G.chopMode; G.drawingFloor = false;
-  const btn = document.getElementById('chop-btn');
-  btn.style.background = G.chopMode ? '#5a5' : '';
+  G.chopMode = !G.chopMode; G.unchopMode = false; G.drawingFloor = false;
+  document.getElementById('chop-btn').style.background = G.chopMode ? '#5a5' : '';
+  document.getElementById('unchop-btn').style.background = '';
 }
 function toggleUnchopMode() {
-  G.chopMode = false; G.drawingFloor = false;
+  G.unchopMode = !G.unchopMode; G.chopMode = false; G.drawingFloor = false;
+  const btn = document.getElementById('unchop-btn');
+  btn.style.background = G.unchopMode ? '#a84' : '';
   document.getElementById('chop-btn').style.background = '';
-  // Unmark trees in last valid selection area
-  if (G.chopStartX >= 0 && G.chopEndX >= 0) {
-    const minC = Math.min(G.chopStartX, G.chopEndX), maxC = Math.max(G.chopStartX, G.chopEndX);
-    const minR = Math.min(G.chopStartY, G.chopEndY), maxR = Math.max(G.chopStartY, G.chopEndY);
-    for (const node of G.resourceNodes) {
-      if (node.type === 'tree' && node.alive && node.marked && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR)
-        node.marked = false;
-    }
-  }
 }
 function flowMove(r, tx, ty, speed, dt) {
   if (G.floorMask) {
@@ -1764,7 +1757,7 @@ function render() {
   }
 
   // Chop selection box
-  if (G.chopMode && G.chopStartX >= 0 && G.chopEndX >= 0) {
+  if ((G.chopMode || G.unchopMode) && G.chopStartX >= 0 && G.chopEndX >= 0) {
     const sx = Math.min(G.chopStartX, G.chopEndX), sy = Math.min(G.chopStartY, G.chopEndY);
     const ex = Math.max(G.chopStartX, G.chopEndX), ey = Math.max(G.chopStartY, G.chopEndY);
     ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(gridX(sx), gridY(sy), (ex - sx + 1) * CFG.CELL, (ey - sy + 1) * CFG.CELL);
@@ -2159,8 +2152,8 @@ canvas.addEventListener('mousemove', e => {
   const wp=screenToWorld(mx, my);
   G.hoveredCell={col:gridCol(wp.x),row:gridRow(wp.y)};
 
-  // Chop drag
-  if (G.chopMode && G.chopStartX >= 0) { G.chopEndX = gridCol(wp.x); G.chopEndY = gridRow(wp.y); return; }
+  // Chop/Unchop drag
+  if ((G.chopMode || G.unchopMode) && G.chopStartX >= 0) { G.chopEndX = gridCol(wp.x); G.chopEndY = gridRow(wp.y); return; }
 
   // Camera drag
   if (G.dragging) {
@@ -2183,8 +2176,8 @@ canvas.addEventListener('mousedown', e => {
     if(col>=b.col&&col<b.col+d.sz[0]&&row>=b.row&&row<b.row+d.sz[1]){clickedBld=b;break;}
   }
 
-  // Chop mode drag-select
-  if (G.chopMode) {
+  // Chop/Unchop mode drag-select
+  if (G.chopMode || G.unchopMode) {
     G.chopStartX = col; G.chopStartY = row; G.chopEndX = -1; G.chopEndY = -1;
     G.dragging = false;
   } else if (!clickedBld && !G.selectedBldType && !G.placingMode) {
@@ -2200,17 +2193,19 @@ canvas.addEventListener('click', e => {
   const wp=screenToWorld(mx, my);
   const col=gridCol(wp.x), row=gridRow(wp.y);
 
-  // Apply chop selection on mouse release
-  if (G.chopMode && G.chopStartX >= 0) {
+  // Apply chop/unchop selection on mouse release
+  if ((G.chopMode || G.unchopMode) && G.chopStartX >= 0) {
     const ex = G.chopEndX >= 0 ? G.chopEndX : G.chopStartX;
     const ey = G.chopEndY >= 0 ? G.chopEndY : G.chopStartY;
     const minC = Math.min(G.chopStartX, ex), maxC = Math.max(G.chopStartX, ex);
     const minR = Math.min(G.chopStartY, ey), maxR = Math.max(G.chopStartY, ey);
     for (const node of G.resourceNodes) {
-      if (node.type === 'tree' && node.alive && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR)
-        node.marked = true;
+      if (node.type === 'tree' && node.alive && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR) {
+        if (G.chopMode) node.marked = true;
+        else if (node.marked) node.marked = false;
+      }
     }
-    G.chopStartX = -1; G.chopEndX = -1; // reset selection
+    G.chopStartX = -1; G.chopEndX = -1;
     return;
   }
 
