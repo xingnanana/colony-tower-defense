@@ -282,7 +282,7 @@ const G = {
   dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
   floorMask: null, drawingFloor: false, lastFloorCell: '',
   resourceNodes: [],
-  chopMode: false, chopStartX: 0, chopStartY: 0, chopEndX: 0, chopEndY: 0,
+  chopMode: false, chopStartX: -1, chopStartY: -1, chopEndX: -1, chopEndY: -1,
 };
 
 // ============================================================
@@ -365,12 +365,14 @@ function toggleChopMode() {
 function toggleUnchopMode() {
   G.chopMode = false; G.drawingFloor = false;
   document.getElementById('chop-btn').style.background = '';
-  // Unmark trees in last selection area
-  const minC = Math.min(G.chopStartX, G.chopEndX), maxC = Math.max(G.chopStartX, G.chopEndX);
-  const minR = Math.min(G.chopStartY, G.chopEndY), maxR = Math.max(G.chopStartY, G.chopEndY);
-  for (const node of G.resourceNodes) {
-    if (node.type === 'tree' && node.alive && node.marked && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR)
-      node.marked = false;
+  // Unmark trees in last valid selection area
+  if (G.chopStartX >= 0 && G.chopEndX >= 0) {
+    const minC = Math.min(G.chopStartX, G.chopEndX), maxC = Math.max(G.chopStartX, G.chopEndX);
+    const minR = Math.min(G.chopStartY, G.chopEndY), maxR = Math.max(G.chopStartY, G.chopEndY);
+    for (const node of G.resourceNodes) {
+      if (node.type === 'tree' && node.alive && node.marked && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR)
+        node.marked = false;
+    }
   }
 }
 function flowMove(r, tx, ty, speed, dt) {
