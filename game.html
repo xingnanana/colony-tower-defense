@@ -1290,7 +1290,6 @@ function updateResidents(dt) {
             if (done) {
               r.buildTarget.blueprint = false;
               r.buildTarget.constructCost = null; r.buildTarget.constructDelivered = null;
-              buildCostGrid();
               r.buildTarget.constructionTimer = BLD_DEFS[r.buildTarget.type].buildTime || 2;
               r.state = 'CONSTRUCTING';
               break;
