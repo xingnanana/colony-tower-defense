@@ -430,7 +430,8 @@ function flowMove(r, tx, ty, speed, dt) {
   const insideBuilding = (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 0);
 
   let bestDx = tx - r.x, bestDy = ty - r.y, bestScore = Infinity;
-  const CW = 40, LOOKAHEAD = 4;
+  const CW = 80; // cell cost weight
+  const onRoad = (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 1);
 
   for (let dx = -1; dx <= 1; dx++) {
     for (let dy = -1; dy <= 1; dy++) {
@@ -438,28 +439,13 @@ function flowMove(r, tx, ty, speed, dt) {
       const nc = gcx + dx, nr = gcy + dy;
       if (nc < 0 || nr < 0 || nc >= W || nr >= CFG.WORLD_ROWS) continue;
       const cidx = nc + nr * W;
-      const firstCost = G.costGrid[cidx];
-      if (firstCost === 0 && !insideBuilding) continue;
-      // Multi-step lookahead: simulate walking LOOKAHEAD steps forward
-      let totalCost = firstCost, cc = nc, cr = nr;
-      for (let s = 1; s < LOOKAHEAD; s++) {
-        let minC = 1e9, nextC = cc, nextR = cr;
-        for (let sdx = -1; sdx <= 1; sdx++) {
-          for (let sdy = -1; sdy <= 1; sdy++) {
-            if (sdx === 0 && sdy === 0) continue;
-            const sc = cc + sdx, sr = cr + sdy;
-            if (sc < 0 || sr < 0 || sc >= W || sr >= CFG.WORLD_ROWS) continue;
-            const scost = G.costGrid[sc + sr * W];
-            if (scost === 0) continue;
-            if (scost < minC) { minC = scost; nextC = sc; nextR = sr; }
-          }
-        }
-        if (minC >= 1e9) break;
-        totalCost += minC; cc = nextC; cr = nextR;
-      }
-      const wx = gridX(cc) + CFG.CELL / 2, wy = gridY(cr) + CFG.CELL / 2;
+      const cellCost = G.costGrid[cidx];
+      if (cellCost === 0 && !insideBuilding) continue;
+      const wx = gridX(nc) + CFG.CELL / 2, wy = gridY(nr) + CFG.CELL / 2;
       const distToTarget = Math.hypot(wx - tx, wy - ty);
-      const score = distToTarget + totalCost * CW;
+      // Road-following bias: when on a road, prefer staying on roads
+      const roadBias = (onRoad && cellCost === 1) ? 0.3 : 1;
+      const score = distToTarget * roadBias + cellCost * CW;
       if (score < bestScore) { bestScore = score; bestDx = dx; bestDy = dy; }
     }
   }
