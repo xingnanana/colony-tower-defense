@@ -730,6 +730,7 @@ function demolishBuilding(b) {
     if (r.workplace===b) { r.workplace=null; r.state='IDLE'; }
     if (r.home===b) { assignHome(r, findNearestHome(r)); }
     if (r.manningTower===b) { r.manningTower=null; r.state='GUARD_FIND_TOWER'; }
+    if (r.buildTarget===b) { r.buildTarget=null; r.carrying=null; r.state='IDLE'; }
   }
   if (b.type==='house') G.maxPop = Math.max(CFG.MAX_POP_BASE, G.maxPop - BLD_DEFS[b.type].popBonus - (b.level-1)*2);
   G.buildings.splice(idx,1);
@@ -1371,6 +1372,7 @@ function updateBuildings(dt) {
         if (r.workplace===b) { r.workplace=null; r.state='IDLE'; }
         if (r.home===b) removeHome(r);
         if (r.manningTower===b) { r.manningTower=null; r.state='GUARD_FIND_TOWER'; }
+        if (r.buildTarget===b) { r.buildTarget=null; r.carrying=null; r.state='IDLE'; }
       }
       if (b.type==='house') G.maxPop=Math.max(CFG.MAX_POP_BASE, G.maxPop-BLD_DEFS[b.type].popBonus-(b.level-1)*2);
       return false;
