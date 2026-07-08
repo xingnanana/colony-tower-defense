@@ -317,11 +317,10 @@ function paintFloorCell(col, row) {
     for (let dr = 0; dr < def.sz[1]; dr++) {
       const nc = col - Math.floor(def.sz[0]/2) + dc, nr = row - Math.floor(def.sz[1]/2) + dr;
       if (nc < 0 || nr < 0 || nc >= CFG.WORLD_COLS || nr >= CFG.WORLD_ROWS) continue;
-      if ((G.resources.wood || 0) < 1) return;
-      G.resources.wood--;
       G.floorMask[nc + nr * CFG.WORLD_COLS] = 1;
     }
   }
+  if ((G.resources.wood || 0) >= 1) G.resources.wood--;
   G.lastFloorCell = key;
 }
 function generateResources() {
@@ -1774,20 +1773,6 @@ function render() {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(gridX(sx), gridY(sy), (ex - sx + 1) * CFG.CELL, (ey - sy + 1) * CFG.CELL); ctx.setLineDash([]);
   }
 
-  // Floor top layer (semi-transparent, visible on buildings)
-  if (G.floorMask && G.selectedBldType === 'floor') {
-    const vpW = CFG.CANVAS_W / G.cam.zoom, vpH = CFG.CANVAS_H / G.cam.zoom;
-    const vpL = Math.max(0, Math.floor((G.cam.x - vpW/2) / CFG.CELL));
-    const vpT = Math.max(0, Math.floor((G.cam.y - vpH/2) / CFG.CELL));
-    const vpR = Math.min(CFG.WORLD_COLS - 1, Math.ceil((G.cam.x + vpW/2) / CFG.CELL));
-    const vpB = Math.min(CFG.WORLD_ROWS - 1, Math.ceil((G.cam.y + vpH/2) / CFG.CELL));
-    ctx.fillStyle = 'rgba(154,138,106,0.3)';
-    for (let c = vpL; c <= vpR; c++)
-      for (let r = vpT; r <= vpB; r++)
-        if (G.floorMask[c + r * CFG.WORLD_COLS])
-          ctx.fillRect(gridX(c), gridY(r), CFG.CELL, CFG.CELL);
-  }
-
   // Particles
   for (const p of G.particles) {
     ctx.fillStyle=p.color; ctx.globalAlpha=p.life/p.maxLife;
@@ -2146,7 +2131,7 @@ function updateBuildingPanel() {
 buildingPanel.addEventListener('click', e => {
   const btn=e.target.closest('.bld-btn'); if(!btn) return;
   const type=btn.dataset.type;
-  if(G.placingMode){G.placingMode=false;G.movingBuilding=null;} G.drawingFloor=false;
+  if(G.placingMode){G.placingMode=false;G.movingBuilding=null;}
   if(G.selectedBldType===type){
     G.selectedBldType=null; btn.classList.remove('selected');
   } else {
@@ -2168,9 +2153,6 @@ canvas.addEventListener('mousemove', e => {
 
   // Chop drag
   if (G.chopMode && G.chopStartX >= 0) { G.chopEndX = gridCol(wp.x); G.chopEndY = gridRow(wp.y); return; }
-
-  // Floor painting
-  if (G.drawingFloor) { paintFloorCell(gridCol(wp.x), gridRow(wp.y)); return; }
 
   // Camera drag
   if (G.dragging) {
@@ -2197,9 +2179,6 @@ canvas.addEventListener('mousedown', e => {
   if (G.chopMode) {
     G.chopStartX = col; G.chopStartY = row; G.chopEndX = -1; G.chopEndY = -1;
     G.dragging = false;
-  } else if (G.selectedBldType === 'floor') {
-    G.drawingFloor = true; G.lastFloorCell = '';
-    paintFloorCell(col, row);
   } else if (!clickedBld && !G.selectedBldType && !G.placingMode) {
     // Start camera drag on empty ground with no build selection
     G.dragging = true;
@@ -2225,8 +2204,11 @@ canvas.addEventListener('click', e => {
     return;
   }
 
-  // Stop floor painting on click
-  if (G.drawingFloor) { G.drawingFloor = false; return; }
+  // Floor placement on click
+  if (G.selectedBldType === 'floor') {
+    paintFloorCell(col, row);
+    return;
+  }
 
   if (G.dragging) {
     G.dragging = false;
@@ -2282,7 +2264,7 @@ canvas.addEventListener('wheel', e => {
 }, {passive: false});
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
-  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null; G.drawingFloor=false;
+  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null;
   document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected')); hideContextMenu();
 });
 canvas.addEventListener('mouseleave', () => { G.dragging = false; });
