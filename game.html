@@ -1283,15 +1283,17 @@ function updateResidents(dt) {
           const ebp = findNearestBlueprint(r);
           if (ebp) { r.buildTarget = ebp; ebp.assignedEngineer = r; r.state = 'GATHERING'; break; }
         }
-        // Check for marked trees to chop
-        let treeTarget = null, treeDist = Infinity;
-        for (const node of G.resourceNodes) {
-          if (node.type === 'tree' && node.alive && node.marked) {
-            const d = Math.hypot(r.x - node.x, r.y - node.y);
-            if (d < treeDist) { treeDist = d; treeTarget = node; }
+        // Only idle non-engineers chop trees
+        if (!r.isEngineer) {
+          let treeTarget = null, treeDist = Infinity;
+          for (const node of G.resourceNodes) {
+            if (node.type === 'tree' && node.alive && node.marked) {
+              const d = Math.hypot(r.x - node.x, r.y - node.y);
+              if (d < treeDist) { treeDist = d; treeTarget = node; }
+            }
           }
+          if (treeTarget) { r.state = 'GOING_TO_CHOP'; r.targetX = treeTarget.x; r.targetY = treeTarget.y; r.chopTarget = treeTarget; break; }
         }
-        if (treeTarget) { r.state = 'GOING_TO_CHOP'; r.targetX = treeTarget.x; r.targetY = treeTarget.y; r.chopTarget = treeTarget; break; }
         r.state='PATROL';
         if ((r.patrolTimer-=dt)<=0) {
           r.patrolTimer=2+Math.random()*4;
