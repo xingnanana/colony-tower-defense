@@ -424,35 +424,11 @@ function getFlowField(tx, ty) {
 }
 function flowMove(r, tx, ty, speed, dt) {
   if (!G.costGrid) initCostGrid();
-  const W = CFG.WORLD_COLS, gcx = gridCol(r.x), gcy = gridRow(r.y);
-  const gidx = gcx + gcy * W;
+  const gidx = gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS;
   if (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 1) speed *= 2; // road speed
-  const insideBuilding = (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 0);
-
-  let bestDx = tx - r.x, bestDy = ty - r.y, bestScore = Infinity;
-  const CW = 80; // cell cost weight
-  const onRoad = (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 1);
-
-  for (let dx = -1; dx <= 1; dx++) {
-    for (let dy = -1; dy <= 1; dy++) {
-      if (dx === 0 && dy === 0) continue;
-      const nc = gcx + dx, nr = gcy + dy;
-      if (nc < 0 || nr < 0 || nc >= W || nr >= CFG.WORLD_ROWS) continue;
-      const cidx = nc + nr * W;
-      const cellCost = G.costGrid[cidx];
-      if (cellCost === 0 && !insideBuilding) continue;
-      const wx = gridX(nc) + CFG.CELL / 2, wy = gridY(nr) + CFG.CELL / 2;
-      const distToTarget = Math.hypot(wx - tx, wy - ty);
-      // Road-following bias: when on a road, prefer staying on roads
-      const roadBias = (onRoad && cellCost === 1) ? 0.3 : 1;
-      const score = distToTarget * roadBias + cellCost * CW;
-      if (score < bestScore) { bestScore = score; bestDx = dx; bestDy = dy; }
-    }
-  }
-  if (bestScore === Infinity) { bestDx = tx - r.x; bestDy = ty - r.y; }
-  const mag = Math.hypot(bestDx, bestDy) || 1;
-  const nx = r.x + (bestDx / mag) * speed * dt;
-  const ny = r.y + (bestDy / mag) * speed * dt;
+  const dx = tx - r.x, dy = ty - r.y, mag = Math.hypot(dx, dy) || 1;
+  const nx = r.x + (dx / mag) * speed * dt;
+  const ny = r.y + (dy / mag) * speed * dt;
   return resolveCollisions(r, nx, ny);
 }
 function moveViaFlow(r, tx, ty, speed, dt) {
@@ -553,11 +529,9 @@ function findNearestBlueprint(resident) {
 }
 function resolveCollisions(r, nx, ny) {
   for (const b of G.buildings) {
-    if (b.hp <= 0) continue;
+    if (b.hp <= 0 || b.type === 'road') continue;
+    if (r.workplace === b || r.home === b || r.buildTarget === b) continue;
     const c = b.center();
-    // Allow approaching build target, or escaping own home/workplace
-    if (r.buildTarget === b) continue;
-    if ((r.workplace === b || r.home === b) && Math.hypot(nx-c.x, ny-c.y) > Math.hypot(r.x-c.x, r.y-c.y)) continue;
     const minDist = b.collisionRadius() + RESIDENT_RADIUS;
     const dx = nx - c.x, dy = ny - c.y;
     const dist = Math.hypot(dx, dy);
