@@ -322,7 +322,7 @@ function initCostGrid() {
   buildCostGrid();
 }
 function buildCostGrid() {
-  const grid = G.costGrid; grid.fill(5);
+  const grid = G.costGrid; grid.fill(99);
   for (const b of G.buildings) {
     if (b.hp <= 0 || b.blueprint || b.constructionTimer > 0) continue;
     const def = BLD_DEFS[b.type];
@@ -476,8 +476,8 @@ function pixelCenterPlacement(type, mx, my) {
 function isNearRoad(type, col, row) {
   if (type === 'town_hall' || type === 'road') return true;
   const def = BLD_DEFS[type];
-  const minC = col - 3, maxC = col + def.sz[0] + 2;
-  const minR = row - 3, maxR = row + def.sz[1] + 2;
+  const minC = col - 2, maxC = col + def.sz[0] + 1;
+  const minR = row - 2, maxR = row + def.sz[1] + 1;
   for (const b of G.buildings) {
     if (b.type !== 'road' || b.hp <= 0 || b.blueprint || b.constructionTimer > 0) continue;
     if (b.col >= minC && b.col <= maxC && b.row >= minR && b.row <= maxR) return true;
