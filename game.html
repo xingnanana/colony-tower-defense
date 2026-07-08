@@ -424,11 +424,36 @@ function getFlowField(tx, ty) {
 }
 function flowMove(r, tx, ty, speed, dt) {
   if (!G.costGrid) initCostGrid();
-  const gidx = gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS;
-  if (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 1) speed *= 2; // road speed
-  const dx = tx - r.x, dy = ty - r.y, mag = Math.hypot(dx, dy) || 1;
-  const nx = r.x + (dx / mag) * speed * dt;
-  const ny = r.y + (dy / mag) * speed * dt;
+  const W = CFG.WORLD_COLS, gcx = gridCol(r.x), gcy = gridRow(r.y);
+  const gidx = gcx + gcy * W, onRoad = (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 1);
+  if (onRoad) speed *= 2;
+  const dist = Math.hypot(tx - r.x, ty - r.y);
+  // If very close to target, go direct
+  if (dist < CFG.CELL * 3) {
+    const ddx = tx - r.x, ddy = ty - r.y, ddm = Math.hypot(ddx, ddy) || 1;
+    const nnx = r.x + (ddx / ddm) * speed * dt;
+    const nny = r.y + (ddy / ddm) * speed * dt;
+    return resolveCollisions(r, nnx, nny);
+  }
+  // Road-following steering
+  let bestDx = tx - r.x, bestDy = ty - r.y, bestScore = -1;
+  for (let dx = -1; dx <= 1; dx++) {
+    for (let dy = -1; dy <= 1; dy++) {
+      if (dx === 0 && dy === 0) continue;
+      const nc = gcx + dx, nr = gcy + dy;
+      if (nc < 0 || nr < 0 || nc >= W || nr >= CFG.WORLD_ROWS) continue;
+      const cellCost = G.costGrid[nc + nr * W]; if (cellCost === 0) continue;
+      const wx = gridX(nc) + CFG.CELL / 2, wy = gridY(nr) + CFG.CELL / 2;
+      const dt = Math.hypot(wx - tx, wy - ty);
+      // Score: prefer roads (cost=1), penalize ground (cost>=99) when off road
+      const preferRoad = onRoad && cellCost <= 1;
+      const score = (preferRoad ? -1000 : 0) - dt;
+      if (score > bestScore) { bestScore = score; bestDx = dx; bestDy = dy; }
+    }
+  }
+  const mag = Math.hypot(bestDx, bestDy) || 1;
+  const nx = r.x + (bestDx / mag) * speed * dt;
+  const ny = r.y + (bestDy / mag) * speed * dt;
   return resolveCollisions(r, nx, ny);
 }
 function moveViaFlow(r, tx, ty, speed, dt) {
