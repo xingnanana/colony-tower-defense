@@ -1722,7 +1722,7 @@ function render() {
     const def=BLD_DEFS[G.selectedBldType];
     const wp=screenToWorld(G.mouseX, G.mouseY);
     const cp=pixelCenterPlacement(G.selectedBldType, wp.x, wp.y);
-    const ok=canPlaceBuilding(G.selectedBldType, cp.col, cp.row);
+    const ok= G.selectedBldType==='floor' ? true : canPlaceBuilding(G.selectedBldType, cp.col, cp.row);
     ctx.fillStyle=ok?'rgba(0,255,0,0.25)':'rgba(255,0,0,0.25)';
     ctx.fillRect(gridX(cp.col),gridY(cp.row),def.sz[0]*CFG.CELL,def.sz[1]*CFG.CELL);
   }
