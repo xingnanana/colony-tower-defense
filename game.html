@@ -324,14 +324,14 @@ function initCostGrid() {
 function buildCostGrid() {
   const grid = G.costGrid; grid.fill(5);
   for (const b of G.buildings) {
-    if (b.hp <= 0 || b.blueprint) continue;
+    if (b.hp <= 0 || b.blueprint || b.constructionTimer > 0) continue;
     const def = BLD_DEFS[b.type];
     for (let dc = 0; dc < def.sz[0]; dc++)
       for (let dr = 0; dr < def.sz[1]; dr++)
         grid[(b.col + dc) + (b.row + dr) * CFG.WORLD_COLS] = 0;
   }
   for (const b of G.buildings) {
-    if (b.hp <= 0 || b.blueprint) continue;
+    if (b.hp <= 0 || b.blueprint || b.constructionTimer > 0) continue;
     if (b.type === 'road') grid[b.col + b.row * CFG.WORLD_COLS] = 1;
   }
   G.flowCache.clear();
@@ -345,21 +345,53 @@ function getFlowField(tx, ty) {
   const field = new Int8Array(N * 2);
   if (tx < 0 || ty < 0 || tx >= W || ty >= CFG.WORLD_ROWS) { G.flowCache.set(key, field); return field; }
   let tidx = tx + ty * W;
-  // If target is inside a building, find nearest passable cell
+  // If target inside building, route to nearest road cell (buildings always near roads)
   if (G.costGrid[tidx] === 0) {
     let found = false;
-    for (let r = 1; r <= 5 && !found; r++) {
+    // First: search for road cells (cost=1)
+    for (let r = 1; r <= 7 && !found; r++) {
       for (let dc = -r; dc <= r && !found; dc++) {
         for (let dr = -r; dr <= r && !found; dr++) {
           if (Math.abs(dc) !== r && Math.abs(dr) !== r) continue;
           const nc = tx + dc, nr = ty + dr;
           if (nc < 0 || nr < 0 || nc >= W || nr >= CFG.WORLD_ROWS) continue;
           const ni = nc + nr * W;
-          if (G.costGrid[ni] !== 0) { tidx = ni; found = true; }
+          if (G.costGrid[ni] === 1) { tidx = ni; found = true; }
+        }
+      }
+    }
+    // Fallback: any passable cell
+    if (!found) {
+      for (let r = 1; r <= 5 && !found; r++) {
+        for (let dc = -r; dc <= r && !found; dc++) {
+          for (let dr = -r; dr <= r && !found; dr++) {
+            if (Math.abs(dc) !== r && Math.abs(dr) !== r) continue;
+            const nc = tx + dc, nr = ty + dr;
+            if (nc < 0 || nr < 0 || nc >= W || nr >= CFG.WORLD_ROWS) continue;
+            const ni = nc + nr * W;
+            if (G.costGrid[ni] !== 0) { tidx = ni; found = true; }
+          }
         }
       }
     }
     if (!found) { G.flowCache.set(key, field); return field; }
+  }
+  // If target cell is ground(5), also prefer nearest road cell for routing
+  if (G.costGrid[tidx] === 5) {
+    let roadDist = 99, roadIdx = -1;
+    for (let r = 1; r <= 4; r++) {
+      for (let dc = -r; dc <= r; dc++) {
+        for (let dr = -r; dr <= r; dr++) {
+          if (Math.abs(dc) !== r && Math.abs(dr) !== r) continue;
+          const nc = tx + dc, nr = ty + dr;
+          if (nc < 0 || nr < 0 || nc >= W || nr >= CFG.WORLD_ROWS) continue;
+          const ni = nc + nr * W;
+          if (G.costGrid[ni] === 1 && r < roadDist) { roadDist = r; roadIdx = ni; }
+        }
+      }
+      if (roadIdx >= 0) break;
+    }
+    if (roadIdx >= 0) tidx = roadIdx;
   }
   const dist = new Float32Array(N).fill(1e9);
   dist[tidx] = 0;
@@ -447,7 +479,7 @@ function isNearRoad(type, col, row) {
   const minC = col - 3, maxC = col + def.sz[0] + 2;
   const minR = row - 3, maxR = row + def.sz[1] + 2;
   for (const b of G.buildings) {
-    if (b.type !== 'road' || b.hp <= 0 || b.blueprint) continue;
+    if (b.type !== 'road' || b.hp <= 0 || b.blueprint || b.constructionTimer > 0) continue;
     if (b.col >= minC && b.col <= maxC && b.row >= minR && b.row <= maxR) return true;
   }
   return false;
