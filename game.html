@@ -398,8 +398,11 @@ function findNearestBlueprint(resident) {
 function resolveCollisions(r, nx, ny) {
   for (const b of G.buildings) {
     if (b.hp <= 0) continue;
-    if (r.workplace === b || r.home === b || r.buildTarget === b) continue;
     const c = b.center();
+    if (r.buildTarget === b) continue; // always allow approaching build target
+    // Only allow leaving own home/workplace, not entering
+    if ((r.workplace === b || r.home === b) &&
+        Math.hypot(nx - c.x, ny - c.y) > Math.hypot(r.x - c.x, r.y - c.y)) continue;
     const minDist = b.collisionRadius() + RESIDENT_RADIUS;
     const dx = nx - c.x, dy = ny - c.y;
     const dist = Math.hypot(dx, dy);
