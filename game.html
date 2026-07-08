@@ -1200,7 +1200,9 @@ function updateResidents(dt) {
           const s2 = findNearestStorage(r, 'wood');
           if (s2) { const sc = s2.center(); r.targetX = sc.x; r.targetY = sc.y; }
           for (const node of G.resourceNodes) {
-            if (node.type === 'tree' && node.alive && node.marked) { r.chopTarget = node; r.state = 'GOING_TO_CHOP'; r.targetX = node.x; r.targetY = node.y; break; }
+            if (node.type === 'tree' && node.alive && node.marked && !G.residents.some(r2 => r2 !== r && r2.chopTarget === node)) {
+              r.chopTarget = node; r.state = 'GOING_TO_CHOP'; r.targetX = node.x; r.targetY = node.y; break;
+            }
           }
         }
         break;
@@ -1283,6 +1285,8 @@ function updateResidents(dt) {
           let treeTarget = null, treeDist = Infinity;
           for (const node of G.resourceNodes) {
             if (node.type === 'tree' && node.alive && node.marked) {
+              // Skip trees already targeted by another villager
+              if (G.residents.some(r2 => r2 !== r && r2.chopTarget === node)) continue;
               const d = Math.hypot(r.x - node.x, r.y - node.y);
               if (d < treeDist) { treeDist = d; treeTarget = node; }
             }
