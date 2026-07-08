@@ -733,6 +733,8 @@ function initGame() {
     assignHome(r, th);
     G.residents.push(r);
   }
+  G.residents[0].isEngineer = true;
+  G.residents[1].isEngineer = true;
   initCostGrid();
 }
 
