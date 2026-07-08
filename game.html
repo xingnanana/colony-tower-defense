@@ -431,6 +431,7 @@ function flowMove(r, tx, ty, speed, dt) {
   // Simple local steering: test 8 directions, pick best (dist_to_target + cellCost * weight)
   let bestDx = tx - r.x, bestDy = ty - r.y, bestScore = Infinity;
   const CW = 40; // cell weight: penalize ground heavily
+  const insideBuilding = (gidx >= 0 && gidx < G.costGrid.length && G.costGrid[gidx] === 0);
   for (let dx = -1; dx <= 1; dx++) {
     for (let dy = -1; dy <= 1; dy++) {
       if (dx === 0 && dy === 0) continue;
@@ -438,7 +439,7 @@ function flowMove(r, tx, ty, speed, dt) {
       if (nc < 0 || nc2 < 0 || nc >= W || nc2 >= CFG.WORLD_ROWS) continue;
       const cidx = nc + nc2 * W;
       const cellCost = G.costGrid[cidx];
-      if (cellCost === 0) continue;
+      if (cellCost === 0 && !insideBuilding) continue; // allow escape from inside a building
       const wx = gridX(nc) + CFG.CELL / 2, wy = gridY(nc2) + CFG.CELL / 2;
       const distToTarget = Math.hypot(wx - tx, wy - ty);
       const score = distToTarget + cellCost * CW;
@@ -554,6 +555,8 @@ function findNearestBlueprint(resident) {
 function resolveCollisions(r, nx, ny) {
   for (const b of G.buildings) {
     if (b.hp <= 0 || b.type === 'road') continue;
+    // Allow passing through own home/workplace (steering keeps them out otherwise)
+    if (r.workplace === b || r.home === b) continue;
     const c = b.center();
     const minDist = b.collisionRadius() + RESIDENT_RADIUS;
     const dx = nx - c.x, dy = ny - c.y;
