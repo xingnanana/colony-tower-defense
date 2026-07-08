@@ -344,8 +344,23 @@ function getFlowField(tx, ty) {
   const N = W * CFG.WORLD_ROWS;
   const field = new Int8Array(N * 2);
   if (tx < 0 || ty < 0 || tx >= W || ty >= CFG.WORLD_ROWS) { G.flowCache.set(key, field); return field; }
-  const tidx = tx + ty * W;
-  if (G.costGrid[tidx] === 0) { G.flowCache.set(key, field); return field; }
+  let tidx = tx + ty * W;
+  // If target is inside a building, find nearest passable cell
+  if (G.costGrid[tidx] === 0) {
+    let found = false;
+    for (let r = 1; r <= 5 && !found; r++) {
+      for (let dc = -r; dc <= r && !found; dc++) {
+        for (let dr = -r; dr <= r && !found; dr++) {
+          if (Math.abs(dc) !== r && Math.abs(dr) !== r) continue;
+          const nc = tx + dc, nr = ty + dr;
+          if (nc < 0 || nr < 0 || nc >= W || nr >= CFG.WORLD_ROWS) continue;
+          const ni = nc + nr * W;
+          if (G.costGrid[ni] !== 0) { tidx = ni; found = true; }
+        }
+      }
+    }
+    if (!found) { G.flowCache.set(key, field); return field; }
+  }
   const dist = new Float32Array(N).fill(1e9);
   dist[tidx] = 0;
   const heap = new MinHeap(); heap.push(0, tidx);
