@@ -600,6 +600,7 @@ class Resident {
     this.hidden = false;
     this.buildTarget = null;
     this.isEngineer = false;
+    this.chopTarget = null; this.chopTimer = 0;
     // Guard properties
     this.isGuard = false;
     this.guardHP = 80;
@@ -1181,6 +1182,31 @@ function updateResidents(dt) {
         } else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
+      case 'GOING_TO_CHOP': {
+        if (!r.chopTarget || !r.chopTarget.alive) { r.chopTarget = null; r.state = 'IDLE'; break; }
+        const ctx = r.chopTarget.x, cty = r.chopTarget.y;
+        if (Math.hypot(r.x - ctx, r.y - cty) < RESIDENT_RADIUS + 10) { r.state = 'CHOPPING'; r.chopTimer = 0; }
+        else moveViaFlow(r, ctx, cty, CFG.RESIDENT_SPEED, dt);
+        break;
+      }
+      case 'CHOPPING': {
+        if (!r.chopTarget || !r.chopTarget.alive) { r.chopTarget = null; r.state = 'IDLE'; break; }
+        r.chopTimer += dt;
+        if (r.chopTimer >= 3) {
+          r.chopTarget.alive = false; r.chopTarget.marked = false;
+          spawnParticles(r.chopTarget.x, r.chopTarget.y, '#8B4513', 5);
+          if (!r.carrying) r.carrying = { type: 'wood', amount: 1 };
+          else r.carrying.amount++;
+          r.chopTarget = null;
+          r.state = 'HAULING';
+          const s2 = findNearestStorage(r, 'wood');
+          if (s2) { const sc = s2.center(); r.targetX = sc.x; r.targetY = sc.y; }
+          for (const node of G.resourceNodes) {
+            if (node.type === 'tree' && node.alive && node.marked) { r.chopTarget = node; r.state = 'GOING_TO_CHOP'; r.targetX = node.x; r.targetY = node.y; break; }
+          }
+        }
+        break;
+      }
       case 'GATHERING': {
         if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
         const need = neededMaterials(r.buildTarget);
@@ -1254,6 +1280,15 @@ function updateResidents(dt) {
           const ebp = findNearestBlueprint(r);
           if (ebp) { r.buildTarget = ebp; ebp.assignedEngineer = r; r.state = 'GATHERING'; break; }
         }
+        // Check for marked trees to chop
+        let treeTarget = null, treeDist = Infinity;
+        for (const node of G.resourceNodes) {
+          if (node.type === 'tree' && node.alive && node.marked) {
+            const d = Math.hypot(r.x - node.x, r.y - node.y);
+            if (d < treeDist) { treeDist = d; treeTarget = node; }
+          }
+        }
+        if (treeTarget) { r.state = 'GOING_TO_CHOP'; r.targetX = treeTarget.x; r.targetY = treeTarget.y; r.chopTarget = treeTarget; break; }
         r.state='PATROL';
         if ((r.patrolTimer-=dt)<=0) {
           r.patrolTimer=2+Math.random()*4;
@@ -1715,6 +1750,30 @@ function render() {
   // Enemies
   for (const e of G.enemies) if(e.alive) drawEnemy(e);
 
+  // Resource nodes
+  for (const node of G.resourceNodes) {
+    if (!node.alive) continue;
+    if (node.type === 'tree') {
+      ctx.fillStyle = '#6b4226'; ctx.fillRect(node.x - 3, node.y - 5, 6, 10);
+      ctx.fillStyle = '#3d7a3d'; ctx.beginPath(); ctx.arc(node.x, node.y - 8, 7, 0, Math.PI * 2); ctx.fill();
+      if (node.marked) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(node.x - 8, node.y - 16, 16, 24); ctx.setLineDash([]); }
+    } else if (node.type === 'stone') {
+      ctx.fillStyle = '#888'; ctx.fillRect(node.x, node.y, CFG.CELL, CFG.CELL);
+      ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.strokeRect(node.x + 1, node.y + 1, CFG.CELL - 2, CFG.CELL - 2);
+    } else {
+      ctx.fillStyle = '#8b5a3c'; ctx.fillRect(node.x, node.y, CFG.CELL, CFG.CELL);
+      ctx.fillStyle = '#a06030'; ctx.beginPath(); ctx.arc(node.x + CFG.CELL / 2, node.y + CFG.CELL / 2, 6, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  // Chop selection box
+  if (G.chopMode && G.chopStartX >= 0 && G.chopEndX >= 0) {
+    const sx = Math.min(G.chopStartX, G.chopEndX), sy = Math.min(G.chopStartY, G.chopEndY);
+    const ex = Math.max(G.chopStartX, G.chopEndX), ey = Math.max(G.chopStartY, G.chopEndY);
+    ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(gridX(sx), gridY(sy), (ex - sx + 1) * CFG.CELL, (ey - sy + 1) * CFG.CELL);
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(gridX(sx), gridY(sy), (ex - sx + 1) * CFG.CELL, (ey - sy + 1) * CFG.CELL); ctx.setLineDash([]);
+  }
+
   // Particles
   for (const p of G.particles) {
     ctx.fillStyle=p.color; ctx.globalAlpha=p.life/p.maxLife;
@@ -2093,6 +2152,9 @@ canvas.addEventListener('mousemove', e => {
   const wp=screenToWorld(mx, my);
   G.hoveredCell={col:gridCol(wp.x),row:gridRow(wp.y)};
 
+  // Chop drag
+  if (G.chopMode && G.chopStartX >= 0) { G.chopEndX = gridCol(wp.x); G.chopEndY = gridRow(wp.y); return; }
+
   // Floor painting
   if (G.drawingFloor) { paintFloorCell(gridCol(wp.x), gridRow(wp.y)); return; }
 
@@ -2117,8 +2179,11 @@ canvas.addEventListener('mousedown', e => {
     if(col>=b.col&&col<b.col+d.sz[0]&&row>=b.row&&row<b.row+d.sz[1]){clickedBld=b;break;}
   }
 
-  // Floor painting
-  if (G.selectedBldType === 'floor') {
+  // Chop mode drag-select
+  if (G.chopMode) {
+    G.chopStartX = col; G.chopStartY = row; G.chopEndX = col; G.chopEndY = row;
+    G.dragging = false;
+  } else if (G.selectedBldType === 'floor') {
     G.drawingFloor = true; G.lastFloorCell = '';
     paintFloorCell(col, row);
   } else if (!clickedBld && !G.selectedBldType && !G.placingMode) {
@@ -2133,6 +2198,18 @@ canvas.addEventListener('click', e => {
   const mx=e.clientX-r.left, my=e.clientY-r.top;
   const wp=screenToWorld(mx, my);
   const col=gridCol(wp.x), row=gridRow(wp.y);
+
+  // Apply chop selection on mouse release
+  if (G.chopMode && G.chopStartX >= 0) {
+    const minC = Math.min(G.chopStartX, G.chopEndX), maxC = Math.max(G.chopStartX, G.chopEndX);
+    const minR = Math.min(G.chopStartY, G.chopEndY), maxR = Math.max(G.chopStartY, G.chopEndY);
+    for (const node of G.resourceNodes) {
+      if (node.type === 'tree' && node.alive && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR)
+        node.marked = true;
+    }
+    G.chopEndX = -1; // reset selection visual
+    return;
+  }
 
   // Stop floor painting on click
   if (G.drawingFloor) { G.drawingFloor = false; return; }
