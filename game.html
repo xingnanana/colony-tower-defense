@@ -309,7 +309,6 @@ function paintFloorCell(col, row) {
     for (let dr = 0; dr < def.sz[1]; dr++) {
       const nc = col - Math.floor(def.sz[0]/2) + dc, nr = row - Math.floor(def.sz[1]/2) + dr;
       if (nc < 0 || nr < 0 || nc >= CFG.WORLD_COLS || nr >= CFG.WORLD_ROWS) continue;
-      if (G.floorMask[nc + nr * CFG.WORLD_COLS]) continue; // already has floor
       if ((G.resources.wood || 0) < 1) return;
       G.resources.wood--;
       G.floorMask[nc + nr * CFG.WORLD_COLS] = 1;
