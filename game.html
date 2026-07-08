@@ -151,6 +151,13 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
 
   <div id="time-indicator"></div>
 
+  <div id="chop-bar" style="position:absolute; bottom:8px; right:196px;
+  display:flex; gap:6px; z-index:10; align-items:center;
+  background:rgba(0,0,0,0.7); padding:3px 8px; border-radius:6px; color:#fff; font-size:12px;">
+  <span id="chop-btn" style="cursor:pointer;color:#8a4;padding:2px 6px;" onclick="toggleChopMode()" title="框选砍伐">🪓</span>
+  <span id="unchop-btn" style="cursor:pointer;color:#a84;padding:2px 6px;" onclick="toggleUnchopMode()" title="取消砍伐">❌</span>
+</div>
+
   <div id="eng-bar" style="position:absolute; bottom:8px; right:132px;
   display:flex; gap:6px; z-index:10; align-items:center;
   background:rgba(0,0,0,0.7); padding:3px 10px; border-radius:6px; color:#fff; font-size:12px;">
@@ -274,7 +281,8 @@ const G = {
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
   dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
   floorMask: null, drawingFloor: false, lastFloorCell: '',
-  chopMode: false, chopSelection: null,
+  resourceNodes: [],
+  chopMode: false, chopStartX: 0, chopStartY: 0, chopEndX: 0, chopEndY: 0,
 };
 
 // ============================================================
@@ -315,6 +323,56 @@ function paintFloorCell(col, row) {
     }
   }
   G.lastFloorCell = key;
+}
+function generateResources() {
+  G.resourceNodes = [];
+  // Trees - scattered randomly
+  for (let i = 0; i < 150; i++) {
+    const col = Math.floor(Math.random() * CFG.WORLD_COLS);
+    const row = Math.floor(Math.random() * CFG.WORLD_ROWS);
+    if (isCellBlocked(col, row)) continue; // don't place on buildings
+    G.resourceNodes.push({ type: 'tree', col, row, x: gridX(col) + CFG.CELL / 2, y: gridY(row) + CFG.CELL / 2, hp: 1, alive: true, marked: false });
+  }
+  // Stone clusters (~25 with 2-3 each)
+  for (let i = 0; i < 25; i++) {
+    const baseCol = 5 + Math.floor(Math.random() * (CFG.WORLD_COLS - 10));
+    const baseRow = 5 + Math.floor(Math.random() * (CFG.WORLD_ROWS - 10));
+    const count = 2 + Math.floor(Math.random() * 4);
+    for (let j = 0; j < count; j++) {
+      const col = baseCol + Math.floor(Math.random() * 3);
+      const row = baseRow + Math.floor(Math.random() * 3);
+      if (isCellBlocked(col, row)) continue;
+      G.resourceNodes.push({ type: 'stone', col, row, x: gridX(col), y: gridY(row), hp: 3, alive: true, marked: false });
+    }
+  }
+  // Iron clusters (~15)
+  for (let i = 0; i < 15; i++) {
+    const baseCol = 5 + Math.floor(Math.random() * (CFG.WORLD_COLS - 10));
+    const baseRow = 5 + Math.floor(Math.random() * (CFG.WORLD_ROWS - 10));
+    const count = 2 + Math.floor(Math.random() * 3);
+    for (let j = 0; j < count; j++) {
+      const col = baseCol + Math.floor(Math.random() * 3);
+      const row = baseRow + Math.floor(Math.random() * 3);
+      if (isCellBlocked(col, row)) continue;
+      G.resourceNodes.push({ type: 'iron', col, row, x: gridX(col), y: gridY(row), hp: 4, alive: true, marked: false });
+    }
+  }
+}
+function toggleChopMode() {
+  G.chopMode = !G.chopMode; G.drawingFloor = false;
+  const btn = document.getElementById('chop-btn');
+  btn.style.background = G.chopMode ? '#5a5' : '';
+}
+function toggleUnchopMode() {
+  G.chopMode = false; G.drawingFloor = false;
+  document.getElementById('chop-btn').style.background = '';
+  // Unmark trees in last selection area
+  const minC = Math.min(G.chopStartX, G.chopEndX), maxC = Math.max(G.chopStartX, G.chopEndX);
+  const minR = Math.min(G.chopStartY, G.chopEndY), maxR = Math.max(G.chopStartY, G.chopEndY);
+  for (const node of G.resourceNodes) {
+    if (node.type === 'tree' && node.alive && node.marked && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR)
+      node.marked = false;
+  }
 }
 function flowMove(r, tx, ty, speed, dt) {
   if (G.floorMask) {
@@ -603,6 +661,7 @@ function initGame() {
   G.residents[0].isEngineer = true;
   G.residents[1].isEngineer = true;
   initFloorMask();
+  generateResources();
 }
 
 function addBuilding(type, col, row, skipBlueprint) {
@@ -2059,7 +2118,7 @@ canvas.addEventListener('mousedown', e => {
   }
 
   // Floor painting
-  if (G.selectedBldType === 'floor' && !clickedBld) {
+  if (G.selectedBldType === 'floor') {
     G.drawingFloor = true; G.lastFloorCell = '';
     paintFloorCell(col, row);
   } else if (!clickedBld && !G.selectedBldType && !G.placingMode) {
