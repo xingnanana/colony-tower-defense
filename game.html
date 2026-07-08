@@ -1181,14 +1181,14 @@ function updateResidents(dt) {
         break;
       }
       case 'GOING_TO_CHOP': {
-        if (!r.chopTarget || !r.chopTarget.alive) { r.chopTarget = null; r.state = 'IDLE'; break; }
+        if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) { r.chopTarget = null; r.state = 'IDLE'; break; }
         const ctx = r.chopTarget.x, cty = r.chopTarget.y;
         if (Math.hypot(r.x - ctx, r.y - cty) < RESIDENT_RADIUS + 10) { r.state = 'CHOPPING'; r.chopTimer = 0; }
         else moveViaFlow(r, ctx, cty, CFG.RESIDENT_SPEED, dt);
         break;
       }
       case 'CHOPPING': {
-        if (!r.chopTarget || !r.chopTarget.alive) { r.chopTarget = null; r.state = 'IDLE'; break; }
+        if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) { r.chopTarget = null; r.state = 'IDLE'; break; }
         r.chopTimer += dt;
         if (r.chopTimer >= 3) {
           r.chopTarget.alive = false; r.chopTarget.marked = false;
