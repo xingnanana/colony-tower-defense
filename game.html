@@ -123,6 +123,7 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
     <h3>🏘 建筑</h3>
     <button class="bld-btn" data-type="floor">🟫 地板<div class="cost">1木</div></button>
     <button class="bld-btn" data-type="farm">🌾 农场<div class="cost">5木</div></button>
+    <button class="bld-btn" data-type="forester">🌲 护林员小屋<div class="cost">15木 10石</div></button>
     <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
     <button class="bld-btn" data-type="auto_arrow_tower">🏹 自动箭塔<div class="cost">30木 20石</div></button>
     <button class="bld-btn" data-type="house">🏠 住房<div class="cost">10木 5石</div></button>
@@ -237,6 +238,8 @@ const BLD_DEFS = {
   house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 , buildTime:5 },
 
   farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, unlock:1 , buildTime:2 },
+
+  forester:    { name:'护林员小屋',icon:'🌲', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:3, produces:'wood', baseTime:10, unlock:2, buildTime:5, foresterRadius:4 },
 
   quarry:      { name:'采石场',icon:'⛏', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', baseTime:10, unlock:3 , buildTime:8 },
 
@@ -369,6 +372,7 @@ function toggleUnchopMode() {
   document.getElementById('chop-btn').style.background = '';
 }
 function flowMove(r, tx, ty, speed, dt) {
+  speed *= starvationDebuff(r);
   if (G.floorMask) {
     const gi = gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS;
     if (gi < G.floorMask.length && G.floorMask[gi]) speed *= 1.5;
@@ -381,6 +385,12 @@ function flowMove(r, tx, ty, speed, dt) {
 function moveViaFlow(r, tx, ty, speed, dt) {
   const rs = flowMove(r, tx, ty, speed, dt);
   r.x = rs.x; r.y = rs.y;
+}
+function starvationDebuff(r) {
+  if (r.isGuard) return 1;
+  if (r.starvationDays >= 2) return 0.4;
+  if (r.starvationDays >= 1) return 0.7;
+  return 1;
 }
 function isCellBlocked(col, row, excludeBld) {
   if (col<0 || row<0 || col>=CFG.WORLD_COLS || row>=CFG.WORLD_ROWS) return true;
@@ -526,6 +536,27 @@ function findNearestHome(pos) {
   return best;
 }
 
+function getFarmAdjacencyBonus(b) {
+  if (b.type !== 'farm' || b.hp <= 0 || b.blueprint) return 1;
+  let count = 0;
+  const def = BLD_DEFS.farm;
+  // Check 4 sides: top, bottom, left, right
+  const neighbors = [
+    { col: b.col, row: b.row - def.sz[1] },
+    { col: b.col, row: b.row + def.sz[1] },
+    { col: b.col - def.sz[0], row: b.row },
+    { col: b.col + def.sz[0], row: b.row },
+  ];
+  for (const n of neighbors) {
+    for (const other of G.buildings) {
+      if (other === b || other.type !== 'farm' || other.hp <= 0) continue;
+      const od = BLD_DEFS.farm;
+      if (n.col >= other.col && n.col < other.col + od.sz[0] &&
+          n.row >= other.row && n.row < other.row + od.sz[1]) { count++; break; }
+    }
+  }
+  return 1 + count * 0.15;
+}
 function getIdleResidents() {
   return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.isEngineer);
 }
@@ -565,6 +596,7 @@ class Building {
     this.constructDelivered = null;
     this.assignedEngineer = null;
     this.constructionTimer = 0;
+    this.foresterPlantCooldown = 0;
   }
   center() {
     return { x:this.x+this.size[0]*CFG.CELL/2, y:this.y+this.size[1]*CFG.CELL/2 };
@@ -599,6 +631,7 @@ class Resident {
     this.buildTarget = null;
     this.isEngineer = false;
     this.chopTarget = null; this.chopTimer = 0;
+    this.starvationDays = 0;
     // Guard properties
     this.isGuard = false;
     this.guardHP = 80;
@@ -707,6 +740,26 @@ function updateDayNight(dt) {
     if (G.phase==='day') {
       G.phase='dusk'; showTimeIndicator('🌅 黄昏');
       spawnEnemyWave();
+      // 饥饿天数累计 + 饿死检查
+      const toRemove = [];
+      for (const r of G.residents) {
+        if (r.isGuard) continue;
+        if (r.hunger >= CFG.HUNGER_THRESHOLD) {
+          r.starvationDays++;
+          if (r.starvationDays >= 3) {
+            toRemove.push(r);
+            spawnParticles(r.x, r.y, '#ff0000', 10);
+          }
+        } else if (r.hunger < CFG.HUNGER_THRESHOLD * 0.5) {
+          r.starvationDays = Math.max(0, r.starvationDays - 1);
+        }
+      }
+      for (const r of toRemove) {
+        if (r.workplace) r.workplace.assignedWorkers--;
+        if (r.buildTarget) r.buildTarget.assignedEngineer = null;
+        removeHome(r);
+        G.residents = G.residents.filter(rr => rr !== r);
+      }
       // 让居民回家睡觉
       for (const r of G.residents) {
         if (r.isGuard) continue; // guards handle their own sleep
@@ -1122,7 +1175,7 @@ function updateResidents(dt) {
       }
       case 'EATING':
         if ((r.eatTimer-=dt)<=0) {
-          if (G.resources.food>0) { G.resources.food--; r.hunger=0; }
+          if (G.resources.food>0) { G.resources.food--; r.hunger=0; r.starvationDays=0; }
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.carrying?'HAULING' : r.workplace?'GOING_TO_WORK':'IDLE';
         }
@@ -1149,7 +1202,9 @@ function updateResidents(dt) {
         const b=r.workplace, def=BLD_DEFS[b.type];
         const eff=b.efficiency();
         if (eff<=0) break;
-        b.productionProgress += dt / (def.baseTime/eff);
+        let prodMult = starvationDebuff(r);
+        if (b.type === 'farm') prodMult *= getFarmAdjacencyBonus(b);
+        b.productionProgress += dt / (def.baseTime/eff) * prodMult;
         if (b.productionProgress >= 1) {
           b.productionProgress = 0;
           const res = def.produces;
@@ -1357,6 +1412,50 @@ function updateBuildings(dt) {
           nr.hidden = (G.phase!=='night'&&G.phase!=='dusk');
           G.residents.push(nr);
         }
+      }
+    }
+    // Forester: plant saplings in radius
+    if (b.type==='forester' && !b.blueprint && b.hp>0) {
+      const eff = b.efficiency();
+      if (eff > 0) {
+        b.foresterPlantCooldown -= dt * eff;
+        if (b.foresterPlantCooldown <= 0) {
+          b.foresterPlantCooldown = 3; // plant every 3s at full speed
+          const def = BLD_DEFS[b.type];
+          const radius = (def.foresterRadius||4) * CFG.CELL;
+          const bc = b.center();
+          // Find empty cell in radius
+          for (let attempt=0; attempt<10; attempt++) {
+            const angle = Math.random()*Math.PI*2;
+            const dist = Math.random()*radius;
+            const px = bc.x + Math.cos(angle)*dist;
+            const py = bc.y + Math.sin(angle)*dist;
+            const col = gridCol(px), row = gridRow(py);
+            if (col<0||row<0||col>=CFG.WORLD_COLS||row>=CFG.WORLD_ROWS) continue;
+            if (isCellBlocked(col, row)) continue;
+            // Don't plant on existing resources
+            let hasResource = false;
+            for (const node of G.resourceNodes) {
+              if (!node.alive) continue;
+              if (Math.hypot(node.x-px, node.y-py) < CFG.CELL*0.6) { hasResource=true; break; }
+            }
+            if (hasResource) continue;
+            G.resourceNodes.push({
+              type:'sapling', col, row, x:gridX(col)+CFG.CELL/2, y:gridY(row)+CFG.CELL/2,
+              hp:1, alive:true, marked:false, growTimer:10
+            });
+            break;
+          }
+        }
+      }
+    }
+  }
+  // Grow saplings
+  for (const node of G.resourceNodes) {
+    if (node.type==='sapling' && node.alive) {
+      node.growTimer -= dt;
+      if (node.growTimer <= 0) {
+        node.type = 'tree'; node.marked = true;
       }
     }
   }
@@ -1738,6 +1837,38 @@ function render() {
     if (!(G.placingMode && b===G.movingBuilding)) drawBuilding(b,b.x,b.y);
   }
 
+  // Farm adjacency lines
+  const drawnPairs = new Set();
+  for (const b of G.buildings) {
+    if (b.type !== 'farm' || b.hp <= 0 || b.blueprint) continue;
+    const def = BLD_DEFS.farm;
+    const neighbors = [
+      { col: b.col, row: b.row - def.sz[1] },
+      { col: b.col, row: b.row + def.sz[1] },
+      { col: b.col - def.sz[0], row: b.row },
+      { col: b.col + def.sz[0], row: b.row },
+    ];
+    for (const n of neighbors) {
+      for (const other of G.buildings) {
+        if (other === b || other.type !== 'farm' || other.hp <= 0) continue;
+        const od = BLD_DEFS.farm;
+        if (n.col >= other.col && n.col < other.col + od.sz[0] &&
+            n.row >= other.row && n.row < other.row + od.sz[1]) {
+          const key = Math.min(b.x + b.y * 10000, other.x + other.y * 10000) + '_' + Math.max(b.x + b.y * 10000, other.x + other.y * 10000);
+          if (!drawnPairs.has(key)) {
+            drawnPairs.add(key);
+            const c1 = b.center(), c2 = other.center();
+            ctx.strokeStyle = 'rgba(100,255,100,0.3)'; ctx.lineWidth = 1.5 / G.cam.zoom;
+            ctx.setLineDash([6, 4]);
+            ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke();
+            ctx.setLineDash([]);
+          }
+          break;
+        }
+      }
+    }
+  }
+
   // Residents
   for (const r of G.residents) if (!r.hidden) drawResident(r);
 
@@ -1747,7 +1878,15 @@ function render() {
   // Resource nodes
   for (const node of G.resourceNodes) {
     if (!node.alive) continue;
-    if (node.type === 'tree') {
+    if (node.type === 'sapling') {
+      ctx.fillStyle = '#5a3a1a'; ctx.fillRect(node.x - 1, node.y - 3, 2, 6);
+      ctx.fillStyle = '#5a9a3d'; ctx.beginPath(); ctx.arc(node.x, node.y - 5, 3, 0, Math.PI*2); ctx.fill();
+      const growProgress = 1 - (node.growTimer / 10);
+      if (growProgress > 0) {
+        ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
+        ctx.beginPath(); ctx.arc(node.x, node.y - 5, 4, -Math.PI/2, -Math.PI/2+Math.PI*2*growProgress); ctx.stroke();
+      }
+    } else if (node.type === 'tree') {
       ctx.fillStyle = '#6b4226'; ctx.fillRect(node.x - 3, node.y - 5, 6, 10);
       ctx.fillStyle = '#3d7a3d'; ctx.beginPath(); ctx.arc(node.x, node.y - 8, 7, 0, Math.PI * 2); ctx.fill();
       if (node.marked) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(node.x - 8, node.y - 16, 16, 24); ctx.setLineDash([]); }
@@ -1777,13 +1916,24 @@ function render() {
   // Selection outline & range (world space)
   if (G.selectedBuilding && !G.placingMode) {
     const b=G.selectedBuilding;
-    if (b.type==='arrow_tower') {
+    if (b.type==='arrow_tower' || b.type==='auto_arrow_tower') {
       const def=BLD_DEFS[b.type];
       const center=b.center();
       ctx.fillStyle='rgba(255,255,255,0.08)';
       ctx.beginPath(); ctx.arc(center.x, center.y, def.range, 0, Math.PI*2); ctx.fill();
       ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1/G.cam.zoom;
       ctx.beginPath(); ctx.arc(center.x, center.y, def.range, 0, Math.PI*2); ctx.stroke();
+    }
+    if (b.type==='forester') {
+      const def=BLD_DEFS[b.type];
+      const center=b.center();
+      const fr = (def.foresterRadius||4) * CFG.CELL;
+      ctx.fillStyle='rgba(100,255,100,0.06)';
+      ctx.beginPath(); ctx.arc(center.x, center.y, fr, 0, Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(100,255,100,0.3)'; ctx.lineWidth=1/G.cam.zoom;
+      ctx.setLineDash([3,6]);
+      ctx.beginPath(); ctx.arc(center.x, center.y, fr, 0, Math.PI*2); ctx.stroke();
+      ctx.setLineDash([]);
     }
     ctx.strokeStyle='#ffd700'; ctx.lineWidth=2/G.cam.zoom; ctx.setLineDash([4,4]);
     ctx.strokeRect(b.x-2,b.y-2,b.size[0]*CFG.CELL+4,b.size[1]*CFG.CELL+4);
@@ -1880,7 +2030,7 @@ function drawBuilding(b, x, y) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',forester:'#3d7a3d',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResident(r) {
@@ -1916,6 +2066,8 @@ function drawResident(r) {
     ctx.fillStyle = gpct > 0.5 ? '#4a4' : gpct > 0.25 ? '#fa4' : '#f44';
     ctx.fillRect(r.x - gbw/2, r.y + cr + 4, gbw * gpct, gbh);
   }
+  if (r.starvationDays >= 2) { ctx.fillStyle='#f44'; ctx.font='bold 9px sans-serif'; ctx.fillText('💀',r.x-5,r.y-24); }
+  else if (r.starvationDays >= 1) { ctx.fillStyle='#f84'; ctx.font='8px sans-serif'; ctx.fillText('⚠',r.x-5,r.y-22); }
   if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='8px sans-serif'; ctx.fillText('🍗',r.x-8,r.y-20); }
   if (r.tired>CFG.TIRED_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='8px sans-serif'; ctx.fillText('💤',r.x+5,r.y-20); }
 }
