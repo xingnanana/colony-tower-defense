@@ -7,48 +7,79 @@
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
-  background:#1a1a2e; display:flex; justify-content:center; align-items:center;
+  background:#101713; display:flex; justify-content:center; align-items:center;
   width:100vw; height:100vh; margin:0; padding:4px;
   font-family:'Microsoft YaHei',sans-serif; user-select:none; overflow:hidden;
 }
-#game-container { position:relative; display:flex; gap:8px; width:100%; height:100%; }
-canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min-width:0; min-height:0; }
+#game-container { position:relative; display:grid; grid-template-columns:168px minmax(400px,1fr) 188px; gap:10px; width:100%; height:100%; }
+canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; min-width:0; min-height:0; box-shadow:0 0 0 1px #0b0f0d; }
 
 #topbar {
-  position:absolute; top:8px; left:50%; transform:translateX(-50%);
-  display:flex; gap:16px; z-index:10;
-  background:rgba(0,0,0,0.85); padding:6px 16px; border-radius:8px; color:#fff; font-size:13px;
+  position:absolute; top:8px; left:calc(50% - 10px); transform:translateX(-50%);
+  display:flex; gap:15px; z-index:10;
+  background:rgba(15,20,17,0.94); padding:7px 16px; border-radius:6px; color:#f1f0e8; font-size:13px;
+  border:1px solid rgba(181,163,111,0.42); box-shadow:0 3px 14px rgba(0,0,0,0.35);
   pointer-events:none;
 }
-.top-res { display:flex; align-items:center; gap:4px; }
-.top-res .icon { font-size:16px; }
+.top-res { display:flex; align-items:center; gap:5px; min-width:40px; }
+.top-res .icon { width:12px; height:12px; display:inline-block; position:relative; flex:none; }
 .top-res .val { font-weight:bold; color:#ffd700; }
+.resource-mark { width:12px; height:12px; display:inline-block; position:relative; flex:none; }
+.resource-mark.food { background:#d6a83b; border-radius:50% 50% 45% 45%; box-shadow:inset 2px 2px rgba(255,245,184,0.45); }
+.resource-mark.wood { background:#9b663d; border-radius:3px; transform:rotate(45deg) scale(0.78); }
+.resource-mark.stone { background:#a4aba5; border-radius:3px; transform:rotate(45deg) scale(0.78); box-shadow:inset 2px 2px rgba(255,255,255,0.35); }
+.resource-mark.iron { border:2px solid #d28a5b; border-radius:50%; }
+.resource-mark.iron::after { content:''; position:absolute; width:4px; height:4px; left:2px; top:2px; background:#d28a5b; border-radius:50%; }
+.resource-mark.ingot { background:#7795a2; border-radius:2px; transform:skew(-12deg); box-shadow:inset 2px 2px rgba(235,250,255,0.35); }
+.resource-mark.population { border:2px solid #c7d0c7; border-radius:50%; width:11px; height:11px; }
+.resource-mark.population::after { content:''; position:absolute; width:12px; height:5px; left:-3px; bottom:-5px; border:2px solid #c7d0c7; border-bottom:0; border-radius:8px 8px 0 0; }
+.resource-mark.guard { border:2px solid #d38a59; transform:rotate(45deg) scale(0.72); }
+.resource-mark.day { border:2px solid #e0c36e; border-radius:50%; }
+.resource-mark.day::after { content:''; position:absolute; width:4px; height:4px; background:#e0c36e; border-radius:50%; left:2px; top:2px; }
+.resource-mark.day.night { border-color:#8da5b7; }
+.resource-mark.day.night::after { background:#8da5b7; border-radius:1px; width:4px; height:4px; left:2px; top:2px; }
+.resource-mark.day.dusk { border-color:#d89162; }
+.resource-mark.day.dusk::after { background:#d89162; }
+.resource-mark.day.dawn { border-color:#d9bd6c; }
+.resource-mark.day.dawn::after { background:#d9bd6c; }
 
 #building-panel {
-  width:120px; background:rgba(0,0,0,0.85); border-radius:8px; padding:8px;
+  width:auto; min-width:0; background:#171d1a; border:1px solid #354138; border-radius:6px; padding:10px;
   display:flex; flex-direction:column; gap:4px; color:#fff; font-size:12px;
+  overflow-y:auto; overflow-x:hidden;
 }
-#building-panel h3 { text-align:center; font-size:14px; margin-bottom:4px; color:#ffd700; }
+#building-panel h3 { text-align:left; font-size:13px; margin:0 2px 6px; color:#e1c878; letter-spacing:1px; }
+.panel-title { display:flex; align-items:center; gap:7px; font-size:13px; color:#e1c878; letter-spacing:1px; padding:2px 2px 7px; border-bottom:1px solid #344239; }
+.panel-title::before { content:''; width:4px; height:15px; background:#c3a65e; border-radius:1px; }
+.panel-section { padding:7px 0 5px; border-bottom:1px solid #2c3830; }
+.section-label { color:#87968a; font-size:10px; letter-spacing:1px; margin-bottom:5px; }
+.bld-btn { display:flex; align-items:center; gap:7px; width:100%; min-height:38px; }
+.bld-btn .bld-copy { min-width:0; line-height:1.25; }
+.bld-mark { width:22px; height:22px; display:grid; place-items:center; flex:none; border:1px solid #8c9a8e; color:#e5e7df; font:700 11px/1 'Microsoft YaHei',sans-serif; letter-spacing:0; background:#2d3931; border-radius:3px; }
+.bld-mark.production { border-color:#a9ae67; color:#e0d783; }
+.bld-mark.storage { border-color:#a6815e; color:#e1bf91; }
+.bld-mark.defense { border-color:#b97c5d; color:#e8a87a; }
+.bld-mark.facility { border-color:#b9a768; color:#e6d18b; }
 .bld-btn {
-  background:#2a2a4a; border:1px solid #444; color:#ddd;
+  background:#222b26; border:1px solid #3c4941; color:#e5e7df;
   padding:8px 6px; border-radius:4px; cursor:pointer;
   font-size:11px; font-family:inherit; text-align:left; transition:all 0.15s;
 }
-.bld-btn:hover { background:#3a3a6a; border-color:#888; }
-.bld-btn.selected { background:#4a4a2a; border-color:#ffd700; }
+.bld-btn:hover { background:#303c35; border-color:#718176; }
+.bld-btn.selected { background:#3e432a; border-color:#e1c878; }
 .bld-btn .cost { font-size:10px; color:#aaa; }
 
 #context-menu {
   position:fixed; display:none; flex-direction:column; gap:2px;
-  background:rgba(0,0,0,0.92); padding:4px; border-radius:6px;
-  border:1px solid #555; z-index:20; min-width:130px;
+  background:rgba(18,24,20,0.97); padding:5px; border-radius:6px;
+  border:1px solid #536158; z-index:20; min-width:140px; box-shadow:0 8px 24px rgba(0,0,0,0.42);
 }
 #context-menu button {
-  background:#2a2a4a; border:1px solid #444; color:#ddd;
+  background:#26312b; border:1px solid #46544c; color:#e8e9e3;
   padding:6px 10px; border-radius:3px; cursor:pointer;
   font-size:12px; font-family:inherit; text-align:left;
 }
-#context-menu button:hover { background:#3a3a6a; }
+#context-menu button:hover { background:#35443b; }
 #context-menu .info-line {
   color:#aaa; font-size:11px; padding:4px 8px;
   text-align:center; border-bottom:1px solid #333; margin-bottom:2px;
@@ -61,149 +92,149 @@ canvas { border:2px solid #333; border-radius:4px; cursor:crosshair; flex:1; min
   pointer-events:none; z-index:5; opacity:0; transition:opacity 0.5s;
 }
 #debug-panel {
-  width:120px; background:rgba(0,0,0,0.85); border-radius:8px; padding:8px;
+  width:auto; background:#171d1a; border:1px solid #354138; border-radius:6px; padding:10px;
   color:#fff; font-size:11px; display:flex; flex-direction:column; gap:2px;
   position:relative; z-index:1; flex-shrink:0;
 }
+.debug-actions { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
+.debug-actions .full { grid-column:1 / -1; }
+.control-label { color:#87968a; font-size:10px; letter-spacing:1px; padding:3px 0 2px; }
+.dbg-btn { min-height:27px; }
 .dbg-btn {
-  background:#3a3a5a; border:1px solid #555; color:#ddd;
+  background:#28342d; border:1px solid #46544c; color:#e1e3dc;
   padding:3px 6px; border-radius:3px; cursor:pointer;
   font-size:11px; font-family:inherit;
 }
-.dbg-btn:hover { background:#5a5a7a; }
+.dbg-btn:hover { background:#3b4a41; }
 .dbg-row { display:flex; align-items:center; gap:3px; }
 .dbg-row input {
   width:50px; background:#222; border:1px solid #555; color:#fff;
   padding:2px 4px; border-radius:3px; font-size:11px; font-family:inherit;
 }
+.tool-bar { position:absolute; right:198px; bottom:10px; display:flex; gap:7px; z-index:10; align-items:center; background:rgba(15,22,18,0.92); border:1px solid #435248; padding:5px 7px; border-radius:5px; color:#edf0e5; font-size:11px; box-shadow:0 4px 18px rgba(0,0,0,0.3); }
+.tool-btn { border:0; border-left:1px solid #48564b; padding:1px 7px; background:none; color:#d7dfd3; cursor:pointer; font:inherit; }
+.tool-btn:first-child { border-left:0; }
+.tool-btn:hover { color:#e5c66c; }
+.tool-btn.active { color:#e5c66c; background:#35402e; }
+.engineer-bar { position:absolute; right:198px; bottom:53px; display:flex; gap:7px; z-index:10; align-items:center; background:rgba(15,22,18,0.92); border:1px solid #435248; padding:5px 8px; border-radius:5px; color:#edf0e5; font-size:11px; box-shadow:0 4px 18px rgba(0,0,0,0.3); }
+.bar-action { color:#d6c477; cursor:pointer; font-weight:bold; padding:0 4px; }
+.bar-action:hover { color:#fff0a5; }
+.overlay-panel { background:#171d1a !important; border:1px solid #536158 !important; border-radius:6px !important; box-shadow:0 12px 36px rgba(0,0,0,0.5); }
+#config-overlay select,#config-overlay input { background:#222b26 !important; border-color:#46544c !important; color:#edf0e5 !important; }
+#config-overlay button { border-radius:4px !important; }
+@media (max-width:900px) { #game-container { grid-template-columns:140px minmax(320px,1fr) 154px; gap:6px; } #debug-panel,#building-panel { padding:7px; } .bld-btn { min-height:32px; padding:5px 4px; } #topbar { gap:8px; left:calc(50% - 6px); } .tool-bar,.engineer-bar { right:164px; } }
 </style>
 </head>
 <body>
 
 <div id="game-container">
   <div id="debug-panel">
-    <div style="font-size:12px;color:#ffd700;margin-bottom:2px;">🔧 调试</div>
-    <div style="display:flex;gap:2px;margin-bottom:3px;flex-wrap:wrap;">
-      <button class="dbg-btn" onclick="setSpeed(0)">⏸</button>
-      <button class="dbg-btn" onclick="setSpeed(1)">▶</button>
-      <button class="dbg-btn" onclick="setSpeed(2)">2x</button>
-      <button class="dbg-btn" onclick="setSpeed(5)">5x</button>
-      <button class="dbg-btn" onclick="setSpeed(20)">20x</button>
-    </div>
-    <div style="display:flex;gap:2px;margin-bottom:3px;">
-      <button class="dbg-btn" onclick="setAllRes()" style="flex:1">💰 无限资源</button>
-    </div>
-    <div style="display:flex;gap:2px;margin-bottom:3px;">
-      <button class="dbg-btn" onclick="addPop(1)" style="flex:1">+👤</button>
-      <button class="dbg-btn" onclick="addPop(-1)" style="flex:1">-👤</button>
-    </div>
-    <div style="display:flex;gap:2px;margin-bottom:3px;">
-      <button class="dbg-btn" onclick="skipToDay()" style="flex:1">☀️ 白天</button>
-      <button class="dbg-btn" onclick="skipToNight()" style="flex:1">🌙 夜晚</button>
-    </div>
-      <div style="display:flex;gap:2px;margin-bottom:3px;">
-        <button class="dbg-btn" onclick="unlockAll()" style="flex:1">🔓解锁</button>
-        <button class="dbg-btn" onclick="upgradeTH()" style="flex:1">⬆升本</button>
-      </div>
-      <div style="display:flex;gap:2px;margin-bottom:3px;">
-        <button class="dbg-btn" onclick="restartGame()" style="flex:1">🔄重新开始</button>
-      </div>
-      <div style="display:flex;gap:2px;margin-bottom:3px;">
-        <button class="dbg-btn" onclick="openConfigPanel()" style="flex:1">✏️编辑配置</button>
-      </div>
-    <div style="display:flex;flex-wrap:wrap;gap:2px;">
-      <div class="dbg-row"><span>🍗</span><input id="dbg-food" type="number" value="50" size="4"><button class="dbg-btn" onclick="setRes('food')">设</button></div>
-      <div class="dbg-row"><span>🪵</span><input id="dbg-wood" type="number" value="30" size="4"><button class="dbg-btn" onclick="setRes('wood')">设</button></div>
-      <div class="dbg-row"><span>🪨</span><input id="dbg-stone" type="number" value="20" size="4"><button class="dbg-btn" onclick="setRes('stone')">设</button></div>
-      <div class="dbg-row"><span>⚒</span><input id="dbg-iron" type="number" value="0" size="4"><button class="dbg-btn" onclick="setRes('iron')">设</button></div>
+    <div class="panel-title">开发控制</div>
+    <div class="panel-section"><div class="section-label">时间倍率</div><div class="debug-actions">
+      <button class="dbg-btn" onclick="setSpeed(0)">暂停</button><button class="dbg-btn" onclick="setSpeed(1)">正常</button>
+      <button class="dbg-btn" onclick="setSpeed(2)">2 倍</button><button class="dbg-btn" onclick="setSpeed(5)">5 倍</button>
+      <button class="dbg-btn full" onclick="setSpeed(20)">20 倍</button>
+    </div></div>
+    <div class="panel-section"><div class="section-label">快速操作</div><div class="debug-actions">
+      <button class="dbg-btn full" onclick="setAllRes()">无限资源</button>
+      <button class="dbg-btn" onclick="addPop(1)">增加居民</button><button class="dbg-btn" onclick="addPop(-1)">减少居民</button>
+      <button class="dbg-btn" onclick="skipToDay()">跳至白天</button><button class="dbg-btn" onclick="skipToNight()">跳至夜晚</button>
+      <button class="dbg-btn" onclick="unlockAll()">全部解锁</button><button class="dbg-btn" onclick="upgradeTH()">升级大本营</button>
+      <button class="dbg-btn" onclick="restartGame()">重新开始</button><button class="dbg-btn" onclick="openConfigPanel()">编辑配置</button>
+    </div></div>
+    <div class="panel-section"><div class="section-label">资源注入</div>
+      <div class="dbg-row"><span class="resource-mark food"></span><input id="dbg-food" type="number" value="50" size="4"><button class="dbg-btn" onclick="setRes('food')">设定</button></div>
+      <div class="dbg-row"><span class="resource-mark wood"></span><input id="dbg-wood" type="number" value="40" size="4"><button class="dbg-btn" onclick="setRes('wood')">设定</button></div>
+      <div class="dbg-row"><span class="resource-mark stone"></span><input id="dbg-stone" type="number" value="20" size="4"><button class="dbg-btn" onclick="setRes('stone')">设定</button></div>
+      <div class="dbg-row"><span class="resource-mark iron"></span><input id="dbg-iron" type="number" value="0" size="4"><button class="dbg-btn" onclick="setRes('iron')">设定</button></div>
     </div>
   </div>
   <canvas id="game"></canvas>
   <div id="building-panel">
-    <h3>🏘 建筑</h3>
-    <button class="bld-btn" data-type="floor">🟫 地板<div class="cost">1木</div></button>
-    <button class="bld-btn" data-type="farm">🌾 农场<div class="cost">5木</div></button>
-    <button class="bld-btn" data-type="forester">🌲 护林员小屋<div class="cost">15木 10石</div></button>
-    <button class="bld-btn" data-type="arrow_tower">🏹 箭塔<div class="cost">20木 10石</div></button>
-    <button class="bld-btn" data-type="auto_arrow_tower">🏹 自动箭塔<div class="cost">30木 20石</div></button>
-    <button class="bld-btn" data-type="house">🏠 住房<div class="cost">10木 5石</div></button>
-    <button class="bld-btn" data-type="wood_storage">🪵 木材仓库<div class="cost">10木 5石</div></button>
-    <button class="bld-btn" data-type="food_storage">🍗 食物仓库<div class="cost">10木 5石</div></button>
-    <button class="bld-btn" data-type="quarry">⛏ 采石场<div class="cost">10木 5石</div></button>
-    <button class="bld-btn" data-type="stone_storage">🪨 石材仓库<div class="cost">10木 5石</div></button>
-    <button class="bld-btn" data-type="wall">🧱 城墙<div class="cost">5石</div></button>
-    <button class="bld-btn" data-type="iron_mine">⚒ 铁矿<div class="cost">15木 10石</div></button>
-    <button class="bld-btn" data-type="smelter">🔥 炼铁机<div class="cost">20木 15石</div></button>
-    <button class="bld-btn" data-type="iron_storage">⚒ 铁矿仓库<div class="cost">10木 10石</div></button>
-    <button class="bld-btn" data-type="ingot_storage">🔩 铁锭仓库<div class="cost">10木 10石</div></button>
+    <div class="panel-title">建筑目录</div>
+    <div class="panel-section"><div class="section-label">基础设施</div>
+      <button class="bld-btn" data-type="floor"><span class="bld-copy">地板<div class="cost">1 木</div></span></button>
+      <button class="bld-btn" data-type="house"><span class="bld-copy">住房<div class="cost">10 木 5 石</div></span></button>
+    </div><div class="panel-section"><div class="section-label">生产设施</div>
+      <button class="bld-btn" data-type="farm"><span class="bld-mark production">农</span><span class="bld-copy">农场<div class="cost">5 木</div></span></button>
+      <button class="bld-btn" data-type="forester"><span class="bld-mark production">林</span><span class="bld-copy">护林员小屋<div class="cost">15 木 10 石</div></span></button>
+      <button class="bld-btn" data-type="quarry"><span class="bld-mark production">石</span><span class="bld-copy">采石场<div class="cost">10 木 5 石</div></span></button>
+      <button class="bld-btn" data-type="iron_mine"><span class="bld-mark production">矿</span><span class="bld-copy">铁矿<div class="cost">15 木 10 石</div></span></button>
+      <button class="bld-btn" data-type="smelter"><span class="bld-mark production">炉</span><span class="bld-copy">炼铁机<div class="cost">20 木 15 石</div></span></button>
+    </div><div class="panel-section"><div class="section-label">仓储设施</div>
+      <button class="bld-btn" data-type="wood_storage"><span class="bld-mark storage">木</span><span class="bld-copy">木材仓库<div class="cost">10 木 5 石</div></span></button>
+      <button class="bld-btn" data-type="food_storage"><span class="bld-mark storage">食</span><span class="bld-copy">食物仓库<div class="cost">10 木 5 石</div></span></button>
+      <button class="bld-btn" data-type="stone_storage"><span class="bld-mark storage">石</span><span class="bld-copy">石材仓库<div class="cost">10 木 5 石</div></span></button>
+      <button class="bld-btn" data-type="iron_storage"><span class="bld-mark storage">铁</span><span class="bld-copy">铁矿仓库<div class="cost">10 木 10 石</div></span></button>
+      <button class="bld-btn" data-type="ingot_storage"><span class="bld-mark storage">锭</span><span class="bld-copy">铁锭仓库<div class="cost">10 木 10 石</div></span></button>
+    </div><div class="panel-section"><div class="section-label">防御设施</div>
+      <button class="bld-btn" data-type="arrow_tower"><span class="bld-mark defense">塔</span><span class="bld-copy">箭塔<div class="cost">20 木 10 石</div></span></button>
+      <button class="bld-btn" data-type="auto_arrow_tower"><span class="bld-mark defense">自</span><span class="bld-copy">自动箭塔<div class="cost">30 木 20 石</div></span></button>
+      <button class="bld-btn" data-type="wall"><span class="bld-mark defense">墙</span><span class="bld-copy">城墙<div class="cost">5 石</div></span></button>
+    </div>
   </div>
 
   <div id="topbar">
-    <div class="top-res"><span class="icon">🍗</span><span class="val" id="r-food">50</span></div>
-    <div class="top-res"><span class="icon">🪵</span><span class="val" id="r-wood">30</span></div>
-    <div class="top-res"><span class="icon">🪨</span><span class="val" id="r-stone">20</span></div>
-    <div class="top-res"><span class="icon">⚒</span><span class="val" id="r-iron">0</span></div>
+    <div class="top-res"><span class="resource-mark food"></span><span class="val" id="r-food">50</span></div>
+    <div class="top-res"><span class="resource-mark wood"></span><span class="val" id="r-wood">40</span></div>
+    <div class="top-res"><span class="resource-mark stone"></span><span class="val" id="r-stone">20</span></div>
+    <div class="top-res"><span class="resource-mark iron"></span><span class="val" id="r-iron">0</span></div>
+    <div class="top-res"><span class="resource-mark ingot"></span><span class="val" id="r-ingot">0</span></div>
     <div style="color:#aaa;">|</div>
-    <div class="top-res"><span class="icon">👤</span><span class="val" id="r-pop">4/8</span></div>
-    <div class="top-res"><span class="icon">⚔️</span><span class="val" id="r-guard-top">0</span></div>
+    <div class="top-res"><span class="resource-mark population"></span><span class="val" id="r-pop">4/4</span></div>
+    <div class="top-res"><span class="resource-mark guard"></span><span class="val" id="r-guard-top">0</span></div>
     <div style="color:#aaa;">|</div>
-    <div class="top-res"><span class="icon" id="day-icon">☀️</span><span class="val" id="r-time">Day 1</span></div>
+    <div class="top-res"><span class="resource-mark day" id="day-icon"></span><span class="val" id="r-time">第 1 天</span></div>
   </div>
 
   <div id="time-indicator"></div>
 
-  <div id="chop-bar" style="position:absolute; bottom:8px; right:196px;
-  display:flex; gap:6px; z-index:10; align-items:center;
-  background:rgba(0,0,0,0.7); padding:3px 8px; border-radius:6px; color:#fff; font-size:12px;">
-  <span id="chop-btn" style="cursor:pointer;color:#8a4;padding:2px 6px;" onclick="toggleChopMode()" title="框选砍伐">🪓</span>
-  <span id="unchop-btn" style="cursor:pointer;color:#a84;padding:2px 6px;" onclick="toggleUnchopMode()" title="取消砍伐">❌</span>
-</div>
-
-  <div id="eng-bar" style="position:absolute; bottom:36px; right:210px;
-  display:flex; gap:6px; z-index:10; align-items:center;
-  background:rgba(0,0,0,0.7); padding:3px 10px; border-radius:6px; color:#fff; font-size:12px;">
-  <span id="eng-minus" style="cursor:pointer;color:#a44;" onclick="unassignEngineer()" title="取消工程师">➖</span>
-  <span>👷 <span id="r-eng">0/0</span></span>
-  <span id="eng-plus" style="cursor:pointer;color:#4a4;" onclick="assignEngineer()" title="指派工程师">➕</span>
-</div>
+  <div id="chop-bar" class="tool-bar"><span class="section-label">林务</span>
+    <button id="chop-btn" class="tool-btn" onclick="toggleChopMode()" title="框选砍伐">标记砍伐</button>
+    <button id="unchop-btn" class="tool-btn" onclick="toggleUnchopMode()" title="取消砍伐">取消标记</button>
+  </div>
+  <div id="eng-bar" class="engineer-bar">
+    <span class="section-label">施工班组</span><span id="eng-minus" class="bar-action" onclick="unassignEngineer()" title="取消工程师">−</span>
+    <span>工程师 <span id="r-eng">0/0</span></span><span id="eng-plus" class="bar-action" onclick="assignEngineer()" title="指派工程师">+</span>
+  </div>
 
 </div>
 
 <input type="file" id="config-file-import" accept=".json" style="display:none">
 <div id="config-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
   background:rgba(0,0,0,0.8); z-index:100; justify-content:center;align-items:center;">
-  <div style="background:#1a1a2e; border:2px solid #555; border-radius:12px; padding:20px;
+  <div class="overlay-panel" style="background:#1a1a2e; border:2px solid #555; border-radius:12px; padding:20px;
     width:600px; max-height:85vh; overflow-y:auto; color:#fff; font-size:12px;">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-      <h2 style="color:#ffd700; margin:0;">✏️ 配置编辑</h2>
+      <h2 style="color:#ffd700; margin:0;">配置编辑器</h2>
       <button onclick="closeConfigPanel()" style="background:#a44; color:#fff; border:none; padding:6px 14px;
-        border-radius:4px; cursor:pointer; font-size:14px; font-family:inherit;">✖ 关闭</button>
+        border-radius:4px; cursor:pointer; font-size:14px; font-family:inherit;">关闭</button>
     </div>
     <div style="display:flex; gap:8px; margin-bottom:10px;">
       <select id="cfg-category" onchange="cfgSelectCategory()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;">
-        <option value="buildings">🏗 建筑</option>
-        <option value="resources">💰 资源</option>
+        <option value="buildings">建筑</option>
+        <option value="resources">资源</option>
       </select>
       <select id="cfg-item" onchange="cfgSelectItem()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;flex:1;"></select>
     </div>
     <div id="cfg-fields" style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;"></div>
     <div style="display:flex; gap:8px;">
       <button onclick="cfgApply()" style="flex:1; padding:8px; background:#4a4; color:#fff;
-        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">✅ 应用</button>
+        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">应用</button>
       <button onclick="cfgExportJSON()" style="flex:1; padding:8px; background:#4a6aaa; color:#fff;
-        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">💾 导出JSON</button>
+        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">导出 JSON</button>
       <button onclick="cfgImportJSON()" style="flex:1; padding:8px; background:#6a5a2a; color:#fff;
-        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">📂 导入JSON</button>
+        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">导入 JSON</button>
     </div>
   </div>
 </div>
 <div id="context-menu"></div>
 <div id="gameover-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
   background:rgba(0,0,0,0.7); z-index:100; justify-content:center;align-items:center;flex-direction:column;gap:16px;">
-  <div style="font-size:36px;color:#f44;font-weight:bold;">💀 游戏结束</div>
+  <div style="font-size:36px;color:#f07162;font-weight:bold;">殖民地失守</div>
   <div id="gameover-msg" style="font-size:18px;color:#fff;"></div>
   <button onclick="restartGame()" style="padding:12px 32px;font-size:18px;background:#4a4;color:#fff;
-    border:none;border-radius:8px;cursor:pointer;font-family:inherit;">🔄 重新开始</button>
+    border:none;border-radius:8px;cursor:pointer;font-family:inherit;">重新开始</button>
 </div>
 
 
@@ -220,60 +251,62 @@ const CFG = {
   CELL: 40, WORLD_COLS: 150, WORLD_ROWS: 150,
   WORLD_W: 6000, WORLD_H: 6000,
   DAY_DURATION: 162, NIGHT_DURATION: 78, TRANSITION: 8,
-  START_FOOD: 50, START_WOOD: 40, START_STONE: 20, START_IRON: 0,
+  START_FOOD: 50, START_WOOD: 40, START_STONE: 20, START_IRON: 0, START_INGOT: 0,
   START_POP: 4, MAX_POP_BASE: 4,
   HUNGER_RATE: 0.6, HUNGER_THRESHOLD: 60,
   TIRED_RATE: 0.4, TIRED_THRESHOLD: 100,
   ENEMY_BASE_HP: 40, ENEMY_SPEED: 50, ENEMY_DAMAGE: 8, ENEMY_ATTACK_RANGE: 30,
   TOWER_RANGE: 150, TOWER_DAMAGE: 15, TOWER_COOLDOWN: 0.8,
   RESIDENT_SPEED: 60,
+  PRODUCTION_BATCH_SIZE: 5,
+  NAV_RECHECK_INTERVAL: 0.25,
+  NAV_STUCK_TIMEOUT: 0.5,
 };
 
 // ============================================================
 // BUILDING DEFINITIONS
 // ============================================================
 const BLD_DEFS = {
-  floor:       { name:'地板', icon:'🟫', cat:'facility',  sz:[5,5], cost:{wood:1},        hp:50,  maxWorkers:0, unlock:1 , buildTime:0 },
+  floor:       { name:'地板', icon:'', cat:'facility',  sz:[5,5], cost:{wood:1},        hp:50,  maxWorkers:0, unlock:1 , buildTime:0 },
 
-  house:       { name:'住房', icon:'🏠', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 , buildTime:5 },
+  house:       { name:'住房', icon:'', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 , buildTime:5 },
 
-  farm:        { name:'农场', icon:'🌾', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, unlock:1 , buildTime:2 },
+  farm:        { name:'农场', icon:'农', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, unlock:1 , buildTime:2 },
 
-  forester:    { name:'护林员小屋',icon:'🌲', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:3, produces:'wood', baseTime:10, unlock:2, buildTime:5, foresterRadius:4 },
+  forester:    { name:'护林员小屋',icon:'林', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:3, produces:'wood', baseTime:10, unlock:2, buildTime:5, foresterRadius:4 },
 
-  quarry:      { name:'采石场',icon:'⛏', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', baseTime:10, unlock:3 , buildTime:8 },
+  quarry:      { name:'采石场',icon:'石', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', sourceType:'stone', sourceRadius:3, baseTime:10, unlock:3 , buildTime:8 },
 
-  iron_mine:   { name:'铁矿', icon:'⚒', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:4, produces:'iron',  baseTime:12, unlock:4 , buildTime:11 },
+  iron_mine:   { name:'铁矿', icon:'矿', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:4, produces:'iron', sourceType:'iron', sourceRadius:3, baseTime:12, unlock:4 , buildTime:11 },
 
-  smelter:     { name:'炼铁机',icon:'🔥', cat:'production',sz:[2,2], cost:{wood:20,stone:15},hp:120, maxWorkers:2, produces:'ingot', baseTime:8, unlock:4 , buildTime:11 },
+  smelter:     { name:'炼铁机',icon:'炉', cat:'production',sz:[2,2], cost:{wood:20,stone:15},hp:120, maxWorkers:2, inputs:{iron:1}, produces:'ingot', baseTime:8, unlock:4 , buildTime:11 },
 
-  food_storage:{ name:'食物仓库',icon:'🍗', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:2 , buildTime:5 },
+  food_storage:{ name:'食物仓库',icon:'食', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:2 , buildTime:5 },
 
-  wood_storage:{ name:'木材仓库',icon:'🪵', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:2 , buildTime:5 },
+  wood_storage:{ name:'木材仓库',icon:'木', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:2 , buildTime:5 },
 
-  stone_storage:{name:'石材仓库',icon:'🪨', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:3 , buildTime:8 },
+  stone_storage:{name:'石材仓库',icon:'石', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, unlock:3 , buildTime:8 },
 
-  iron_storage:{ name:'铁矿仓库',icon:'⚒', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 , buildTime:11 },
+  iron_storage:{ name:'铁矿仓库',icon:'铁', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 , buildTime:11 },
 
-  ingot_storage:{name:'铁锭仓库',icon:'🔩', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 , buildTime:11 },
+  ingot_storage:{name:'铁锭仓库',icon:'锭', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, unlock:4 , buildTime:11 },
 
-  arrow_tower: { name:'箭塔', icon:'🏹', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8, unlock:1 , buildTime:2, needsManning:1 },
+  arrow_tower: { name:'箭塔', icon:'塔', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8, unlock:1 , buildTime:2, needsManning:1 },
 
-  auto_arrow_tower:{ name:'自动箭塔',icon:'🏹', cat:'defense', sz:[1,1], cost:{wood:30,stone:20},hp:150, maxWorkers:0, range:160, damage:18, cooldown:0.7, unlock:5 , buildTime:14 },
+  auto_arrow_tower:{ name:'自动箭塔',icon:'自', cat:'defense', sz:[1,1], cost:{wood:30,stone:20},hp:150, maxWorkers:0, range:160, damage:18, cooldown:0.7, unlock:5 , buildTime:14 },
 
-  town_hall:   { name:'大本营',icon:'🏛', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, recruitTime:10, recruitCost:{food:5}, guardRecruitTime:15, guardRecruitCost:{food:20}, unlock:1 , buildTime:2 },
+  town_hall:   { name:'大本营',icon:'', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, capacity:200, recruitTime:10, recruitCost:{food:5}, guardRecruitTime:15, guardRecruitCost:{food:20}, unlock:1 , buildTime:2 },
 
-  wall:        { name:'城墙', icon:'🧱', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0, unlock:3 , buildTime:8 },
+  wall:        { name:'城墙', icon:'墙', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0, unlock:3 , buildTime:8 },
 
 };
-
 
 // ============================================================
 // GAME STATE
 // ============================================================
 const G = {
   tick: 0, dt: 0, day: 1, dayTime: 0, phase: 'day', totalTime: 0,
-  resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON },
+  resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT },
   buildings: [], residents: [], enemies: [], particles: [],
   selectedBldType: null, selectedBuilding: null, hoveredCell: null,
   mouseX: 0, mouseY: 0,
@@ -286,6 +319,10 @@ const G = {
   floorMask: null, drawingFloor: false, lastFloorCell: '',
   resourceNodes: [],
   chopMode: false, unchopMode: false, chopStartX: -1, chopStartY: -1, chopEndX: -1, chopEndY: -1,
+  infiniteResources: false,
+  farmLinks: [],
+  resourceCleanupTimer: 0,
+  navigationRevision: 0,
 };
 
 // ============================================================
@@ -298,6 +335,7 @@ function gridCol(px) { return Math.floor(px/CFG.CELL); }
 function gridRow(py) { return Math.floor(py/CFG.CELL); }
 function gridX(col) { return col*CFG.CELL; }
 function gridY(row) { return row*CFG.CELL; }
+function invalidateNavigation() { G.navigationRevision++; }
 
 function canAfford(cost) {
   for (const [k,v] of Object.entries(cost||{}))
@@ -305,7 +343,46 @@ function canAfford(cost) {
   return true;
 }
 function payCost(cost) {
-  for (const [k,v] of Object.entries(cost||{})) G.resources[k] -= v;
+  if (G.infiniteResources) return;
+  for (const [k,v] of Object.entries(cost||{})) withdrawFromAnyStorage(k, v);
+}
+function storageCapacity(b) { return BLD_DEFS[b.type].capacity || 0; }
+function storedAmount(b, type) { return b.stored[type] || 0; }
+function storageUsedSpace(b) { return Object.values(b.stored || {}).reduce((sum, value) => sum + value, 0); }
+function storageFreeSpace(b) { return G.infiniteResources ? Infinity : Math.max(0, storageCapacity(b) - storageUsedSpace(b)); }
+function updateResourceTotal(type) {
+  G.resources[type] = G.buildings.reduce((total, b) => total + (isStorage(b.type) ? storedAmount(b, type) : 0), 0);
+}
+function updateAllResourceTotals() {
+  for (const type of ['food','wood','stone','iron','ingot']) updateResourceTotal(type);
+}
+function depositToStorage(b, type, amount) {
+  const deposited = Math.min(amount, storageFreeSpace(b, type));
+  if (deposited <= 0) return 0;
+  b.stored[type] = storedAmount(b, type) + deposited;
+  G.resources[type] = (G.resources[type] || 0) + deposited;
+  return deposited;
+}
+function withdrawFromStorage(b, type, amount) {
+  const withdrawn = Math.min(amount, storedAmount(b, type));
+  if (withdrawn <= 0) return 0;
+  b.stored[type] = storedAmount(b, type) - withdrawn;
+  G.resources[type] = Math.max(0, (G.resources[type] || 0) - withdrawn);
+  return withdrawn;
+}
+function withdrawFromAnyStorage(type, amount) {
+  let remaining = amount;
+  for (const b of G.buildings) {
+    if (!isStorage(b.type) || remaining <= 0) continue;
+    remaining -= withdrawFromStorage(b, type, remaining);
+  }
+  return amount - remaining;
+}
+function setStartingResource(type, amount) {
+  if (!G.townHall) return;
+  for (const b of G.buildings) if (isStorage(b.type)) b.stored[type] = 0;
+  G.townHall.stored[type] = Math.max(0, amount);
+  updateResourceTotal(type);
 }
 
 function initFloorMask() {
@@ -315,6 +392,7 @@ function paintFloorCell(col, row) {
   if (!G.floorMask) initFloorMask();
   const key = col + ',' + row;
   if (key === G.lastFloorCell) return;
+  if ((G.resources.wood || 0) < 1) return;
   const def = BLD_DEFS.floor;
   for (let dc = 0; dc < def.sz[0]; dc++) {
     for (let dr = 0; dr < def.sz[1]; dr++) {
@@ -323,7 +401,7 @@ function paintFloorCell(col, row) {
       G.floorMask[nc + nr * CFG.WORLD_COLS] = 1;
     }
   }
-  if ((G.resources.wood || 0) >= 1) G.resources.wood--;
+  payCost({wood:1});
   G.lastFloorCell = key;
 }
 function generateResources() {
@@ -344,7 +422,7 @@ function generateResources() {
       const col = baseCol + Math.floor(Math.random() * 3);
       const row = baseRow + Math.floor(Math.random() * 3);
       if (isCellBlocked(col, row)) continue;
-      G.resourceNodes.push({ type: 'stone', col, row, x: gridX(col), y: gridY(row), hp: 3, alive: true, marked: false });
+      G.resourceNodes.push({ type: 'stone', col, row, x: gridX(col), y: gridY(row), alive: true, marked: false });
     }
   }
   // Iron clusters (~15)
@@ -356,7 +434,7 @@ function generateResources() {
       const col = baseCol + Math.floor(Math.random() * 3);
       const row = baseRow + Math.floor(Math.random() * 3);
       if (isCellBlocked(col, row)) continue;
-      G.resourceNodes.push({ type: 'iron', col, row, x: gridX(col), y: gridY(row), hp: 4, alive: true, marked: false });
+      G.resourceNodes.push({ type: 'iron', col, row, x: gridX(col), y: gridY(row), alive: true, marked: false });
     }
   }
 }
@@ -371,7 +449,111 @@ function toggleUnchopMode() {
   btn.style.background = G.unchopMode ? '#a84' : '';
   document.getElementById('chop-btn').style.background = '';
 }
+function resourceObstacle(node) {
+  return {
+    resourceNode: node,
+    center() { return { x: node.x + CFG.CELL/2, y: node.y + CFG.CELL/2 }; },
+    collisionRadius() { return 16; }
+  };
+}
+function isResourceObstacleNode(node) {
+  return node && node.alive && node.type !== 'tree' && node.type !== 'sapling';
+}
+function segmentHitsBuilding(x1, y1, x2, y2, b, r) {
+  if (!b || (b.resourceNode ? !b.resourceNode.alive : b.hp <= 0)) return false;
+  if (b.resourceNode && !isResourceObstacleNode(b.resourceNode)) return false;
+  if (b === r.workplace || b === r.home || b === r.buildTarget) return false;
+  const goalDist = Math.hypot(x2 - b.center().x, y2 - b.center().y);
+  if (goalDist < b.collisionRadius() + RESIDENT_RADIUS + 4) return false;
+  const c = b.center();
+  const vx = x2 - x1, vy = y2 - y1;
+  const lenSq = vx * vx + vy * vy;
+  const t = lenSq > 0 ? clamp(((c.x - x1) * vx + (c.y - y1) * vy) / lenSq, 0, 1) : 0;
+  const px = x1 + vx * t, py = y1 + vy * t;
+  return Math.hypot(px - c.x, py - c.y) < b.collisionRadius() + RESIDENT_RADIUS + 8;
+}
+
+function firstBlockingObstacle(r, tx, ty) {
+  let blocker = null, best = Infinity;
+  for (const b of G.buildings) {
+    if (!segmentHitsBuilding(r.x, r.y, tx, ty, b, r)) continue;
+    const c = b.center();
+    const d = Math.hypot(c.x - r.x, c.y - r.y);
+      if (d < best) { best = d; blocker = b; }
+  }
+  for (const node of G.resourceNodes) {
+    if (!isResourceObstacleNode(node)) continue;
+    const obstacle = resourceObstacle(node);
+    if (!segmentHitsBuilding(r.x, r.y, tx, ty, obstacle, r)) continue;
+    const c = obstacle.center();
+    const d = Math.hypot(c.x - r.x, c.y - r.y);
+    if (d < best) { best = d; blocker = obstacle; }
+  }
+  return blocker;
+}
+function findAvoidanceWaypoint(r, tx, ty, blocker) {
+  const c = blocker.center();
+  const radius = blocker.collisionRadius() + RESIDENT_RADIUS + 16;
+  const base = Math.atan2(r.y - c.y, r.x - c.x);
+  const candidates = [];
+  for (let i = 0; i < 8; i++) {
+    const angle = base + (i - 3.5) * Math.PI / 4;
+    candidates.push({
+      x: clamp(c.x + Math.cos(angle) * radius, RESIDENT_RADIUS, CFG.WORLD_W - RESIDENT_RADIUS),
+      y: clamp(c.y + Math.sin(angle) * radius, RESIDENT_RADIUS, CFG.WORLD_H - RESIDENT_RADIUS)
+    });
+  }
+  let best = null, bestScore = Infinity;
+  for (const p of candidates) {
+    // The next leg may contain another obstacle; reaching this clear waypoint
+    // lets the unit plan the next local detour instead of giving up in corridors.
+    if (firstBlockingObstacle(r, p.x, p.y)) continue;
+    const nextBlock = firstBlockingObstacle({x:p.x,y:p.y,workplace:r.workplace,home:r.home,buildTarget:r.buildTarget}, tx, ty);
+    const score = Math.hypot(p.x - r.x, p.y - r.y) + Math.hypot(tx - p.x, ty - p.y) + (nextBlock ? 24 : 0);
+    if (score < bestScore) { bestScore = score; best = p; }
+  }
+  return best;
+}
+function clearNavigation(r) {
+  r.navWaypoint = null;
+  r.navBlock = null;
+  r.navCheckTimer = 0;
+  r.navStuckTimer = 0;
+}
+function navigationBlockIsActive(block) {
+  return !!block && (block.resourceNode ? isResourceObstacleNode(block.resourceNode) : block.hp > 0);
+}
 function flowMove(r, tx, ty, speed, dt) {
+  if (Math.hypot(tx - r.navTargetX, ty - r.navTargetY) > 18) {
+    clearNavigation(r);
+  }
+  r.navTargetX = tx; r.navTargetY = ty;
+  if (r.navRevision !== G.navigationRevision) {
+    r.navRevision = G.navigationRevision;
+    clearNavigation(r);
+  }
+  if (r.navBlock && !navigationBlockIsActive(r.navBlock)) {
+    clearNavigation(r);
+  }
+  if (r.navWaypoint && Math.hypot(r.x - r.navWaypoint.x, r.y - r.navWaypoint.y) < 10) {
+    clearNavigation(r);
+  }
+  r.navCheckTimer -= dt;
+  if (r.navCheckTimer <= 0) {
+    r.navCheckTimer = CFG.NAV_RECHECK_INTERVAL;
+    const next = r.navWaypoint || {x:tx, y:ty};
+    const firstBlock = firstBlockingObstacle(r, next.x, next.y);
+    if (firstBlock) clearNavigation(r);
+  }
+  if (!r.navWaypoint) {
+    const blocker = firstBlockingObstacle(r, tx, ty);
+    if (blocker) {
+      const waypoint = findAvoidanceWaypoint(r, tx, ty, blocker);
+      if (waypoint) { r.navWaypoint = waypoint; r.navBlock = blocker; }
+    }
+  }
+  const moveTarget = r.navWaypoint || {x:tx, y:ty};
+  tx = moveTarget.x; ty = moveTarget.y;
   speed *= starvationDebuff(r);
   if (G.floorMask) {
     const gi = gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS;
@@ -383,8 +565,14 @@ function flowMove(r, tx, ty, speed, dt) {
   return resolveCollisions(r, nx, ny);
 }
 function moveViaFlow(r, tx, ty, speed, dt) {
+  const beforeX = r.x, beforeY = r.y;
   const rs = flowMove(r, tx, ty, speed, dt);
   r.x = rs.x; r.y = rs.y;
+  const moved = Math.hypot(r.x - beforeX, r.y - beforeY);
+  const remaining = Math.hypot(tx - r.x, ty - r.y);
+  if (remaining > 48 && moved < Math.max(0.25, speed * dt * 0.12)) r.navStuckTimer += dt;
+  else r.navStuckTimer = 0;
+  if (r.navStuckTimer >= CFG.NAV_STUCK_TIMEOUT) clearNavigation(r);
 }
 function starvationDebuff(r) {
   if (r.isGuard) return 1;
@@ -435,6 +623,13 @@ function canPlaceBuilding(type, col, row, excludeBld) {
   for (let dc=0; dc<def.sz[0]; dc++)
     for (let dr=0; dr<def.sz[1]; dr++)
       if (isCellBlocked(col+dc, row+dr, excludeBld)) return false;
+  if (def.sourceType) {
+    const preview = {
+      type, col, row, x:gridX(col), y:gridY(row), size:def.sz,
+      center() { return { x:this.x+def.sz[0]*CFG.CELL/2, y:this.y+def.sz[1]*CFG.CELL/2 }; }
+    };
+    if (!findResourceNode(preview, def.sourceType)) return false;
+  }
   return true;
 }
 
@@ -476,6 +671,19 @@ function resolveCollisions(r, nx, ny) {
       ny = c.y + (dy / dist) * minDist;
     }
   }
+  // Mineral nodes are solid obstacles; trees remain walkable harvesting targets.
+  for (const node of G.resourceNodes) {
+    if (!isResourceObstacleNode(node)) continue;
+    const obstacle = resourceObstacle(node);
+    const c = obstacle.center();
+    const minDist = obstacle.collisionRadius() + RESIDENT_RADIUS;
+    const dx = nx - c.x, dy = ny - c.y;
+    const dist = Math.hypot(dx, dy);
+    if (dist < minDist && dist > 0.01) {
+      nx = c.x + (dx / dist) * minDist;
+      ny = c.y + (dy / dist) * minDist;
+    }
+  }
   for (const other of G.residents) {
     if (other === r || other.hidden) continue;
     const minDist = RESIDENT_RADIUS * 2;
@@ -497,19 +705,56 @@ function resolveCollisions(r, nx, ny) {
   ny = clamp(ny, RESIDENT_RADIUS, CFG.WORLD_H - RESIDENT_RADIUS);
   return { x: nx, y: ny };
 }
-function findNearestStorage(pos, resType) {
+function findNearestStorage(pos, resType, options={}) {
+  const { requireAmount=0, requireSpace=0 } = options;
   let best=null, bestD=Infinity;
   for (const b of G.buildings) {
-    if (!isStorage(b.type) || b.hp<=0) continue;
+    if (!isStorage(b.type) || b.hp<=0 || b.blueprint || b.constructionTimer>0) continue;
     if (resType === 'food' && b.type !== 'food_storage' && b.type !== 'town_hall') continue;
     if (resType === 'wood' && b.type !== 'wood_storage' && b.type !== 'town_hall') continue;
     if (resType === 'stone' && b.type !== 'stone_storage' && b.type !== 'town_hall') continue;
     if (resType === 'iron' && b.type !== 'iron_storage' && b.type !== 'town_hall') continue;
     if (resType === 'ingot' && b.type !== 'ingot_storage' && b.type !== 'town_hall') continue;
-    const cx=b.x+BLD_DEFS[b.type].sz[0]*CFG.CELL/2;
-    const cy=b.y+BLD_DEFS[b.type].sz[1]*CFG.CELL/2;
-    const d=Math.hypot(pos.x-cx, pos.y-cy);
+    if (requireAmount > 0 && storedAmount(b, resType) < requireAmount) continue;
+    if (requireSpace > 0 && storageFreeSpace(b, resType) < requireSpace) continue;
+    const access = b.center();
+    const d=Math.hypot(pos.x-access.x, pos.y-access.y);
     if (d<bestD) { bestD=d; best=b; }
+  }
+  return best;
+}
+
+function findResourceNode(b, type) {
+  const def = BLD_DEFS[b.type];
+  if (!def.sourceType) return null;
+  const center = b.center();
+  const maxDist = (def.sourceRadius || 0) * CFG.CELL;
+  let best = null, bestDist = Infinity;
+  for (const node of G.resourceNodes) {
+    if (!node.alive || node.type !== type) continue;
+    const nodeX = node.x + (type === 'tree' ? 0 : CFG.CELL / 2);
+    const nodeY = node.y + (type === 'tree' ? 0 : CFG.CELL / 2);
+    const d = Math.hypot(center.x - nodeX, center.y - nodeY);
+    if (d <= maxDist && d < bestDist) { best = node; bestDist = d; }
+  }
+  return best;
+}
+
+function canResidentHandHarvest(node) {
+  // Trees are the only natural resource residents can harvest directly.
+  return !!node && node.alive && node.type === 'tree';
+}
+
+function findForesterTree(r, forester) {
+  const radius = (BLD_DEFS.forester.foresterRadius || 4) * CFG.CELL;
+  const center = forester.center();
+  let best=null, bestDist=Infinity;
+  for (const node of G.resourceNodes) {
+    if (!node.alive || node.type!=='tree' || !node.marked || node.ownerForester!==forester) continue;
+    if (Math.hypot(node.x-center.x,node.y-center.y)>radius) continue;
+    if (G.residents.some(other => other!==r && other.chopTarget===node)) continue;
+    const d=Math.hypot(r.x-node.x,r.y-node.y);
+    if (d<bestDist) { best=node; bestDist=d; }
   }
   return best;
 }
@@ -537,25 +782,23 @@ function findNearestHome(pos) {
 }
 
 function getFarmAdjacencyBonus(b) {
-  if (b.type !== 'farm' || b.hp <= 0 || b.blueprint) return 1;
-  let count = 0;
-  const def = BLD_DEFS.farm;
-  // Check 4 sides: top, bottom, left, right
-  const neighbors = [
-    { col: b.col, row: b.row - def.sz[1] },
-    { col: b.col, row: b.row + def.sz[1] },
-    { col: b.col - def.sz[0], row: b.row },
-    { col: b.col + def.sz[0], row: b.row },
-  ];
-  for (const n of neighbors) {
-    for (const other of G.buildings) {
-      if (other === b || other.type !== 'farm' || other.hp <= 0) continue;
-      const od = BLD_DEFS.farm;
-      if (n.col >= other.col && n.col < other.col + od.sz[0] &&
-          n.row >= other.row && n.row < other.row + od.sz[1]) { count++; break; }
+  return b.type === 'farm' && !b.blueprint ? (b.farmAdjacencyBonus || 1) : 1;
+}
+function refreshFarmAdjacency() {
+  const farms = G.buildings.filter(b => b.type === 'farm' && b.hp > 0 && !b.blueprint && b.constructionTimer <= 0);
+  G.farmLinks = [];
+  for (const farm of farms) farm.farmAdjacencyBonus = 1;
+  for (let i=0; i<farms.length; i++) {
+    for (let j=i+1; j<farms.length; j++) {
+      const a=farms[i], b=farms[j];
+      const horizontal = a.row === b.row && (a.col + 2 === b.col || b.col + 2 === a.col);
+      const vertical = a.col === b.col && (a.row + 2 === b.row || b.row + 2 === a.row);
+      if (!horizontal && !vertical) continue;
+      a.farmAdjacencyBonus += 0.15;
+      b.farmAdjacencyBonus += 0.15;
+      G.farmLinks.push([a,b]);
     }
   }
-  return 1 + count * 0.15;
 }
 function getIdleResidents() {
   return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.isEngineer);
@@ -568,6 +811,25 @@ function assignHome(r, house) {
 function removeHome(r) {
   if (r.home) { r.home.residentCount = Math.max(0, r.home.residentCount-1); }
   r.home = null;
+}
+function returnCarriedOutput(r) {
+  const source = r.carryingFrom;
+  if (r.carrying && source && source.hp > 0) {
+    source.pendingOutput += r.carrying.amount;
+    if (source.outputHauler === r) source.outputHauler = null;
+  }
+  r.carrying = null;
+  r.carryingFrom = null;
+}
+function removeResident(r) {
+  returnCarriedOutput(r);
+  if (r.workplace) {
+    r.workplace.assignedWorkers = Math.max(0, r.workplace.assignedWorkers - 1);
+    if (r.workplace.outputHauler === r) r.workplace.outputHauler = null;
+  }
+  if (r.buildTarget) r.buildTarget.assignedEngineer = null;
+  removeHome(r);
+  G.residents = G.residents.filter(other => other !== r);
 }
 
 // ============================================================
@@ -582,6 +844,8 @@ class Building {
     this.level = 1;
     this.assignedWorkers = 0;
     this.productionProgress = 0;
+    this.pendingOutput = 0;
+    this.outputHauler = null;
     this.upgradeProgress = 0; this.upgrading = false;
     this.stored = {};
     this.attackCooldown = 0;
@@ -591,6 +855,7 @@ class Building {
     this.guardRecruitQueue = 0;
     this.guardRecruitProgress = 0;
     this.residentCount = 0;
+    this.assignedGuard = null;
     this.blueprint = false;
     this.constructCost = null;
     this.constructDelivered = null;
@@ -600,6 +865,10 @@ class Building {
   }
   center() {
     return { x:this.x+this.size[0]*CFG.CELL/2, y:this.y+this.size[1]*CFG.CELL/2 };
+  }
+  guardSpot() {
+    const c = this.center();
+    return { x:c.x, y:c.y+28 };
   }
   collisionRadius() {
     return Math.min(this.size[0], this.size[1]) * CFG.CELL / 2 - 6;
@@ -623,7 +892,10 @@ class Resident {
     this.workplace = null; this.home = null;
     this.hunger = 0; this.tired = 0;
     this.carrying = null;
+    this.carryingFrom = null;
     this.targetX = x; this.targetY = y;
+    this.navWaypoint = null; this.navBlock = null; this.navTargetX = x; this.navTargetY = y;
+    this.navRevision = G.navigationRevision; this.navCheckTimer = 0; this.navStuckTimer = 0;
     this.patrolAngle = Math.random()*Math.PI*2;
     this.patrolTimer = 0;
     this.eatTimer = 0; this.prodTimer = 0;
@@ -638,6 +910,7 @@ class Resident {
     this.guardMaxHP = 80;
     this.guardAttackCD = 0;
     this.manningTower = null;
+    this.assignedTower = null;
     this.guardHealTimer = 0;
   }
 }
@@ -679,6 +952,11 @@ function initGame() {
   const th = new Building('town_hall', 74, 74);
   G.buildings.push(th);
   G.townHall = th;
+  th.stored = {
+    food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE,
+    iron:CFG.START_IRON, ingot:CFG.START_INGOT
+  };
+  updateAllResourceTotals();
   G.cam.x = th.x + CFG.CELL; G.cam.y = th.y + CFG.CELL;
   G.maxPop = CFG.MAX_POP_BASE;
 
@@ -709,22 +987,40 @@ function addBuilding(type, col, row, skipBlueprint) {
     b.hp = 1; b.maxHp = def.hp;
   }
   G.buildings.push(b);
+  invalidateNavigation();
   if (type==='house' && !b.blueprint) G.maxPop += BLD_DEFS[type].popBonus;
+  if (type==='farm') refreshFarmAdjacency();
   return b;
+}
+
+function clearGuardPost(r, b) {
+  if (!r.isGuard) return;
+  if (r.assignedTower === b) r.assignedTower = null;
+  if (r.manningTower === b) r.manningTower = null;
+  r.state = (G.phase==='night'||G.phase==='dusk') ? 'GUARD_FIGHTING' : 'GUARD_SLEEPING';
+  r.hidden = !(G.phase==='night'||G.phase==='dusk');
 }
 
 function demolishBuilding(b) {
   if (b.type==='town_hall') return; // 大本营不可拆除
   const idx = G.buildings.indexOf(b);
   if (idx===-1) return;
+  b.outputHauler = null;
+  invalidateNavigation();
   for (const r of G.residents) {
-    if (r.workplace===b) { r.workplace=null; r.state='IDLE'; }
+    if (r.workplace===b) { r.workplace=null; r.chopTarget=null; r.state=r.carrying?'HAULING':'IDLE'; }
     if (r.home===b) { assignHome(r, findNearestHome(r)); }
-    if (r.manningTower===b) { r.manningTower=null; r.state='GUARD_FIND_TOWER'; }
-    if (r.buildTarget===b) { r.buildTarget=null; r.carrying=null; r.state='IDLE'; }
+    if (r.assignedTower===b || r.manningTower===b) clearGuardPost(r,b);
+    if (r.buildTarget===b) { r.buildTarget=null; r.state=r.carrying?'HAULING':'IDLE'; }
   }
   if (b.type==='house') G.maxPop = Math.max(CFG.MAX_POP_BASE, G.maxPop - BLD_DEFS[b.type].popBonus - (b.level-1)*2);
   G.buildings.splice(idx,1);
+  if (b.assignedGuard) b.assignedGuard = null;
+  if (b.type==='forester') {
+    for (const node of G.resourceNodes) if (node.ownerForester===b) { node.ownerForester=null; node.marked=false; }
+  }
+  if (isStorage(b.type)) updateAllResourceTotals();
+  if (b.type==='farm') refreshFarmAdjacency();
 }
 
 // ============================================================
@@ -738,7 +1034,7 @@ function updateDayNight(dt) {
   if (G.dayTime >= phaseDuration) {
     G.dayTime = 0;
     if (G.phase==='day') {
-      G.phase='dusk'; showTimeIndicator('🌅 黄昏');
+      G.phase='dusk'; showTimeIndicator('黄昏');
       spawnEnemyWave();
       // 饥饿天数累计 + 饿死检查
       const toRemove = [];
@@ -755,14 +1051,12 @@ function updateDayNight(dt) {
         }
       }
       for (const r of toRemove) {
-        if (r.workplace) r.workplace.assignedWorkers--;
-        if (r.buildTarget) r.buildTarget.assignedEngineer = null;
-        removeHome(r);
-        G.residents = G.residents.filter(rr => rr !== r);
+        removeResident(r);
       }
       // 让居民回家睡觉
       for (const r of G.residents) {
         if (r.isGuard) continue; // guards handle their own sleep
+        if (r.carrying) { r.state = 'HAULING'; continue; }
         r.tired = CFG.TIRED_THRESHOLD;
         const home = r.home || findNearestHome(r);
         if (home) {
@@ -780,7 +1074,7 @@ function updateDayNight(dt) {
         }
       }
     } else if (G.phase==='dusk') {
-      G.phase='night'; showTimeIndicator('🌙 夜晚');
+      G.phase='night'; showTimeIndicator('夜晚');
       // Guards that were still sleeping (e.g. newly assigned): wake up
       for (const r of G.residents) {
         if (r.isGuard && r.state === 'GUARD_SLEEPING') {
@@ -788,10 +1082,10 @@ function updateDayNight(dt) {
         }
       }
     } else if (G.phase==='night') {
-      G.phase='dawn'; showTimeIndicator('🌄 黎明');
+      G.phase='dawn'; showTimeIndicator('黎明');
       G.enemies=[];
     } else if (G.phase==='dawn') {
-      G.phase='day'; G.day++; showTimeIndicator('☀️ 第'+G.day+'天');
+      G.phase='day'; G.day++; showTimeIndicator('第 '+G.day+' 天');
       for (const r of G.residents) {
         if (r.isGuard) {
           // Guards: go sleep for the day, heal fully
@@ -799,7 +1093,7 @@ function updateDayNight(dt) {
           r.guardHP = r.guardMaxHP;
           r.manningTower = null;
         } else {
-          r.state='IDLE'; r.tired=0; r.hidden=false;
+          r.state=r.carrying?'HAULING':'IDLE'; r.tired=0; r.hidden=false;
         }
       }
     }
@@ -904,31 +1198,13 @@ function updateEnemies(dt) {
         if (r.home) continue;
         const d = Math.hypot(e.x-r.x, e.y-r.y);
         if (d < 20) {
-          G.residents = G.residents.filter(rr => rr !== r);
-          if (r.workplace) { r.workplace.assignedWorkers--; }
-          removeHome(r);
+          removeResident(r);
           spawnParticles(r.x, r.y, '#ff0000', 8);
           break;
         }
       }
     }
   }
-}
-
-function findUnmannedTower(guard) {
-  let best = null, bestD = Infinity;
-  for (const b of G.buildings) {
-    if (b.hp <= 0 || b.blueprint) continue;
-    const def = BLD_DEFS[b.type];
-    if (!def.needsManning) continue;
-    // Check if already manned
-    const manned = G.residents.some(r => r.isGuard && r.manningTower === b);
-    if (manned) continue;
-    const c = b.center();
-    const d = Math.hypot(guard.x - c.x, guard.y - c.y);
-    if (d < bestD) { bestD = d; best = b; }
-  }
-  return best;
 }
 
 function getGuardPatrol() {
@@ -958,27 +1234,32 @@ function guardUpdateAI(r, dt) {
 
   switch (r.state) {
     case 'GUARD_FIND_TOWER': {
-      const tower = findUnmannedTower(r);
-      if (tower) {
-        const tc = tower.center();
+      const tower = r.assignedTower;
+      if (tower && tower.hp > 0 && !tower.blueprint && BLD_DEFS[tower.type].needsManning) {
+        if (tower.assignedGuard && tower.assignedGuard !== r) {
+          r.assignedTower = null; r.state = 'GUARD_FIGHTING'; break;
+        }
+        const tc = tower.guardSpot();
         r.targetX = tc.x; r.targetY = tc.y;
         const dx = tc.x - r.x, dy = tc.y - r.y, dd = Math.hypot(dx, dy) || 1;
         if (Math.hypot(r.x - tc.x, r.y - tc.y) < tower.collisionRadius() + RESIDENT_RADIUS + 5) {
-          r.state = 'GUARD_MANNING'; r.manningTower = tower;
+          r.state = 'GUARD_MANNING'; r.manningTower = tower; tower.assignedGuard = r;
         } else {
           moveViaFlow(r, tc.x, tc.y, CFG.RESIDENT_SPEED, dt);
         }
       } else {
+        r.assignedTower = null;
         r.state = 'GUARD_FIGHTING';
       }
       break;
     }
     case 'GUARD_MANNING': {
-      if (!r.manningTower || r.manningTower.hp <= 0) {
-        r.manningTower = null; r.state = 'GUARD_FIND_TOWER'; break;
+      if (!r.manningTower || r.manningTower.hp <= 0 || r.manningTower.blueprint || r.assignedTower !== r.manningTower) {
+        if (r.manningTower && r.manningTower.assignedGuard === r) r.manningTower.assignedGuard = null;
+        r.manningTower = null; r.state = r.assignedTower ? 'GUARD_FIND_TOWER' : 'GUARD_FIGHTING'; break;
       }
       // Stand at tower center
-      const tc = r.manningTower.center();
+      const tc = r.manningTower.guardSpot();
       const dx = tc.x - r.x, dy = tc.y - r.y, dd = Math.hypot(dx, dy) || 1;
       if (Math.hypot(r.x - tc.x, r.y - tc.y) > 3) {
         const nx = r.x + (dx / dd) * CFG.RESIDENT_SPEED * 0.5 * dt;
@@ -1069,9 +1350,8 @@ function guardUpdateAI(r, dt) {
         r.guardHP = r.guardMaxHP;
         r.hidden = false;
         // Go back to fighting or find a tower
-        const tower = findUnmannedTower(r);
-        if (tower) { r.state = 'GUARD_FIND_TOWER'; }
-        else { r.state = 'GUARD_FIGHTING'; }
+        if (r.assignedTower && r.assignedTower.hp > 0 && !r.assignedTower.blueprint) { r.state = 'GUARD_FIND_TOWER'; }
+        else { r.assignedTower = null; r.state = 'GUARD_FIGHTING'; }
       }
       break;
     }
@@ -1138,7 +1418,7 @@ function updateResidents(dt) {
 
     // Priority 1: Hungry
     if (r.hunger >= CFG.HUNGER_THRESHOLD && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
-      const storage = findNearestStorage(r, 'food');
+      const storage = findNearestStorage(r, 'food', {requireAmount:1});
       if ((G.resources.food||0) > 0) {
         if (storage) {
           r.state = 'GOING_TO_EAT';
@@ -1166,7 +1446,7 @@ function updateResidents(dt) {
     switch (r.state) {
       case 'GOING_TO_EAT': {
         // Recalculate target each frame
-        const storage = findNearestStorage(r, 'food');
+        const storage = findNearestStorage(r, 'food', {requireAmount:1});
         if (!storage) { r.state='EATING'; r.eatTimer=0.5; break; }
         const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='EATING'; r.eatTimer=1.5; }
@@ -1175,7 +1455,8 @@ function updateResidents(dt) {
       }
       case 'EATING':
         if ((r.eatTimer-=dt)<=0) {
-          if (G.resources.food>0) { G.resources.food--; r.hunger=0; r.starvationDays=0; }
+          const storage = findNearestStorage(r, 'food', {requireAmount:1});
+          if (storage && withdrawFromStorage(storage, 'food', 1) === 1) { r.hunger=0; r.starvationDays=0; }
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.carrying?'HAULING' : r.workplace?'GOING_TO_WORK':'IDLE';
         }
@@ -1192,44 +1473,48 @@ function updateResidents(dt) {
         if (!r.workplace||r.workplace.hp<=0) { r.state='IDLE'; r.workplace=null; break; }
         const wc=r.workplace.center();
         const dx=wc.x-r.x, dy=wc.y-r.y, dd=Math.hypot(dx,dy)||1;
+        r.targetX=wc.x; r.targetY=wc.y;
         if (Math.hypot(r.x-wc.x, r.y-wc.y) < r.workplace.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='WORKING'; r.prodTimer=0; }
         else { moveViaFlow(r, wc.x, wc.y, CFG.RESIDENT_SPEED, dt); }
         break;
       }
       case 'WORKING': {
         if (!r.workplace||r.workplace.hp<=0) { r.state='IDLE'; r.workplace=null; break; }
-        if (r.carrying) { r.state='HAULING'; break; } // still carrying, go deliver
         const b=r.workplace, def=BLD_DEFS[b.type];
-        const eff=b.efficiency();
-        if (eff<=0) break;
-        let prodMult = starvationDebuff(r);
-        if (b.type === 'farm') prodMult *= getFarmAdjacencyBonus(b);
-        b.productionProgress += dt / (def.baseTime/eff) * prodMult;
-        if (b.productionProgress >= 1) {
-          b.productionProgress = 0;
-          const res = def.produces;
-          if (!b.stored[res]) b.stored[res]=0;
-          b.stored[res]++;
+        if (b.type==='forester') {
+          if (r.carrying && r.carrying.amount >= CFG.PRODUCTION_BATCH_SIZE) { r.state='HAULING'; break; }
+          const tree=findForesterTree(r,b);
+          if (tree) { r.chopTarget=tree; r.targetX=tree.x; r.targetY=tree.y; r.state='GOING_TO_CHOP'; }
+          else if (r.carrying) r.state='HAULING';
+          break;
+        }
+        if (r.carrying) { r.state='HAULING'; break; }
+        if (b.pendingOutput >= CFG.PRODUCTION_BATCH_SIZE && !b.outputHauler) {
+          const batch = CFG.PRODUCTION_BATCH_SIZE;
+          const storage = findNearestStorage(r, def.produces, {requireSpace:batch});
+          if (!storage) break;
+          b.pendingOutput -= batch;
+          b.outputHauler = r;
           r.state = 'HAULING';
-          r.carrying = { type:res, amount:1 };
-          const storage = findNearestStorage(r, def.produces);
-          if (storage) { const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y; }
+          r.carrying = { type:def.produces, amount:batch };
+          r.carryingFrom = b;
+          const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         }
         break;
       }
       case 'HAULING': {
-        const storage = findNearestStorage(r, r.carrying.type);
-        if (!storage) { r.carrying=null; r.state='IDLE'; break; }
+        if (!r.carrying) { r.carryingFrom=null; r.state='IDLE'; break; }
+        const storage = findNearestStorage(r, r.carrying.type, {requireSpace:r.carrying.amount});
+        if (!storage) break;
         const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) {
-          if (r.carrying) {
-            G.resources[r.carrying.type] = (G.resources[r.carrying.type]||0) + r.carrying.amount;
-            if (!storage.stored[r.carrying.type]) storage.stored[r.carrying.type]=0;
-            storage.stored[r.carrying.type] += r.carrying.amount;
-            if (r.workplace && r.workplace.stored[r.carrying.type])
-              r.workplace.stored[r.carrying.type] = Math.max(0, (r.workplace.stored[r.carrying.type]||0)-1);
-          }
+          const deposited = depositToStorage(storage, r.carrying.type, r.carrying.amount);
+          r.carrying.amount -= deposited;
+          if (r.carrying.amount > 0) break;
+          const source = r.carryingFrom;
+          if (source && source.outputHauler === r) source.outputHauler = null;
           r.carrying=null;
+          r.carryingFrom=null;
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
         } else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
@@ -1246,19 +1531,17 @@ function updateResidents(dt) {
         if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) { r.chopTarget = null; r.state = 'IDLE'; break; }
         r.chopTimer += dt;
         if (r.chopTimer >= 3) {
+          const carried = r.carrying ? r.carrying.amount : 0;
+          const s2 = findNearestStorage(r, 'wood', {requireSpace:Math.max(1, CFG.PRODUCTION_BATCH_SIZE - carried)});
+          if (!s2) { r.chopTimer = 3; break; }
           r.chopTarget.alive = false; r.chopTarget.marked = false;
           spawnParticles(r.chopTarget.x, r.chopTarget.y, '#8B4513', 5);
           if (!r.carrying) r.carrying = { type: 'wood', amount: 1 };
           else r.carrying.amount++;
           r.chopTarget = null;
-          r.state = 'HAULING';
-          const s2 = findNearestStorage(r, 'wood');
-          if (s2) { const sc = s2.center(); r.targetX = sc.x; r.targetY = sc.y; }
-          for (const node of G.resourceNodes) {
-            if (node.type === 'tree' && node.alive && node.marked && !G.residents.some(r2 => r2 !== r && r2.chopTarget === node)) {
-              r.chopTarget = node; r.state = 'GOING_TO_CHOP'; r.targetX = node.x; r.targetY = node.y; break;
-            }
-          }
+          const nextTree = findForesterTree(r, r.workplace);
+          r.state = nextTree && r.carrying.amount < CFG.PRODUCTION_BATCH_SIZE ? 'WORKING' : 'HAULING';
+          if (r.state === 'HAULING') { const sc = s2.center(); r.targetX = sc.x; r.targetY = sc.y; }
         }
         break;
       }
@@ -1266,22 +1549,22 @@ function updateResidents(dt) {
         if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
         const need = neededMaterials(r.buildTarget);
         if (!need) { if(r.buildTarget.constructionTimer>0){r.state='CONSTRUCTING';}else{r.buildTarget.assignedEngineer=null;r.buildTarget=null;r.state=(r.workplace&&r.workplace.hp>0)?'GOING_TO_WORK':'IDLE';} break; }
-        const gs = findNearestStorage(r, need.type);
+        const gs = findNearestStorage(r, need.type, {requireAmount:1});
         if (!gs) { r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
         const gsc = gs.center(); r.targetX = gsc.x; r.targetY = gsc.y;
         if (Math.hypot(r.x-gsc.x, r.y-gsc.y) < gs.collisionRadius() + RESIDENT_RADIUS + 3) {
-          const take = Math.min(5, need.amount);
+          const take = Math.min(5, need.amount, storedAmount(gs, need.type));
+          if (take <= 0) break;
           if (!r.carrying) r.carrying = { type: need.type, amount: 0 };
           r.carrying.type = need.type; r.carrying.amount = take;
-          G.resources[need.type] = Math.max(0, (G.resources[need.type]||0) - take);
-          if (gs.stored[need.type]) gs.stored[need.type] = Math.max(0, gs.stored[need.type] - take);
+          withdrawFromStorage(gs, need.type, take);
           r.state = 'BUILDING'; break;
         }
         moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt);
         break;
       }
       case 'BUILDING': {
-        if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.carrying=null; r.state='IDLE'; break; }
+        if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state=r.carrying?'HAULING':'IDLE'; break; }
         const bc = r.buildTarget.center(); r.targetX = bc.x; r.targetY = bc.y;
         if (Math.hypot(r.x-bc.x, r.y-bc.y) < r.buildTarget.collisionRadius() + RESIDENT_RADIUS + 3) {
           if (r.carrying && r.carrying.amount > 0) {
@@ -1339,7 +1622,7 @@ function updateResidents(dt) {
         if (!r.isEngineer) {
           let treeTarget = null, treeDist = Infinity;
           for (const node of G.resourceNodes) {
-            if (node.type === 'tree' && node.alive && node.marked) {
+            if (canResidentHandHarvest(node) && node.marked && !node.ownerForester) {
               // Skip trees already targeted by another villager
               if (G.residents.some(r2 => r2 !== r && r2.chopTarget === node)) continue;
               const d = Math.hypot(r.x - node.x, r.y - node.y);
@@ -1366,12 +1649,27 @@ function updateResidents(dt) {
 }
 
 function updateBuildings(dt) {
+  const activeWorkersByBuilding = new Map();
+  const managedTreeCount = new Map();
+  for (const r of G.residents) {
+    if (r.isGuard || r.state!=='WORKING' || !r.workplace) continue;
+    if (!activeWorkersByBuilding.has(r.workplace)) activeWorkersByBuilding.set(r.workplace, []);
+    activeWorkersByBuilding.get(r.workplace).push(r);
+  }
+  for (const node of G.resourceNodes) {
+    if (!node.alive || !node.ownerForester) continue;
+    managedTreeCount.set(node.ownerForester, (managedTreeCount.get(node.ownerForester)||0)+1);
+  }
   for (const b of G.buildings) {
     if (b.constructionTimer > 0) {
       const hasEng = G.residents.some(r => r.buildTarget === b && (r.state==='CONSTRUCTING'||r.state==='GATHERING'||r.state==='BUILDING'));
       if (hasEng) {
         b.constructionTimer -= dt;
-        if (b.constructionTimer <= 0) { b.constructionTimer = 0; b.hp = b.maxHp; b.assignedEngineer = null; if (b.type==='house') G.maxPop += BLD_DEFS.house.popBonus; }
+        if (b.constructionTimer <= 0) {
+          b.constructionTimer = 0; b.hp = b.maxHp; b.assignedEngineer = null;
+          if (b.type==='house') G.maxPop += BLD_DEFS.house.popBonus;
+          if (b.type==='farm') refreshFarmAdjacency();
+        }
       }
     }
     if (b.upgrading) {
@@ -1414,10 +1712,34 @@ function updateBuildings(dt) {
         }
       }
     }
+    // Production advances once per building, based on workers currently on site.
+    const def = BLD_DEFS[b.type];
+    if (def.cat === 'production' && b.type !== 'forester' && !b.blueprint && b.constructionTimer <= 0 && b.hp > 0) {
+      const activeWorkers = activeWorkersByBuilding.get(b) || [];
+      const efficiency = def.maxWorkers > 0 ? Math.min(1, activeWorkers.length / def.maxWorkers) : 0;
+      if (efficiency > 0 && b.pendingOutput < CFG.PRODUCTION_BATCH_SIZE) {
+        const healthEfficiency = activeWorkers.reduce((sum, r) => sum + starvationDebuff(r), 0) / activeWorkers.length;
+        const adjacency = b.type === 'farm' ? getFarmAdjacencyBonus(b) : 1;
+        b.productionProgress += dt / def.baseTime * efficiency * healthEfficiency * adjacency;
+        if (b.productionProgress >= 1) {
+          const sourceNode = def.sourceType ? findResourceNode(b, def.sourceType) : null;
+          const hasSource = !def.sourceType || !!sourceNode;
+          const hasInputs = !def.inputs || canAfford(def.inputs);
+          if (hasSource && hasInputs) {
+            if (def.inputs) payCost(def.inputs);
+            b.productionProgress -= 1;
+            b.pendingOutput++;
+          } else {
+            b.productionProgress = 1;
+          }
+        }
+      }
+    }
     // Forester: plant saplings in radius
     if (b.type==='forester' && !b.blueprint && b.hp>0) {
-      const eff = b.efficiency();
-      if (eff > 0) {
+      const eff = Math.min(1, (activeWorkersByBuilding.get(b)||[]).length / BLD_DEFS[b.type].maxWorkers);
+      const managedTrees = managedTreeCount.get(b) || 0;
+      if (eff > 0 && managedTrees < 12) {
         b.foresterPlantCooldown -= dt * eff;
         if (b.foresterPlantCooldown <= 0) {
           b.foresterPlantCooldown = 3; // plant every 3s at full speed
@@ -1442,7 +1764,7 @@ function updateBuildings(dt) {
             if (hasResource) continue;
             G.resourceNodes.push({
               type:'sapling', col, row, x:gridX(col)+CFG.CELL/2, y:gridY(row)+CFG.CELL/2,
-              hp:1, alive:true, marked:false, growTimer:10
+              hp:1, alive:true, marked:false, growTimer:10, ownerForester:b
             });
             break;
           }
@@ -1459,21 +1781,32 @@ function updateBuildings(dt) {
       }
     }
   }
+  G.resourceCleanupTimer += dt;
+  if (G.resourceCleanupTimer >= 5) {
+    G.resourceCleanupTimer = 0;
+    G.resourceNodes = G.resourceNodes.filter(node => node.alive);
+  }
   const prevLen = G.buildings.length;
   G.buildings = G.buildings.filter(b=>{
     if (b.hp<=0) {
+      b.outputHauler = null;
+      invalidateNavigation();
       if (b.type==='town_hall') { gameOver('大本营被摧毁！'); return false; }
       for (const r of G.residents) {
-        if (r.workplace===b) { r.workplace=null; r.state='IDLE'; }
+        if (r.workplace===b) { r.workplace=null; r.chopTarget=null; r.state=r.carrying?'HAULING':'IDLE'; }
         if (r.home===b) removeHome(r);
-        if (r.manningTower===b) { r.manningTower=null; r.state='GUARD_FIND_TOWER'; }
-        if (r.buildTarget===b) { r.buildTarget=null; r.carrying=null; r.state='IDLE'; }
+        if (r.assignedTower===b || r.manningTower===b) clearGuardPost(r,b);
+        if (r.buildTarget===b) { r.buildTarget=null; r.state=r.carrying?'HAULING':'IDLE'; }
+      }
+      if (b.type==='forester') {
+        for (const node of G.resourceNodes) if (node.ownerForester===b) { node.ownerForester=null; node.marked=false; }
       }
       if (b.type==='house') G.maxPop=Math.max(CFG.MAX_POP_BASE, G.maxPop-BLD_DEFS[b.type].popBonus-(b.level-1)*2);
       return false;
     }
     return true;
   });
+  if (G.buildings.length !== prevLen) { refreshFarmAdjacency(); updateAllResourceTotals(); }
 }
 
 function updateParticles(dt) {
@@ -1497,23 +1830,21 @@ let gameSpeed = 1;
 
 function setSpeed(s) {
   gameSpeed = s;
-  document.querySelectorAll('.dbg-btn').forEach(b=>b.style.background='#3a3a5a');
+  document.querySelectorAll('.dbg-btn').forEach(b=>b.style.background='#28342d');
   const btns = document.querySelectorAll('#debug-panel .dbg-btn');
-  if(s===0) btns[0].style.background='#5a5a2a';
-  else if(s===1) btns[1].style.background='#5a5a2a';
-  else if(s===2) btns[2].style.background='#5a5a2a';
-  else if(s===5) btns[3].style.background='#5a5a2a';
-  else if(s===20) btns[4].style.background='#5a5a2a';
+  if(s===0) btns[0].style.background='#59613b';
+  else if(s===1) btns[1].style.background='#59613b';
+  else if(s===2) btns[2].style.background='#59613b';
+  else if(s===5) btns[3].style.background='#59613b';
+  else if(s===20) btns[4].style.background='#59613b';
 }
 function setRes(type) {
   const inp = document.getElementById('dbg-'+type);
-  G.resources[type] = parseInt(inp.value) || 0;
+  setStartingResource(type, parseInt(inp.value) || 0);
 }
 function setAllRes() {
-  G.resources.food = 9999;
-  G.resources.wood = 9999;
-  G.resources.stone = 9999;
-  G.resources.iron = 9999;
+  G.infiniteResources = true;
+  for (const type of ['food','wood','stone','iron','ingot']) setStartingResource(type, 9999);
 }
 function skipToNight() {
   G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
@@ -1524,7 +1855,7 @@ function skipToNight() {
     if (home) { r.state = 'GOING_HOME'; const hc = home.center(); r.targetX = hc.x; r.targetY = hc.y; if (!r.home) assignHome(r, home); }
   }
   spawnEnemyWave();
-  showTimeIndicator('🌙 跳过至夜晚');
+  showTimeIndicator('跳至夜晚');
 }
 function unlockAll() {
   const th = G.townHall; if (!th) return;
@@ -1549,7 +1880,7 @@ function skipToDay() {
       r.state = 'IDLE'; r.tired = 0; r.hidden = false;
     }
   }
-  showTimeIndicator('☀️ 跳过至第'+G.day+'天');
+  showTimeIndicator('跳至第 '+G.day+' 天');
 }
 // === In-game JSON Config Editor ===
 const BLD_EDIT_FIELDS = [
@@ -1579,8 +1910,8 @@ function cfgSelectCategory() {
       sel.appendChild(opt);
     }
   } else if(cat==='resources') {
-    const rn = {food:'🍗 食物',wood:'🪵 木材',stone:'🪨 石材',iron:'⚒ 铁矿'};
-    for(const r of ['food','wood','stone','iron']) {
+    const rn = {food:'食物',wood:'木材',stone:'石材',iron:'铁矿',ingot:'铁锭'};
+    for(const r of ['food','wood','stone','iron','ingot']) {
       const opt=document.createElement('option');
       opt.value=r; opt.textContent=rn[r]||r;
       sel.appendChild(opt);
@@ -1601,7 +1932,7 @@ function cfgSelectItem() {
       html+=`<div style="display:flex;align-items:center;gap:8px;"><label style="width:100px;text-align:right;color:#aaa;">${f.label}</label><input id="cfg-fld-${f.k}" type="${f.type}" value="${val??''}" style="flex:1;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
     }
   } else if(cat==='resources') {
-    const resNames = {food:'食物',wood:'木材',stone:'石材',iron:'铁矿'};
+    const resNames = {food:'食物',wood:'木材',stone:'石材',iron:'铁矿',ingot:'铁锭'};
     html += `<div style="display:flex;align-items:center;gap:8px;"><label style="width:100px;text-align:right;color:#aaa;">${resNames[key]||key}</label><input id="cfg-fld-res" type="num" value="${CFG['START_'+key.toUpperCase()]||0}" style="flex:1;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
   }
   container.innerHTML=html;
@@ -1633,20 +1964,20 @@ function cfgApply() {
       if(costDiv) costDiv.textContent=Object.entries(d.cost).map(([k,v])=>v+({wood:'木',stone:'石',iron:'铁',ingot:'锭'}[k]||k)).join(' ');
     }
     updateBuildingPanel();
-    showTimeIndicator('✅ '+d.name+' 配置已应用');
+    showTimeIndicator(d.name+' 配置已应用');
   } else if (cat==='resources') {
     const el = document.getElementById('cfg-fld-res');
     if (el) { CFG['START_'+key.toUpperCase()] = parseInt(el.value) || 0; }
-    showTimeIndicator('✅ '+key+' 初始值已更新');
+    showTimeIndicator(key+' 初始值已更新');
   }
 }
 function cfgExportJSON() {
   const data={buildings:BLD_DEFS,resources:{start:{}}};
-  for(const r of ['food','wood','stone','iron']) data.resources.start[r]=CFG['START_'+r.toUpperCase()];
+  for(const r of ['food','wood','stone','iron','ingot']) data.resources.start[r]=CFG['START_'+r.toUpperCase()];
   const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
   const a=document.createElement('a');
   a.href=URL.createObjectURL(blob); a.download='colony-config.json'; a.click();
-  showTimeIndicator('💾 配置已导出');
+  showTimeIndicator('配置已导出');
 }
 function cfgImportJSON() { document.getElementById('config-file-import').click(); }
 document.getElementById('config-file-import').addEventListener('change',function(e) {
@@ -1668,8 +1999,8 @@ document.getElementById('config-file-import').addEventListener('change',function
         }
       }
       cfgSelectItem();
-      showTimeIndicator('✅ JSON配置已导入并应用');
-    } catch(ex) { showTimeIndicator('⚠ JSON解析失败'); }
+      showTimeIndicator('JSON 配置已导入');
+    } catch(ex) { showTimeIndicator('JSON 解析失败'); }
   };
   reader.readAsText(file);
   this.value='';
@@ -1690,7 +2021,7 @@ function unassignEngineer() {
   if (eng) {
     eng.isEngineer = false;
     if (eng.buildTarget) eng.buildTarget.assignedEngineer = null;
-    eng.buildTarget = null; eng.carrying = null; eng.state = 'IDLE';
+    eng.buildTarget = null; eng.state = eng.carrying ? 'HAULING' : 'IDLE';
   }
 }
 function addPop(n) {
@@ -1703,8 +2034,7 @@ function addPop(n) {
   } else {
     for (let i=0; i<-n && G.residents.length>0; i++) {
       const r = G.residents[G.residents.length-1];
-      if (r.workplace) { r.workplace.assignedWorkers--; }
-      G.residents.pop();
+      removeResident(r);
     }
   }
   G.popGrowthTimer = 0;
@@ -1717,11 +2047,13 @@ function gameOver(msg) {
 }
 function restartGame() {
   G.buildings = []; G.residents = []; G.enemies = []; G.particles = [];
-  G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON };
+  G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT };
   G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
   G.selectedBldType = null; G.selectedBuilding = null; G.placingMode = false; G.movingBuilding = null;
   G.maxPop = CFG.MAX_POP_BASE; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
+  G.resourceCleanupTimer = 0; G.farmLinks = []; G.navigationRevision = 0;
   G.dragging = false; gameSpeed = 1; gameRunning = true;
+  G.infiniteResources = false;
   document.getElementById('gameover-overlay').style.display = 'none';
   initGame();
 }
@@ -1787,6 +2119,24 @@ function getAlpha() {
   return 0.55*(1-G.dayTime/CFG.TRANSITION);
 }
 
+function drawGroundDetails(vpL, vpT, vpR, vpB, nightAlpha) {
+  if (G.cam.zoom < 0.48) return;
+  ctx.strokeStyle = nightAlpha > 0.3 ? 'rgba(115,145,106,0.16)' : 'rgba(172,205,139,0.2)';
+  ctx.lineWidth = 1 / G.cam.zoom;
+  for (let col=vpL; col<=vpR; col++) {
+    for (let row=vpT; row<=vpB; row++) {
+      const hash = ((col * 73856093) ^ (row * 19349663)) >>> 0;
+      if (hash % 5 !== 0) continue;
+      const x = gridX(col) + 8 + (hash % 23);
+      const y = gridY(row) + 12 + ((hash >>> 5) % 18);
+      ctx.beginPath();
+      ctx.moveTo(x, y + 3); ctx.lineTo(x - 2, y - 2);
+      ctx.moveTo(x, y + 3); ctx.lineTo(x + 2, y - 3);
+      ctx.stroke();
+    }
+  }
+}
+
 function render() {
   const alpha=getAlpha();
   ctx.clearRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H);
@@ -1801,13 +2151,19 @@ function render() {
   ctx.fillStyle=lerpColor('#3d5a3d','#1a2a1a',alpha);
   ctx.fillRect(0,0,CFG.WORLD_W,CFG.WORLD_H);
 
+  const vpW = CFG.CANVAS_W / G.cam.zoom, vpH = CFG.CANVAS_H / G.cam.zoom;
+  const viewLeft = G.cam.x - vpW/2, viewTop = G.cam.y - vpH/2;
+  const viewRight = G.cam.x + vpW/2, viewBottom = G.cam.y + vpH/2;
+  const vpL = Math.max(0, Math.floor(viewLeft / CFG.CELL));
+  const vpT = Math.max(0, Math.floor(viewTop / CFG.CELL));
+  const vpR = Math.min(CFG.WORLD_COLS - 1, Math.ceil(viewRight / CFG.CELL));
+  const vpB = Math.min(CFG.WORLD_ROWS - 1, Math.ceil(viewBottom / CFG.CELL));
+  const inView = (x,y,pad=80) => x>=viewLeft-pad && x<=viewRight+pad && y>=viewTop-pad && y<=viewBottom+pad;
+
+  drawGroundDetails(vpL, vpT, vpR, vpB, alpha);
+
   // Floor overlay (bottom layer, viewport-culled)
   if (G.floorMask) {
-    const vpW = CFG.CANVAS_W / G.cam.zoom, vpH = CFG.CANVAS_H / G.cam.zoom;
-    const vpL = Math.max(0, Math.floor((G.cam.x - vpW/2) / CFG.CELL));
-    const vpT = Math.max(0, Math.floor((G.cam.y - vpH/2) / CFG.CELL));
-    const vpR = Math.min(CFG.WORLD_COLS - 1, Math.ceil((G.cam.x + vpW/2) / CFG.CELL));
-    const vpB = Math.min(CFG.WORLD_ROWS - 1, Math.ceil((G.cam.y + vpH/2) / CFG.CELL));
     ctx.fillStyle = '#9a8a6a';
     for (let c = vpL; c <= vpR; c++)
       for (let r = vpT; r <= vpB; r++)
@@ -1818,8 +2174,8 @@ function render() {
   // Grid
   ctx.strokeStyle=alpha>0.3?'rgba(255,255,255,0.04)':'rgba(255,255,255,0.08)';
   ctx.lineWidth=1/G.cam.zoom;
-  for (let c=0;c<=CFG.WORLD_COLS;c++) { ctx.beginPath(); ctx.moveTo(c*CFG.CELL,0); ctx.lineTo(c*CFG.CELL,CFG.WORLD_H); ctx.stroke(); }
-  for (let r=0;r<=CFG.WORLD_ROWS;r++) { ctx.beginPath(); ctx.moveTo(0,r*CFG.CELL); ctx.lineTo(CFG.WORLD_W,r*CFG.CELL); ctx.stroke(); }
+  for (let c=vpL;c<=vpR+1;c++) { ctx.beginPath(); ctx.moveTo(c*CFG.CELL,vpT*CFG.CELL); ctx.lineTo(c*CFG.CELL,(vpB+1)*CFG.CELL); ctx.stroke(); }
+  for (let r=vpT;r<=vpB+1;r++) { ctx.beginPath(); ctx.moveTo(vpL*CFG.CELL,r*CFG.CELL); ctx.lineTo((vpR+1)*CFG.CELL,r*CFG.CELL); ctx.stroke(); }
 
   // Moving ghost
   if (G.placingMode && G.movingBuilding && G.hoveredCell) {
@@ -1834,69 +2190,28 @@ function render() {
 
   // Buildings
   for (const b of G.buildings) {
-    if (!(G.placingMode && b===G.movingBuilding)) drawBuilding(b,b.x,b.y);
+    if (inView(b.center().x,b.center().y,100) && !(G.placingMode && b===G.movingBuilding)) drawBuilding(b,b.x,b.y);
   }
 
-  // Farm adjacency lines
-  const drawnPairs = new Set();
-  for (const b of G.buildings) {
-    if (b.type !== 'farm' || b.hp <= 0 || b.blueprint) continue;
-    const def = BLD_DEFS.farm;
-    const neighbors = [
-      { col: b.col, row: b.row - def.sz[1] },
-      { col: b.col, row: b.row + def.sz[1] },
-      { col: b.col - def.sz[0], row: b.row },
-      { col: b.col + def.sz[0], row: b.row },
-    ];
-    for (const n of neighbors) {
-      for (const other of G.buildings) {
-        if (other === b || other.type !== 'farm' || other.hp <= 0) continue;
-        const od = BLD_DEFS.farm;
-        if (n.col >= other.col && n.col < other.col + od.sz[0] &&
-            n.row >= other.row && n.row < other.row + od.sz[1]) {
-          const key = Math.min(b.x + b.y * 10000, other.x + other.y * 10000) + '_' + Math.max(b.x + b.y * 10000, other.x + other.y * 10000);
-          if (!drawnPairs.has(key)) {
-            drawnPairs.add(key);
-            const c1 = b.center(), c2 = other.center();
-            ctx.strokeStyle = 'rgba(100,255,100,0.3)'; ctx.lineWidth = 1.5 / G.cam.zoom;
-            ctx.setLineDash([6, 4]);
-            ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke();
-            ctx.setLineDash([]);
-          }
-          break;
-        }
-      }
-    }
+  // Farm links are cached when the layout changes.
+  for (const [a,b] of G.farmLinks) {
+    const c1 = a.center(), c2 = b.center();
+    ctx.strokeStyle = 'rgba(181,220,104,0.5)'; ctx.lineWidth = 2 / G.cam.zoom;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath(); ctx.moveTo(c1.x, c1.y); ctx.lineTo(c2.x, c2.y); ctx.stroke();
+    ctx.setLineDash([]);
   }
 
   // Residents
-  for (const r of G.residents) if (!r.hidden) drawResident(r);
+  for (const r of G.residents) if (!r.hidden && inView(r.x,r.y)) drawResident(r);
 
   // Enemies
-  for (const e of G.enemies) if(e.alive) drawEnemy(e);
+  for (const e of G.enemies) if(e.alive && inView(e.x,e.y)) drawEnemy(e);
 
   // Resource nodes
   for (const node of G.resourceNodes) {
-    if (!node.alive) continue;
-    if (node.type === 'sapling') {
-      ctx.fillStyle = '#5a3a1a'; ctx.fillRect(node.x - 1, node.y - 3, 2, 6);
-      ctx.fillStyle = '#5a9a3d'; ctx.beginPath(); ctx.arc(node.x, node.y - 5, 3, 0, Math.PI*2); ctx.fill();
-      const growProgress = 1 - (node.growTimer / 10);
-      if (growProgress > 0) {
-        ctx.strokeStyle = 'rgba(255,255,255,0.4)'; ctx.lineWidth = 1;
-        ctx.beginPath(); ctx.arc(node.x, node.y - 5, 4, -Math.PI/2, -Math.PI/2+Math.PI*2*growProgress); ctx.stroke();
-      }
-    } else if (node.type === 'tree') {
-      ctx.fillStyle = '#6b4226'; ctx.fillRect(node.x - 3, node.y - 5, 6, 10);
-      ctx.fillStyle = '#3d7a3d'; ctx.beginPath(); ctx.arc(node.x, node.y - 8, 7, 0, Math.PI * 2); ctx.fill();
-      if (node.marked) { ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([3, 3]); ctx.strokeRect(node.x - 8, node.y - 16, 16, 24); ctx.setLineDash([]); }
-    } else if (node.type === 'stone') {
-      ctx.fillStyle = '#888'; ctx.fillRect(node.x, node.y, CFG.CELL, CFG.CELL);
-      ctx.strokeStyle = '#666'; ctx.lineWidth = 1; ctx.strokeRect(node.x + 1, node.y + 1, CFG.CELL - 2, CFG.CELL - 2);
-    } else {
-      ctx.fillStyle = '#8b5a3c'; ctx.fillRect(node.x, node.y, CFG.CELL, CFG.CELL);
-      ctx.fillStyle = '#a06030'; ctx.beginPath(); ctx.arc(node.x + CFG.CELL / 2, node.y + CFG.CELL / 2, 6, 0, Math.PI * 2); ctx.fill();
-    }
+    if (!node.alive || !inView(node.x,node.y)) continue;
+    drawResourceNode(node);
   }
 
   // Chop selection box
@@ -1909,6 +2224,7 @@ function render() {
 
   // Particles
   for (const p of G.particles) {
+    if (!inView(p.x,p.y)) continue;
     ctx.fillStyle=p.color; ctx.globalAlpha=p.life/p.maxLife;
     ctx.beginPath(); ctx.arc(p.x,p.y,3,0,Math.PI*2); ctx.fill(); ctx.globalAlpha=1;
   }
@@ -1916,8 +2232,8 @@ function render() {
   // Selection outline & range (world space)
   if (G.selectedBuilding && !G.placingMode) {
     const b=G.selectedBuilding;
+    const def=BLD_DEFS[b.type];
     if (b.type==='arrow_tower' || b.type==='auto_arrow_tower') {
-      const def=BLD_DEFS[b.type];
       const center=b.center();
       ctx.fillStyle='rgba(255,255,255,0.08)';
       ctx.beginPath(); ctx.arc(center.x, center.y, def.range, 0, Math.PI*2); ctx.fill();
@@ -1925,7 +2241,6 @@ function render() {
       ctx.beginPath(); ctx.arc(center.x, center.y, def.range, 0, Math.PI*2); ctx.stroke();
     }
     if (b.type==='forester') {
-      const def=BLD_DEFS[b.type];
       const center=b.center();
       const fr = (def.foresterRadius||4) * CFG.CELL;
       ctx.fillStyle='rgba(100,255,100,0.06)';
@@ -1934,6 +2249,12 @@ function render() {
       ctx.setLineDash([3,6]);
       ctx.beginPath(); ctx.arc(center.x, center.y, fr, 0, Math.PI*2); ctx.stroke();
       ctx.setLineDash([]);
+    }
+    if (def.sourceType) {
+      const center=b.center(), radius=(def.sourceRadius||3)*CFG.CELL;
+      ctx.fillStyle='rgba(225,190,105,0.05)'; ctx.beginPath(); ctx.arc(center.x,center.y,radius,0,Math.PI*2); ctx.fill();
+      ctx.strokeStyle='rgba(225,190,105,0.42)'; ctx.lineWidth=1/G.cam.zoom; ctx.setLineDash([5,5]);
+      ctx.beginPath(); ctx.arc(center.x,center.y,radius,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
     }
     ctx.strokeStyle='#ffd700'; ctx.lineWidth=2/G.cam.zoom; ctx.setLineDash([4,4]);
     ctx.strokeRect(b.x-2,b.y-2,b.size[0]*CFG.CELL+4,b.size[1]*CFG.CELL+4);
@@ -1946,6 +2267,11 @@ function render() {
     const wp=screenToWorld(G.mouseX, G.mouseY);
     const cp=pixelCenterPlacement(G.selectedBldType, wp.x, wp.y);
     const ok= G.selectedBldType==='floor' ? true : canPlaceBuilding(G.selectedBldType, cp.col, cp.row);
+    if (def.sourceType) {
+      const pcx=gridX(cp.col)+def.sz[0]*CFG.CELL/2, pcy=gridY(cp.row)+def.sz[1]*CFG.CELL/2;
+      ctx.strokeStyle=ok?'rgba(225,205,120,0.6)':'rgba(255,105,90,0.65)'; ctx.lineWidth=1/G.cam.zoom; ctx.setLineDash([5,5]);
+      ctx.beginPath(); ctx.arc(pcx,pcy,(def.sourceRadius||3)*CFG.CELL,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+    }
     ctx.fillStyle=ok?'rgba(0,255,0,0.25)':'rgba(255,0,0,0.25)';
     ctx.fillRect(gridX(cp.col),gridY(cp.row),def.sz[0]*CFG.CELL,def.sz[1]*CFG.CELL);
   }
@@ -1959,14 +2285,55 @@ function render() {
   drawClock();
 }
 
+function drawResourceNode(node) {
+  if (node.type === 'sapling') {
+    ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(node.x,node.y+2,5,2,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#725036'; ctx.fillRect(node.x-1,node.y-5,2,8);
+    ctx.fillStyle='#70a955'; ctx.beginPath(); ctx.arc(node.x-2,node.y-6,3,0,Math.PI*2); ctx.arc(node.x+2,node.y-7,3,0,Math.PI*2); ctx.fill();
+    const growProgress = clamp(1-(node.growTimer/10),0,1);
+    ctx.strokeStyle='rgba(235,240,220,0.7)'; ctx.lineWidth=1/G.cam.zoom;
+    ctx.beginPath(); ctx.arc(node.x,node.y-6,6,-Math.PI/2,-Math.PI/2+Math.PI*2*growProgress); ctx.stroke();
+    return;
+  }
+  if (node.type === 'tree') {
+    ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(node.x,node.y+7,11,4,0,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#65442d'; ctx.fillRect(node.x-3,node.y-7,6,14);
+    ctx.fillStyle='#285d3c'; ctx.beginPath(); ctx.arc(node.x-5,node.y-10,7,0,Math.PI*2); ctx.arc(node.x+5,node.y-11,8,0,Math.PI*2); ctx.arc(node.x,node.y-17,9,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#3f7b4d'; ctx.beginPath(); ctx.arc(node.x-2,node.y-17,5,0,Math.PI*2); ctx.fill();
+    if (node.marked) {
+      ctx.strokeStyle='#f4d77b'; ctx.lineWidth=1.5/G.cam.zoom; ctx.setLineDash([3,3]);
+      ctx.strokeRect(node.x-12,node.y-27,24,36); ctx.setLineDash([]);
+    }
+    return;
+  }
+  const cx=node.x+CFG.CELL/2, cy=node.y+CFG.CELL/2;
+  ctx.fillStyle='rgba(0,0,0,0.22)'; ctx.beginPath(); ctx.ellipse(cx,cy+10,15,6,0,0,Math.PI*2); ctx.fill();
+  ctx.beginPath();
+  ctx.moveTo(cx-14,cy+8); ctx.lineTo(cx-11,cy-7); ctx.lineTo(cx-2,cy-14);
+  ctx.lineTo(cx+10,cy-8); ctx.lineTo(cx+15,cy+7); ctx.lineTo(cx+5,cy+12); ctx.closePath();
+  ctx.fillStyle=node.type==='stone'?'#7c8580':'#765a50'; ctx.fill();
+  ctx.strokeStyle=node.type==='stone'?'#aeb7b1':'#a87655'; ctx.lineWidth=1.5/G.cam.zoom; ctx.stroke();
+  ctx.strokeStyle=node.type==='stone'?'rgba(225,235,228,0.45)':'rgba(224,133,73,0.75)';
+  ctx.beginPath(); ctx.moveTo(cx-7,cy+4); ctx.lineTo(cx-1,cy-7); ctx.lineTo(cx+7,cy-2); ctx.stroke();
+}
+
 function drawBuilding(b, x, y) {
   const def=BLD_DEFS[b.type], w=def.sz[0]*CFG.CELL, h=def.sz[1]*CFG.CELL, cx=x+w/2, cy=y+h/2;
   const cr = b.collisionRadius();
   ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x, y, w, h);
   ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.setLineDash([3,6]); ctx.strokeRect(x+1,y+1,w-2,h-2); ctx.setLineDash([]);
   if (b.blueprint) ctx.globalAlpha = 0.5;
-  ctx.fillStyle=buildingColor(b.type); ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,0.4)'; ctx.lineWidth=1.5; ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.stroke();
+  ctx.save(); ctx.shadowColor='rgba(0,0,0,0.42)'; ctx.shadowBlur=7/G.cam.zoom; ctx.shadowOffsetY=3/G.cam.zoom;
+  ctx.fillStyle=buildingColor(b.type); ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.fill(); ctx.restore();
+  ctx.strokeStyle='rgba(238,238,220,0.5)'; ctx.lineWidth=1.5/G.cam.zoom; ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.stroke();
+  ctx.strokeStyle='rgba(255,255,255,0.13)'; ctx.lineWidth=4/G.cam.zoom; ctx.beginPath(); ctx.arc(cx-2,cy-2,Math.max(2,cr-5),Math.PI*1.05,Math.PI*1.8); ctx.stroke();
+  drawBuildingDetails(b,cx,cy,cr);
+  if (!b.blueprint && def.needsManning) {
+    const post = b.guardSpot();
+    const guard = G.residents.find(r => r.assignedTower === b || r.manningTower === b);
+    ctx.fillStyle = guard ? 'rgba(112,170,238,0.9)' : 'rgba(220,220,190,0.32)';
+    ctx.beginPath(); ctx.arc(post.x, post.y, guard ? 3 : 2, 0, Math.PI*2); ctx.fill();
+  }
   if (b.blueprint) ctx.globalAlpha = 1;
   if (b.hp<b.maxHp && !b.blueprint && b.constructionTimer <= 0) {
     const bw=w-8, bh=4;
@@ -1974,7 +2341,7 @@ function drawBuilding(b, x, y) {
     ctx.fillStyle=b.hp/b.maxHp>0.5?'#4a4':'#a44'; ctx.fillRect(x+4,y-8,bw*(b.hp/b.maxHp),bh);
   }
   if (b.blueprint) {
-    ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+5);
+    ctx.fillStyle='#fff'; ctx.font='700 9px Arial,sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+3);
     const totalCost = Object.values(b.constructCost||{}).reduce((a,v)=>a+v,0);
     const totalDone = Object.values(b.constructDelivered||{}).reduce((a,v)=>a+v,0);
     const ratio = totalCost > 0 ? totalDone / totalCost : 0;
@@ -1994,11 +2361,23 @@ function drawBuilding(b, x, y) {
     ctx.fillText(Math.floor(prog*100)+'%', cx, cy);
   }
   if (!b.blueprint && b.constructionTimer <= 0) {
-    ctx.fillStyle='#fff'; ctx.font='14px sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+5);
+    ctx.fillStyle='rgba(245,240,218,0.88)'; ctx.font='700 8px Arial,sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+3);
   }
 
+  if (!b.blueprint && b.constructionTimer<=0 && def.cat==='production' && b.type!=='forester') {
+    ctx.strokeStyle='rgba(226,200,120,0.75)'; ctx.lineWidth=2/G.cam.zoom;
+    ctx.beginPath(); ctx.arc(cx,cy,cr+4,-Math.PI/2,-Math.PI/2+Math.PI*2*clamp(b.productionProgress,0,1)); ctx.stroke();
+    let warning='';
+    if (def.sourceType && !findResourceNode(b,def.sourceType)) warning='缺矿';
+    else if (def.inputs && !canAfford(def.inputs)) warning='缺料';
+    else if (b.pendingOutput >= CFG.PRODUCTION_BATCH_SIZE && !findNearestStorage(b.center(),def.produces,{requireSpace:CFG.PRODUCTION_BATCH_SIZE})) warning='仓满';
+    if (warning) {
+      ctx.fillStyle='rgba(80,24,18,0.9)'; ctx.fillRect(cx-13,y-9,26,10);
+      ctx.fillStyle='#ffd0b8'; ctx.font='8px sans-serif'; ctx.textAlign='center'; ctx.fillText(warning,cx,y-1);
+    }
+  }
   // Storage capacity bar (per-building) - skip for blueprints
-  if (!b.blueprint && isStorage(b.type) && def.capacity) {
+  if (!b.blueprint && isStorage(b.type) && def.capacity && b.type!=='town_hall') {
     const stored = Object.values(b.stored||{}).reduce((a,v)=>a+v, 0);
     const cap = def.capacity;
     const ratio = cap > 0 ? Math.min(1, stored / cap) : 0;
@@ -2016,17 +2395,65 @@ function drawBuilding(b, x, y) {
   if (!b.blueprint && def.maxWorkers>0) {
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
-    ctx.fillText(`👤${b.assignedWorkers}/${def.maxWorkers}`,cx,cy+h/2-6);
+    ctx.fillText(`W ${b.assignedWorkers}/${def.maxWorkers}`,cx,cy+h/2-6);
   }
-  if (!b.blueprint && (b.type==='house'||b.type==='town_hall')) {
+  if (!b.blueprint && b.type==='arrow_tower') {
+    const guardAssigned = G.residents.some(r=>r.isGuard && (r.assignedTower===b || r.manningTower===b));
+    ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
+    ctx.fillStyle=guardAssigned?'#e5c66c':'#aeb8ad'; ctx.font='8px sans-serif'; ctx.textAlign='center';
+    ctx.fillText(`G ${guardAssigned?'1':'0'}/1`,cx,cy+h/2-6);
+  }
+  if (!b.blueprint && b.type==='house') {
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
-    ctx.fillText(`🏠${b.residentCount}/${houseCapacity(b)}`,cx,cy+h/2-6);
+    ctx.fillText(`H ${b.residentCount}/${houseCapacity(b)}`,cx,cy+h/2-6);
+  }
+  if (!b.blueprint && def.cat==='production' && b.pendingOutput > 0) {
+    ctx.fillStyle='rgba(255,214,126,0.92)'; ctx.font='700 8px Arial,sans-serif'; ctx.textAlign='center';
+    ctx.fillText(`OUT ${b.pendingOutput}/${CFG.PRODUCTION_BATCH_SIZE}`, cx, y-4);
   }
   if (!b.blueprint) {
     const ts=b.stored?Object.values(b.stored).reduce((a,c)=>a+c,0):0;
-    if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='9px sans-serif'; ctx.fillText(`📦${ts}`,cx,y-4); }
+    if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='700 8px Arial,sans-serif'; ctx.fillText(`BOX ${ts}`,cx,y-4); }
   }
+}
+
+function drawBuildingDetails(b,cx,cy,cr) {
+  const t=b.type;
+  ctx.save(); ctx.lineWidth=1.2/G.cam.zoom;
+  if (t==='farm') {
+    ctx.strokeStyle='rgba(232,220,139,0.6)';
+    for (let i=-2;i<=2;i++) { ctx.beginPath(); ctx.moveTo(cx-cr*0.62,cy+i*5); ctx.lineTo(cx+cr*0.62,cy+i*5); ctx.stroke(); }
+  } else if (t==='forester') {
+    ctx.fillStyle='rgba(16,64,37,0.7)';
+    for (const [ox,oy,s] of [[-11,3,7],[0,-8,9],[11,4,7]]) { ctx.beginPath(); ctx.arc(cx+ox,cy+oy,s,0,Math.PI*2); ctx.fill(); }
+  } else if (t==='town_hall') {
+    ctx.fillStyle='rgba(52,42,31,0.55)'; ctx.fillRect(cx-18,cy-10,36,22);
+    ctx.fillStyle='#d2b969'; ctx.beginPath(); ctx.moveTo(cx-22,cy-10); ctx.lineTo(cx,cy-24); ctx.lineTo(cx+22,cy-10); ctx.closePath(); ctx.fill();
+    ctx.strokeStyle='#eadb9b'; ctx.beginPath(); ctx.moveTo(cx,cy-24); ctx.lineTo(cx,cy-34); ctx.stroke();
+    ctx.fillStyle='#a94c3d'; ctx.fillRect(cx,cy-34,10,6);
+  } else if (t==='house') {
+    ctx.fillStyle='rgba(43,35,28,0.55)'; ctx.fillRect(cx-15,cy-8,30,20);
+    ctx.fillStyle='#b96c4b'; ctx.beginPath(); ctx.moveTo(cx-19,cy-8); ctx.lineTo(cx,cy-21); ctx.lineTo(cx+19,cy-8); ctx.closePath(); ctx.fill();
+    ctx.fillStyle='#f0cf7b'; ctx.fillRect(cx-9,cy-2,5,6); ctx.fillRect(cx+4,cy-2,5,6);
+  } else if (t.includes('storage')) {
+    ctx.strokeStyle='rgba(235,220,174,0.55)'; ctx.strokeRect(cx-15,cy-13,30,26);
+    ctx.beginPath(); ctx.moveTo(cx-15,cy); ctx.lineTo(cx+15,cy); ctx.moveTo(cx,cy-13); ctx.lineTo(cx,cy+13); ctx.stroke();
+  } else if (t==='quarry'||t==='iron_mine') {
+    ctx.fillStyle=t==='quarry'?'rgba(210,218,211,0.45)':'rgba(207,112,67,0.5)';
+    for (const [ox,oy,s] of [[-10,6,8],[2,-5,10],[12,8,7]]) { ctx.beginPath(); ctx.arc(cx+ox,cy+oy,s,0,Math.PI*2); ctx.fill(); }
+  } else if (t==='smelter') {
+    ctx.fillStyle='rgba(48,37,30,0.7)'; ctx.fillRect(cx-15,cy-8,30,21); ctx.fillRect(cx+7,cy-23,8,18);
+    ctx.fillStyle='rgba(255,190,70,0.8)'; ctx.beginPath(); ctx.arc(cx-4,cy+2,7,0,Math.PI*2); ctx.fill();
+  } else if (t==='arrow_tower'||t==='auto_arrow_tower') {
+    ctx.strokeStyle='rgba(240,226,185,0.65)'; ctx.beginPath(); ctx.arc(cx,cy,cr*0.55,0,Math.PI*2); ctx.stroke();
+    ctx.beginPath(); ctx.moveTo(cx-cr*0.65,cy); ctx.lineTo(cx+cr*0.65,cy); ctx.moveTo(cx,cy-cr*0.65); ctx.lineTo(cx,cy+cr*0.65); ctx.stroke();
+  } else if (t==='wall') {
+    ctx.strokeStyle='rgba(238,238,225,0.38)';
+    for (let yy=-6;yy<=6;yy+=6) { ctx.beginPath(); ctx.moveTo(cx-cr*0.65,cy+yy); ctx.lineTo(cx+cr*0.65,cy+yy); ctx.stroke(); }
+    ctx.beginPath(); ctx.moveTo(cx,cy-12); ctx.lineTo(cx,cy-6); ctx.moveTo(cx-7,cy-6); ctx.lineTo(cx-7,cy); ctx.moveTo(cx+7,cy); ctx.lineTo(cx+7,cy+6); ctx.stroke();
+  }
+  ctx.restore();
 }
 
 function buildingColor(t) {
@@ -2056,9 +2483,8 @@ function drawResident(r) {
   ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(r.x+2, r.y-14, 1.5, 0, Math.PI*2); ctx.fill();
   if (r.carrying) { ctx.fillStyle=rc(r.carrying.type); ctx.beginPath(); ctx.arc(r.x, r.y-22, 3, 0, Math.PI*2); ctx.fill(); }
   if (r.isGuard) {
-    // Draw shield icon above guard
-    ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
-    ctx.fillText('🛡️', r.x, r.y - 23);
+    // Compact shield silhouette above guards.
+    ctx.fillStyle='#e6d49a'; ctx.beginPath(); ctx.moveTo(r.x,r.y-29); ctx.lineTo(r.x+5,r.y-26); ctx.lineTo(r.x+4,r.y-20); ctx.lineTo(r.x,r.y-17); ctx.lineTo(r.x-4,r.y-20); ctx.lineTo(r.x-5,r.y-26); ctx.closePath(); ctx.fill();
     // Guard HP bar
     const gbw = 14, gbh = 2;
     ctx.fillStyle = '#333'; ctx.fillRect(r.x - gbw/2, r.y + cr + 4, gbw, gbh);
@@ -2066,10 +2492,10 @@ function drawResident(r) {
     ctx.fillStyle = gpct > 0.5 ? '#4a4' : gpct > 0.25 ? '#fa4' : '#f44';
     ctx.fillRect(r.x - gbw/2, r.y + cr + 4, gbw * gpct, gbh);
   }
-  if (r.starvationDays >= 2) { ctx.fillStyle='#f44'; ctx.font='bold 9px sans-serif'; ctx.fillText('💀',r.x-5,r.y-24); }
-  else if (r.starvationDays >= 1) { ctx.fillStyle='#f84'; ctx.font='8px sans-serif'; ctx.fillText('⚠',r.x-5,r.y-22); }
-  if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='8px sans-serif'; ctx.fillText('🍗',r.x-8,r.y-20); }
-  if (r.tired>CFG.TIRED_THRESHOLD*0.8) { ctx.fillStyle='#fff'; ctx.font='8px sans-serif'; ctx.fillText('💤',r.x+5,r.y-20); }
+  if (r.starvationDays >= 2) { ctx.fillStyle='#f07162'; ctx.font='700 9px Arial,sans-serif'; ctx.fillText('!',r.x-5,r.y-24); }
+  else if (r.starvationDays >= 1) { ctx.fillStyle='#e1a056'; ctx.font='700 9px Arial,sans-serif'; ctx.fillText('!',r.x-5,r.y-22); }
+  if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) { ctx.fillStyle='#e4c66b'; ctx.fillRect(r.x-7,r.y-22,8,2); }
+  if (r.tired>CFG.TIRED_THRESHOLD*0.8) { ctx.fillStyle='#91a8b7'; ctx.fillRect(r.x+3,r.y-22,8,2); }
 }
 
 function drawEnemy(e) {
@@ -2149,6 +2575,7 @@ function updateTopBar() {
   document.getElementById('r-wood').textContent = Math.floor(G.resources.wood);
   document.getElementById('r-stone').textContent = Math.floor(G.resources.stone);
   document.getElementById('r-iron').textContent = Math.floor(G.resources.iron);
+  document.getElementById('r-ingot').textContent = Math.floor(G.resources.ingot);
   const homeless = G.residents.filter(r=>!r.home).length;
   const engActive = G.residents.filter(r => r.isEngineer && (r.state==='GATHERING'||r.state==='BUILDING')).length;
   const engTotal = G.residents.filter(r => r.isEngineer).length;
@@ -2158,9 +2585,10 @@ function updateTopBar() {
   document.getElementById('r-eng').textContent = engActive+'/'+engTotal;
   const guardTotal = G.residents.filter(r => r.isGuard).length;
   document.getElementById('r-guard-top').textContent = guardTotal;
-  document.getElementById('r-pop').textContent = `${G.residents.length}/${G.maxPop}` + (homeless>0?` ⚠${homeless}`:'');
-  document.getElementById('r-time').textContent = G.phase==='day'?`第${G.day}天`:G.phase==='night'?`第${G.day}夜`:`第${G.day}天·过渡`;
-  document.getElementById('day-icon').textContent = G.phase==='day'?'☀️':G.phase==='night'?'🌙':'🌅';
+  document.getElementById('r-pop').textContent = `${G.residents.length}/${G.maxPop}` + (homeless>0?` !${homeless}`:'');
+  document.getElementById('r-time').textContent = G.phase==='day'?`第 ${G.day} 天`:G.phase==='night'?`第 ${G.day} 夜`:`第 ${G.day} 天 · 过渡`;
+  const dayIcon=document.getElementById('day-icon');
+  dayIcon.className='resource-mark '+(G.phase==='day'?'day':'day '+G.phase);
 }
 
 function showContextMenu(building, mx, my) {
@@ -2176,8 +2604,8 @@ function showContextMenu(building, mx, my) {
     const full = slots <= 0;
     const guardFull = G.residents.length + b.guardRecruitQueue >= G.maxPop;
     h+=`<div class="info-line" style="font-size:10px">人口: ${G.residents.length}/${G.maxPop} | 住户: ${b.residentCount}/${houseCapacity(b)} | 工人队列: ${b.recruitQueue} | 守卫队列: ${b.guardRecruitQueue}</div>`;
-    h+=`<button onclick="actionRecruit()"${full?' disabled':''}>👤 招募工人 (消耗${def.recruitCost.food}食物)${b.recruitQueue>0?` (${b.recruitQueue}人排队中)`:''}${full?' [已满]':''}</button>`;
-    h+=`<button onclick="actionRecruitGuard()"${guardFull?' disabled':''}>⚔️ 招募守卫 (消耗${def.guardRecruitCost.food}食物)${b.guardRecruitQueue>0?` (${b.guardRecruitQueue}人排队中)`:''}${guardFull?' [已满]':''}</button>`;
+    h+=`<button onclick="actionRecruit()"${full?' disabled':''}>招募工人 (消耗${def.recruitCost.food} 食物)${b.recruitQueue>0?` (${b.recruitQueue} 人排队中)`:''}${full?' [已满]':''}</button>`;
+    h+=`<button onclick="actionRecruitGuard()"${guardFull?' disabled':''}>招募守卫 (消耗${def.guardRecruitCost.food} 食物)${b.guardRecruitQueue>0?` (${b.guardRecruitQueue} 人排队中)`:''}${guardFull?' [已满]':''}</button>`;
     const nextLv = b.level + 1;
     const unlocks = [];
     for (const [k, d] of Object.entries(BLD_DEFS)) {
@@ -2189,19 +2617,26 @@ function showContextMenu(building, mx, my) {
     const capText = `建筑等级上限 → Lv.${nextLv}`;
     const unlockText = unlocks.length ? '解锁: '+unlocks.join(' ') : '';
     h+=`<div class="info-line" style="font-size:10px;color:#ffd700;">⬆ 升级后: ${capText}${unlockText?' | '+unlockText:''}</div>`;
-    h+=`<button onclick="actionUpgrade()">⬆ 升级 Lv.${b.level}→${nextLv} (${costStr})${b.upgrading?' (升级中...)':''}</button>`;
+    h+=`<button onclick="actionUpgrade()">升级 Lv.${b.level}→${nextLv} (${costStr})${b.upgrading?' (升级中...)':''}</button>`;
   } else {
     const maxLv = maxBuildingLevel(b.type);
     const capped = b.level >= maxLv;
-    h+=`<button onclick="actionUpgrade()"${capped?' disabled':''}>⬆ 升级${b.upgrading?' (升级中...)':''}${capped?` [需大本营Lv.${b.level+1}]`:''}</button>`;
+    h+=`<button onclick="actionUpgrade()"${capped?' disabled':''}>升级${b.upgrading?' (升级中...)':''}${capped?` [需大本营Lv.${b.level+1}]`:''}</button>`;
+    if (b.type==='arrow_tower' && !b.blueprint) {
+      const assignedGuard = G.residents.find(r=>r.isGuard && (r.assignedTower===b || r.manningTower===b));
+      const availableGuard = G.residents.some(r=>r.isGuard && !r.assignedTower && !r.manningTower && r.state!=='GUARD_RETURNING' && r.state!=='GUARD_HEALING');
+      h+=`<div class="info-line" style="font-size:10px">守卫岗位: ${assignedGuard?'1/1':'0/1'}</div>`;
+      h+=`<button onclick="actionAddGuard()"${assignedGuard||!availableGuard?' disabled':''}>增加守卫${assignedGuard?' [已分配]':!availableGuard?' [无可用守卫]':''}</button>`;
+      h+=`<button onclick="actionRemoveGuard()"${assignedGuard?'':' disabled'}>减少守卫${assignedGuard?'':' [空]'}</button>`;
+    }
     if(def.maxWorkers>0 && !b.blueprint) {
       const full = b.assignedWorkers >= def.maxWorkers;
       const none = b.assignedWorkers <= 0;
-      h+=`<button onclick="actionAddWorker()"${full?' disabled':''}>➕ 增加工人${full?' [满]':''}</button>`;
-      h+=`<button onclick="actionRemoveWorker()"${none?' disabled':''}>➖ 减少工人${none?' [空]':''}</button>`;
+      h+=`<button onclick="actionAddWorker()"${full?' disabled':''}>增加工人${full?' [满]':''}</button>`;
+      h+=`<button onclick="actionRemoveWorker()"${none?' disabled':''}>减少工人${none?' [空]':''}</button>`;
     }
-    h+=`<button onclick="actionMove()">↔ 移动</button>`;
-    h+=`<button onclick="actionDemolish()" style="color:#f66">✖ 拆除</button>`;
+    h+=`<button onclick="actionMove()">移动建筑</button>`;
+    h+=`<button onclick="actionDemolish()" style="color:#f66">拆除建筑</button>`;
   }
   contextMenu.innerHTML=h;
   contextMenu.style.display='flex';
@@ -2237,8 +2672,33 @@ function actionAddWorker() {
 }
 function actionRemoveWorker() {
   const b=G.selectedBuilding; if(!b||b.assignedWorkers<=0) return;
-  const w=G.residents.find(r=>r.workplace===b&&(r.state==='WORKING'||r.state==='GOING_TO_WORK'||r.state==='HAULING'));
-  if(w){w.workplace=null;w.state='IDLE';} b.assignedWorkers--;
+  const w=G.residents.find(r=>r.workplace===b&&!r.isGuard);
+  if(w){if (b.outputHauler===w) b.outputHauler=null; w.workplace=null;w.chopTarget=null;w.state=w.carrying?'HAULING':'IDLE';}
+  b.assignedWorkers=Math.max(0,b.assignedWorkers-1);
+  const menu=document.getElementById('context-menu');
+  showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
+}
+function actionAddGuard() {
+  const b=G.selectedBuilding;
+  if(!b || b.type!=='arrow_tower' || b.blueprint || b.assignedGuard) return;
+  const guard=G.residents.find(r=>r.isGuard && !r.assignedTower && !r.manningTower && r.state!=='GUARD_RETURNING' && r.state!=='GUARD_HEALING');
+  if(!guard) return;
+  for (const enemy of G.enemies) if (enemy.fightingGuard===guard) enemy.fightingGuard=null;
+  guard.assignedTower=b; b.assignedGuard=guard;
+  if(G.phase==='night'||G.phase==='dusk') { guard.state='GUARD_FIND_TOWER'; guard.hidden=false; }
+  else { guard.state='GUARD_SLEEPING'; guard.hidden=true; }
+  const menu=document.getElementById('context-menu');
+  showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
+}
+function actionRemoveGuard() {
+  const b=G.selectedBuilding; if(!b||b.type!=='arrow_tower') return;
+  const guard=G.residents.find(r=>r.isGuard && (r.assignedTower===b || r.manningTower===b));
+  if(!guard) return;
+  for (const enemy of G.enemies) if (enemy.fightingGuard===guard) enemy.fightingGuard=null;
+  if(guard.manningTower===b) guard.manningTower=null;
+  guard.assignedTower=null; b.assignedGuard=null;
+  guard.state=(G.phase==='night'||G.phase==='dusk')?'GUARD_FIGHTING':'GUARD_SLEEPING';
+  guard.hidden=!(G.phase==='night'||G.phase==='dusk');
   const menu=document.getElementById('context-menu');
   showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
 }
@@ -2356,7 +2816,7 @@ canvas.addEventListener('click', e => {
     const minC = Math.min(G.chopStartX, ex), maxC = Math.max(G.chopStartX, ex);
     const minR = Math.min(G.chopStartY, ey), maxR = Math.max(G.chopStartY, ey);
     for (const node of G.resourceNodes) {
-      if (node.type === 'tree' && node.alive && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR) {
+            if (canResidentHandHarvest(node) && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR) {
         if (G.chopMode) node.marked = true;
         else if (node.marked) node.marked = false;
       }
@@ -2386,6 +2846,8 @@ canvas.addEventListener('click', e => {
     const cp=pixelCenterPlacement(b.type, wp.x, wp.y);
     if(canPlaceBuilding(b.type,cp.col,cp.row,b)){
       b.col=cp.col;b.row=cp.row;b.x=gridX(cp.col);b.y=gridY(cp.row);
+      invalidateNavigation();
+      if (b.type==='farm') refreshFarmAdjacency();
       G.placingMode=false;G.movingBuilding=null;G.selectedBuilding=null;hideContextMenu();
       for (const r of G.residents) {
         if (r.workplace === b) r.state = 'GOING_TO_WORK';
@@ -2439,19 +2901,23 @@ document.addEventListener('wheel', () => hideContextMenu());
 // LOOP
 // ============================================================
 let lastTime=0;
+let hudUpdateTimer=0;
 function gameLoop(ts) {
   const rawDt=Math.min((ts-lastTime)/1000,0.1); lastTime=ts;
   const dt = rawDt * gameSpeed;
   if (gameSpeed > 0) update(dt);
-  render(); updateTopBar();
+  render();
+  hudUpdateTimer += rawDt;
+  if (hudUpdateTimer >= 0.15) { hudUpdateTimer=0; updateTopBar(); }
   requestAnimationFrame(gameLoop);
 }
 
 initGame();
 updateBuildingPanel();
+updateTopBar();
 lastTime=performance.now();
 requestAnimationFrame(gameLoop);
-console.log('🏘 殖民模拟塔防游戏已就绪');
+console.log('殖民模拟塔防游戏已就绪');
 </script>
 </body>
 </html>
