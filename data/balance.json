@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-07-12T09:26:22.024Z",
+  "savedAt": "2026-07-12T15:00:03.863Z",
   "globals": {
     "DAY_DURATION": 162,
     "NIGHT_DURATION": 78,
@@ -11,9 +11,38 @@
     "ENEMY_SPEED": 50,
     "ENEMY_DAMAGE": 8,
     "PRODUCTION_BATCH_SIZE": 5,
-    "START_FOOD": 50,
-    "START_WOOD": 40,
-    "START_STONE": 20,
+    "FORESTER_CHOP_TIME": 3,
+    "FORESTER_SAPLING_GROW_TIME": 5,
+    "FORESTER_GROW_JITTER": 0.2,
+    "TOWN_HALL_VISION": 8,
+    "LAMP_VISION": 5,
+    "RESIDENT_VISION": 2,
+    "GUARD_VISION": 3,
+    "ENEMY_WAVE_BASE_COUNT": 3,
+    "ENEMY_WAVE_PER_DAY": 2,
+    "ENEMY_WAVE_MAX": 4,
+    "ENEMY_WAVE_DAY_STEP": 2,
+    "ENEMY_WAVE_DURATION": 7,
+    "ENEMY_WAVE_INTERVAL": 10,
+    "ENEMY_SPAWN_JITTER": 0.35,
+    "ENEMY_SPAWN_FOG_DEPTH": 2,
+    "TREE_INITIAL_COUNT": 150,
+    "STONE_CLUSTER_COUNT": 25,
+    "IRON_CLUSTER_COUNT": 15,
+    "TREE_MIN_SPAWN_RADIUS": 4,
+    "STONE_MIN_SPAWN_RADIUS": 10,
+    "IRON_MIN_SPAWN_RADIUS": 20,
+    "START_VISIBLE_TREE_MIN": 5,
+    "TREE_CLUSTER_AVERAGE": 4,
+    "TREE_CLUSTER_MAX": 10,
+    "STONE_CLUSTER_AVERAGE": 1.5,
+    "STONE_CLUSTER_MAX": 6,
+    "IRON_CLUSTER_AVERAGE": 1,
+    "IRON_CLUSTER_MAX": 4,
+    "IRON_RARE_CLUSTER_CHANCE": 0.04,
+    "START_FOOD": 10,
+    "START_WOOD": 10,
+    "START_STONE": 0,
     "START_IRON": 0,
     "START_INGOT": 0
   },
@@ -307,6 +336,23 @@
       },
       "unlock": 1,
       "buildTime": 2
+    },
+    "lamp": {
+      "name": "灯",
+      "icon": "灯",
+      "cat": "facility",
+      "sz": [
+        1,
+        1
+      ],
+      "cost": {
+        "wood": 5
+      },
+      "hp": 50,
+      "maxWorkers": 0,
+      "unlock": 3,
+      "buildTime": 2,
+      "vision": 5
     },
     "wall": {
       "name": "城墙",

@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>殖民模拟 - 塔防</title>
+<title>村庄模拟 - 塔防</title>
 <style>
 * { margin:0; padding:0; box-sizing:border-box; }
 body {
@@ -159,6 +159,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     <div class="panel-section"><div class="section-label">基础设施</div>
       <button class="bld-btn" data-type="floor"><span class="bld-copy">地板<div class="cost">1 木</div></span></button>
       <button class="bld-btn" data-type="house"><span class="bld-copy">住房<div class="cost">10 木 5 石</div></span></button>
+      <button class="bld-btn" data-type="lamp"><span class="bld-mark facility">灯</span><span class="bld-copy">灯<div class="cost">5 木</div></span></button>
     </div><div class="panel-section"><div class="section-label">生产设施</div>
       <button class="bld-btn" data-type="farm"><span class="bld-mark production">农</span><span class="bld-copy">农场<div class="cost">5 木</div></span></button>
       <button class="bld-btn" data-type="forester"><span class="bld-mark production">林</span><span class="bld-copy">护林员小屋<div class="cost">15 木 10 石</div></span></button>
@@ -223,9 +224,11 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     <div style="display:flex; gap:8px; margin-bottom:10px;">
       <select id="cfg-category" onchange="cfgSelectCategory()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;">
         <option value="globals">全局数值</option>
+        <option value="enemySpawns">敌人生成与波次</option>
         <option value="unlocks">大本营解锁</option>
         <option value="buildings">建筑</option>
         <option value="initialResources">初始拥有资源</option>
+        <option value="worldResources">初始地图资源</option>
       </select>
       <select id="cfg-item" onchange="cfgSelectItem()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;flex:1;"></select>
     </div>
@@ -257,7 +260,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 <div id="context-menu"></div>
 <div id="gameover-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
   background:rgba(0,0,0,0.7); z-index:100; justify-content:center;align-items:center;flex-direction:column;gap:16px;">
-  <div style="font-size:36px;color:#f07162;font-weight:bold;">殖民地失守</div>
+  <div style="font-size:36px;color:#f07162;font-weight:bold;">村庄失守</div>
   <div id="gameover-msg" style="font-size:18px;color:#fff;"></div>
   <button onclick="restartGame()" style="padding:12px 32px;font-size:18px;background:#4a4;color:#fff;
     border:none;border-radius:8px;cursor:pointer;font-family:inherit;">重新开始</button>
@@ -282,15 +285,43 @@ const CFG = {
   HUNGER_RATE: 0.6, HUNGER_THRESHOLD: 60,
   TIRED_RATE: 0.4, TIRED_THRESHOLD: 100,
   ENEMY_BASE_HP: 40, ENEMY_SPEED: 50, ENEMY_DAMAGE: 8, ENEMY_ATTACK_RANGE: 30,
+  ENEMY_WAVE_BASE_COUNT: 3,
+  ENEMY_WAVE_PER_DAY: 2,
+  ENEMY_WAVE_MAX: 4,
+  ENEMY_WAVE_DAY_STEP: 2,
+  ENEMY_WAVE_DURATION: 7,
+  ENEMY_WAVE_INTERVAL: 10,
+  ENEMY_SPAWN_JITTER: 0.35,
+  ENEMY_SPAWN_FOG_DEPTH: 2,
   TOWER_RANGE: 150, TOWER_DAMAGE: 15, TOWER_COOLDOWN: 0.8,
+  ARROW_SPEED: 420,
   RESIDENT_SPEED: 60,
   PRODUCTION_BATCH_SIZE: 5,
   FORESTER_CHOP_TIME: 3,
   FORESTER_SAPLING_GROW_TIME: 5,
   FORESTER_GROW_JITTER: 0.2,
+  TREE_INITIAL_COUNT: 150,
+  STONE_CLUSTER_COUNT: 25,
+  IRON_CLUSTER_COUNT: 15,
+  TREE_MIN_SPAWN_RADIUS: 4,
+  STONE_MIN_SPAWN_RADIUS: 10,
+  IRON_MIN_SPAWN_RADIUS: 20,
+  START_VISIBLE_TREE_MIN: 5,
+  TREE_CLUSTER_AVERAGE: 4,
+  TREE_CLUSTER_MAX: 10,
+  STONE_CLUSTER_AVERAGE: 1.5,
+  STONE_CLUSTER_MAX: 6,
+  IRON_CLUSTER_AVERAGE: 1,
+  IRON_CLUSTER_MAX: 4,
+  IRON_RARE_CLUSTER_CHANCE: 0.04,
   NAV_RECHECK_INTERVAL: 0.25,
   NAV_STUCK_TIMEOUT: 0.5,
   SPATIAL_CELL_SIZE: 96,
+  FOG_UPDATE_INTERVAL: 0.2,
+  TOWN_HALL_VISION: 8,
+  LAMP_VISION: 5,
+  RESIDENT_VISION: 2,
+  GUARD_VISION: 3,
 };
 
 // ============================================================
@@ -326,6 +357,8 @@ const BLD_DEFS = {
   auto_arrow_tower:{ name:'自动箭塔',icon:'自', cat:'defense', sz:[1,1], cost:{wood:30,stone:20},hp:150, maxWorkers:0, range:160, damage:18, cooldown:0.7, unlock:5 , buildTime:14 },
 
   town_hall:   { name:'大本营',icon:'', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, capacity:200, recruitTime:10, recruitCost:{food:5}, guardRecruitTime:15, guardRecruitCost:{food:20}, unlock:1 , buildTime:2 },
+
+  lamp:        { name:'灯', icon:'灯', cat:'facility',  sz:[1,1], cost:{wood:5}, hp:50, maxWorkers:0, unlock:1, buildTime:2, vision:5 },
 
   wall:        { name:'城墙', icon:'墙', cat:'defense',   sz:[1,1], cost:{stone:5},         hp:250, maxWorkers:0, unlock:3 , buildTime:8 },
 
@@ -410,7 +443,7 @@ loadSavedBalance();
 const G = {
   tick: 0, dt: 0, day: 1, dayTime: 0, phase: 'day', totalTime: 0,
   resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT },
-  buildings: [], residents: [], enemies: [], particles: [],
+  buildings: [], residents: [], enemies: [], particles: [], projectiles: [],
   selectedBldType: null, selectedBuilding: null, hoveredCell: null,
   mouseX: 0, mouseY: 0,
   placingMode: false, movingBuilding: null,
@@ -430,6 +463,8 @@ const G = {
   obstacleSpatial: null,
   residentSpatial: null,
   targetedTrees: new Set(),
+  fogVisible: null,
+  fogUpdateTimer: 0,
 };
 
 // ============================================================
@@ -443,6 +478,66 @@ function gridRow(py) { return Math.floor(py/CFG.CELL); }
 function gridX(col) { return col*CFG.CELL; }
 function gridY(row) { return row*CFG.CELL; }
 function invalidateNavigation() { G.navigationRevision++; }
+
+function fogIndex(col,row) { return col+row*CFG.WORLD_COLS; }
+function initFog() { G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS); G.fogUpdateTimer=0; }
+function isFogCellVisible(col,row) {
+  if (!G.fogVisible) return true;
+  return col>=0&&row>=0&&col<CFG.WORLD_COLS&&row<CFG.WORLD_ROWS&&G.fogVisible[fogIndex(col,row)]===1;
+}
+function isWorldVisible(x,y) { return isFogCellVisible(gridCol(x),gridRow(y)); }
+function revealFogCircle(x,y,radius) {
+  const minCol=Math.max(0,gridCol(x-radius)), maxCol=Math.min(CFG.WORLD_COLS-1,gridCol(x+radius));
+  const minRow=Math.max(0,gridRow(y-radius)), maxRow=Math.min(CFG.WORLD_ROWS-1,gridRow(y+radius));
+  for(let col=minCol;col<=maxCol;col++) for(let row=minRow;row<=maxRow;row++) {
+    const cx=gridX(col)+CFG.CELL/2, cy=gridY(row)+CFG.CELL/2;
+    if (Math.hypot(cx-x,cy-y)<=radius) G.fogVisible[fogIndex(col,row)]=1;
+  }
+}
+function buildingVisionRadius(b) {
+  if (b.type==='town_hall') return CFG.TOWN_HALL_VISION*CFG.CELL;
+  if (b.type==='lamp') return CFG.LAMP_VISION*CFG.CELL;
+  return Math.hypot(b.size[0],b.size[1])*CFG.CELL/2;
+}
+function nightLightRadius(b) {
+  return (b.type==='town_hall'||b.type==='lamp') ? buildingVisionRadius(b) : 0;
+}
+function buildingCoverage(type) {
+  const def=BLD_DEFS[type];
+  if (!def) return null;
+  if (type==='lamp') return {radius:CFG.LAMP_VISION*CFG.CELL, fill:'rgba(255,211,102,0.11)', stroke:'rgba(255,223,127,0.78)', dash:[5,5]};
+  if (type==='town_hall') return {radius:CFG.TOWN_HALL_VISION*CFG.CELL, fill:'rgba(255,226,142,0.07)', stroke:'rgba(255,226,142,0.62)', dash:[7,5]};
+  if (def.foresterRadius) return {radius:def.foresterRadius*CFG.CELL, fill:'rgba(100,255,100,0.06)', stroke:'rgba(100,255,100,0.42)', dash:[3,6]};
+  if (def.sourceRadius) return {radius:def.sourceRadius*CFG.CELL, fill:'rgba(225,190,105,0.05)', stroke:'rgba(225,190,105,0.58)', dash:[5,5]};
+  if (def.range) return {radius:def.range, fill:'rgba(255,255,255,0.08)', stroke:'rgba(255,255,255,0.38)', dash:null};
+  return null;
+}
+function refreshFogVisibility() {
+  if (!G.fogVisible) initFog();
+  G.fogVisible.fill(0);
+  for(const b of G.buildings) {
+    if (b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
+    const c=b.center(); revealFogCircle(c.x,c.y,buildingVisionRadius(b));
+  }
+  for(const r of G.residents) {
+    if (r.hidden) continue;
+    revealFogCircle(r.x,r.y,(r.isGuard?CFG.GUARD_VISION:CFG.RESIDENT_VISION)*CFG.CELL);
+  }
+}
+function isStaticPatrolVisible(x,y) {
+  for(const b of G.buildings) {
+    if (b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
+    const c=b.center();
+    if (Math.hypot(x-c.x,y-c.y)<=buildingVisionRadius(b)) return true;
+  }
+  return false;
+}
+function updateFogVisibility(dt) {
+  G.fogUpdateTimer+=dt;
+  if (G.fogUpdateTimer<CFG.FOG_UPDATE_INTERVAL) return;
+  G.fogUpdateTimer=0;
+  refreshFogVisibility();
+}
 
 class SpatialHash {
   constructor(cellSize) { this.cellSize = cellSize; this.buckets = new Map(); }
@@ -527,6 +622,10 @@ function paintFloorCell(col, row) {
   if (key === G.lastFloorCell) return;
   if ((G.resources.wood || 0) < 1) return;
   const def = BLD_DEFS.floor;
+  for (let dc = 0; dc < def.sz[0]; dc++) for (let dr = 0; dr < def.sz[1]; dr++) {
+    const nc = col - Math.floor(def.sz[0]/2) + dc, nr = row - Math.floor(def.sz[1]/2) + dr;
+    if (nc < 0 || nr < 0 || nc >= CFG.WORLD_COLS || nr >= CFG.WORLD_ROWS || !isFogCellVisible(nc,nr)) return;
+  }
   for (let dc = 0; dc < def.sz[0]; dc++) {
     for (let dr = 0; dr < def.sz[1]; dr++) {
       const nc = col - Math.floor(def.sz[0]/2) + dc, nr = row - Math.floor(def.sz[1]/2) + dr;
@@ -539,37 +638,69 @@ function paintFloorCell(col, row) {
 }
 function generateResources() {
   G.resourceNodes = [];
-  // Trees - scattered randomly
-  for (let i = 0; i < 150; i++) {
-    const col = Math.floor(Math.random() * CFG.WORLD_COLS);
-    const row = Math.floor(Math.random() * CFG.WORLD_ROWS);
-    if (isCellBlocked(col, row)) continue; // don't place on buildings
-    G.resourceNodes.push({ type: 'tree', col, row, x: gridX(col) + CFG.CELL / 2, y: gridY(row) + CFG.CELL / 2, hp: 1, alive: true, marked: false });
+  const townCenter=G.townHall ? G.townHall.center() : {x:CFG.WORLD_W/2,y:CFG.WORLD_H/2};
+  const treeVisibleRadius=CFG.TOWN_HALL_VISION;
+  let visibleTrees=0;
+  let attempts=0;
+  while (visibleTrees<CFG.START_VISIBLE_TREE_MIN && attempts++<2000) {
+    const col=Math.floor(Math.random()*CFG.WORLD_COLS), row=Math.floor(Math.random()*CFG.WORLD_ROWS);
+    if (tryAddInitialResource('tree',col,row,townCenter,CFG.TREE_MIN_SPAWN_RADIUS,treeVisibleRadius)) visibleTrees++;
   }
-  // Stone clusters (~25 with 2-3 each)
-  for (let i = 0; i < 25; i++) {
-    const baseCol = 5 + Math.floor(Math.random() * (CFG.WORLD_COLS - 10));
-    const baseRow = 5 + Math.floor(Math.random() * (CFG.WORLD_ROWS - 10));
-    const count = 2 + Math.floor(Math.random() * 4);
-    for (let j = 0; j < count; j++) {
-      const col = baseCol + Math.floor(Math.random() * 3);
-      const row = baseRow + Math.floor(Math.random() * 3);
-      if (isCellBlocked(col, row)) continue;
-      G.resourceNodes.push({ type: 'stone', col, row, x: gridX(col), y: gridY(row), alive: true, marked: false });
-    }
+  let treeCount=G.resourceNodes.filter(node=>node.type==='tree').length;
+  while (treeCount<CFG.TREE_INITIAL_COUNT && attempts++<12000) {
+    const added=spawnInitialResourceCluster('tree',townCenter,CFG.TREE_MIN_SPAWN_RADIUS,Infinity,CFG.TREE_CLUSTER_AVERAGE,CFG.TREE_CLUSTER_MAX,CFG.TREE_INITIAL_COUNT-treeCount);
+    treeCount+=added;
   }
-  // Iron clusters (~15)
-  for (let i = 0; i < 15; i++) {
-    const baseCol = 5 + Math.floor(Math.random() * (CFG.WORLD_COLS - 10));
-    const baseRow = 5 + Math.floor(Math.random() * (CFG.WORLD_ROWS - 10));
-    const count = 2 + Math.floor(Math.random() * 3);
-    for (let j = 0; j < count; j++) {
-      const col = baseCol + Math.floor(Math.random() * 3);
-      const row = baseRow + Math.floor(Math.random() * 3);
-      if (isCellBlocked(col, row)) continue;
-      G.resourceNodes.push({ type: 'iron', col, row, x: gridX(col), y: gridY(row), alive: true, marked: false });
-    }
+  for(let i=0;i<CFG.STONE_CLUSTER_COUNT;i++) {
+    spawnInitialResourceCluster('stone',townCenter,CFG.STONE_MIN_SPAWN_RADIUS,Infinity,CFG.STONE_CLUSTER_AVERAGE,CFG.STONE_CLUSTER_MAX);
   }
+  for(let i=0;i<CFG.IRON_CLUSTER_COUNT;i++) {
+    spawnInitialResourceCluster('iron',townCenter,CFG.IRON_MIN_SPAWN_RADIUS,Infinity,CFG.IRON_CLUSTER_AVERAGE,CFG.IRON_CLUSTER_MAX);
+  }
+}
+function initialResourceDistance(col,row,townCenter) {
+  const x=gridX(col)+CFG.CELL/2, y=gridY(row)+CFG.CELL/2;
+  return Math.hypot(x-townCenter.x,y-townCenter.y)/CFG.CELL;
+}
+function tryAddInitialResource(type,col,row,townCenter,minRadius,maxRadius=Infinity) {
+  if (col<0||row<0||col>=CFG.WORLD_COLS||row>=CFG.WORLD_ROWS) return false;
+  const distance=initialResourceDistance(col,row,townCenter);
+  if (distance<=minRadius||distance>maxRadius||isCellBlocked(col,row)) return false;
+  const centered=type==='tree';
+  G.resourceNodes.push({type,col,row,x:gridX(col)+(centered?CFG.CELL/2:0),y:gridY(row)+(centered?CFG.CELL/2:0),hp:centered?1:undefined,alive:true,marked:false});
+  return true;
+}
+function sampleClusterSize(average,max,rareClusterChance=0) {
+  if (average<=1) {
+    if (max>1&&Math.random()<rareClusterChance) return 2+Math.floor(Math.random()*(max-1));
+    return 1;
+  }
+  const target=clamp(average,1,max);
+  let low=-12, high=12;
+  for(let pass=0;pass<24;pass++) {
+    const lambda=(low+high)/2;
+    let total=0, weighted=0;
+    for(let n=1;n<=max;n++) { const weight=Math.exp(-lambda*(n-1)); total+=weight; weighted+=n*weight; }
+    if (weighted/total>target) low=lambda; else high=lambda;
+  }
+  const lambda=(low+high)/2;
+  let total=0;
+  for(let n=1;n<=max;n++) total+=Math.exp(-lambda*(n-1));
+  let roll=Math.random()*total;
+  for(let n=1;n<=max;n++) { roll-=Math.exp(-lambda*(n-1)); if(roll<=0) return n; }
+  return max;
+}
+function spawnInitialResourceCluster(type,townCenter,minRadius,maxRadius,average,max,limit=Infinity) {
+  const count=Math.min(limit,sampleClusterSize(average,max,type==='iron'?CFG.IRON_RARE_CLUSTER_CHANCE:0));
+  const baseCol=Math.floor(Math.random()*CFG.WORLD_COLS), baseRow=Math.floor(Math.random()*CFG.WORLD_ROWS);
+  let added=0;
+  for(let i=0;i<count;i++) {
+    const spread=Math.max(1,Math.ceil(Math.sqrt(count)));
+    const col=baseCol+Math.round((Math.random()-0.5)*spread*2);
+    const row=baseRow+Math.round((Math.random()-0.5)*spread*2);
+    if (tryAddInitialResource(type,col,row,townCenter,minRadius,maxRadius)) added++;
+  }
+  return added;
 }
 function clearChopCommand() {
   G.chopMode=false; G.unchopMode=false; G.chopStartX=-1; G.chopStartY=-1; G.chopEndX=-1; G.chopEndY=-1;
@@ -786,7 +917,7 @@ function canPlaceBuilding(type, col, row, excludeBld) {
   const def = BLD_DEFS[type];
   for (let dc=0; dc<def.sz[0]; dc++)
     for (let dr=0; dr<def.sz[1]; dr++)
-      if (isCellBlocked(col+dc, row+dr, excludeBld)) return false;
+      if (!isFogCellVisible(col+dc,row+dr)||isCellBlocked(col+dc, row+dr, excludeBld)) return false;
   if (def.sourceType) {
     const preview = {
       type, col, row, x:gridX(col), y:gridY(row), size:def.sz,
@@ -1174,6 +1305,8 @@ function initGame() {
   G.residents[1].isEngineer = true;
   initFloorMask();
   generateResources();
+  initFog();
+  refreshFogVisibility();
 }
 
 function addBuilding(type, col, row, skipBlueprint) {
@@ -1192,7 +1325,18 @@ function addBuilding(type, col, row, skipBlueprint) {
   invalidateNavigation();
   if (type==='house' && !b.blueprint) G.maxPop += BLD_DEFS[type].popBonus;
   if (type==='farm') refreshFarmAdjacency();
+  if (!b.blueprint) refreshFogVisibility();
   return b;
+}
+
+class ArrowProjectile {
+  constructor(source, target, damage) {
+    this.x=source.x; this.y=source.y;
+    this.target=target; this.damage=damage;
+    this.speed=CFG.ARROW_SPEED; this.life=0; this.maxLife=2.5;
+    this.angle=Math.atan2(target.y-source.y,target.x-source.x);
+    this.alive=true;
+  }
 }
 
 function clearGuardPost(r, b) {
@@ -1223,6 +1367,7 @@ function demolishBuilding(b) {
   }
   if (isStorage(b.type)) updateAllResourceTotals();
   if (b.type==='farm') refreshFarmAdjacency();
+  refreshFogVisibility();
 }
 
 // ============================================================
@@ -1237,7 +1382,6 @@ function updateDayNight(dt) {
     G.dayTime = 0;
     if (G.phase==='day') {
       G.phase='dusk'; showTimeIndicator('黄昏');
-      spawnEnemyWave();
       // 饥饿天数累计 + 饿死检查
       const toRemove = [];
       for (const r of G.residents) {
@@ -1283,9 +1427,10 @@ function updateDayNight(dt) {
           r.state = 'GUARD_FIND_TOWER'; r.hidden = false;
         }
       }
+      spawnEnemyWave();
     } else if (G.phase==='night') {
       G.phase='dawn'; showTimeIndicator('黎明');
-      G.enemies=[];
+      G.enemies=[]; G.projectiles=[]; G.enemySpawnQueue=[];
     } else if (G.phase==='dawn') {
       G.phase='day'; G.day++; showTimeIndicator('第 '+G.day+' 天');
       for (const r of G.residents) {
@@ -1303,29 +1448,69 @@ function updateDayNight(dt) {
 }
 
 function spawnEnemyWave() {
-  const count = 3 + G.day * 2;
+  refreshFogVisibility();
+  const candidates=collectFogSpawnCandidates();
   G.enemySpawnTimer = 0;
   G.enemySpawnQueue = [];
-  for (let i=0; i<count; i++)
-    G.enemySpawnQueue.push({ delay: i*1.5 + Math.random()*2 });
+  if (!candidates.length) return;
+  const count = CFG.ENEMY_WAVE_BASE_COUNT + G.day * CFG.ENEMY_WAVE_PER_DAY;
+  const waves=clamp(1+Math.floor((G.day-1)/CFG.ENEMY_WAVE_DAY_STEP),1,CFG.ENEMY_WAVE_MAX);
+  let remaining=count;
+  for(let wave=0;wave<waves;wave++) {
+    const waveCount=Math.ceil(remaining/(waves-wave));
+    remaining-=waveCount;
+    const waveStart=1+wave*(CFG.ENEMY_WAVE_DURATION+CFG.ENEMY_WAVE_INTERVAL);
+    const reserved=[];
+    for(let i=0;i<waveCount;i++) {
+      const slot=(i+0.5+(Math.random()-0.5)*CFG.ENEMY_SPAWN_JITTER)/waveCount;
+      const point=pickFogSpawnCandidate(candidates,reserved);
+      if (!point) continue;
+      reserved.push(point);
+      G.enemySpawnQueue.push({delay:waveStart+clamp(slot,0,1)*CFG.ENEMY_WAVE_DURATION,x:point.x,y:point.y,wave});
+    }
+  }
 }
 
-function spawnEnemy() {
-  const side = Math.floor(Math.random()*4);
-  const pad=20;
-  let x, y;
-  if (side===0)      { x=Math.random()*CFG.WORLD_W; y=-pad; }
-  else if (side===1) { x=CFG.WORLD_W+pad; y=Math.random()*CFG.WORLD_H; }
-  else if (side===2) { x=Math.random()*CFG.WORLD_W; y=CFG.WORLD_H+pad; }
-  else               { x=-pad; y=Math.random()*CFG.WORLD_H; }
-  G.enemies.push(new Enemy(x,y));
+function collectFogSpawnCandidates() {
+  const candidates=[];
+  const minDepth=CFG.ENEMY_SPAWN_FOG_DEPTH;
+  const maxDepth=minDepth+1;
+  const radius=Math.ceil(maxDepth);
+  for(let col=0;col<CFG.WORLD_COLS;col++) for(let row=0;row<CFG.WORLD_ROWS;row++) {
+    if (isFogCellVisible(col,row)) continue;
+    let nearest=Infinity;
+    for(let dc=-radius;dc<=radius;dc++) for(let dr=-radius;dr<=radius;dr++) {
+      const distance=Math.hypot(dc,dr);
+      if (distance>=nearest||distance>maxDepth) continue;
+      if (isFogCellVisible(col+dc,row+dr)) nearest=distance;
+    }
+    if (nearest>=minDepth&&nearest<=maxDepth) {
+      candidates.push({x:gridX(col)+CFG.CELL/2+(Math.random()-0.5)*CFG.CELL*0.45,y:gridY(row)+CFG.CELL/2+(Math.random()-0.5)*CFG.CELL*0.45});
+    }
+  }
+  return candidates;
+}
+
+function pickFogSpawnCandidate(candidates,reserved) {
+  if (!candidates.length) return null;
+  for(let attempt=0;attempt<16;attempt++) {
+    const point=candidates[Math.floor(Math.random()*candidates.length)];
+    if (reserved.every(other=>Math.hypot(point.x-other.x,point.y-other.y)>=CFG.CELL*1.5)) return point;
+  }
+  return candidates[Math.floor(Math.random()*candidates.length)];
+}
+
+function spawnEnemy(entry) {
+  if (!entry || isWorldVisible(entry.x,entry.y)) return false;
+  G.enemies.push(new Enemy(entry.x,entry.y));
+  return true;
 }
 
 function updateEnemies(dt) {
   G.enemySpawnTimer += dt;
   for (let i=G.enemySpawnQueue.length-1; i>=0; i--) {
     if (G.enemySpawnQueue[i].delay <= G.enemySpawnTimer) {
-      spawnEnemy(); G.enemySpawnQueue.splice(i,1);
+      if (spawnEnemy(G.enemySpawnQueue[i])) G.enemySpawnQueue.splice(i,1);
     }
   }
   for (const e of G.enemies) {
@@ -1577,18 +1762,13 @@ function updateTowers(dt) {
     const damage = def.damage + 0;
     let closest = null, closestD = Infinity;
     for (const e of G.enemies) {
-      if (!e.alive) continue;
+      if (!e.alive || !isWorldVisible(e.x,e.y)) continue;
       const d = dist(center, e);
       if (d < range && d < closestD) { closestD = d; closest = e; }
     }
     if (closest) {
-      closest.hp -= damage;
+      fireArrow(center,closest,damage);
       b.attackCooldown = def.cooldown;
-      spawnParticles(closest.x, closest.y, '#ffaa00', 2);
-      if (closest.hp <= 0) {
-        closest.alive = false;
-        spawnParticles(closest.x, closest.y, '#ff6600', 6);
-      }
     }
   }
 }
@@ -1852,10 +2032,21 @@ function updateResidents(dt) {
           r.patrolTimer=2+Math.random()*4;
           r.patrolAngle=Math.random()*Math.PI*2;
         }
-        const pnx=r.x+Math.cos(r.patrolAngle)*30*dt;
-        const pny=r.y+Math.sin(r.patrolAngle)*30*dt;
+        const step=30*dt;
+        let pnx=r.x+Math.cos(r.patrolAngle)*step;
+        let pny=r.y+Math.sin(r.patrolAngle)*step;
+        if (!isStaticPatrolVisible(pnx,pny)) {
+          let found=false;
+          for(let attempt=0;attempt<12;attempt++) {
+            const angle=Math.random()*Math.PI*2;
+            const tx=r.x+Math.cos(angle)*step, ty=r.y+Math.sin(angle)*step;
+            if (!isStaticPatrolVisible(tx,ty)) continue;
+            r.patrolAngle=angle; pnx=tx; pny=ty; found=true; break;
+          }
+          if (!found) break;
+        }
         const prs=resolveCollisions(r,pnx,pny);
-        r.x=prs.x; r.y=prs.y;
+        if (isStaticPatrolVisible(prs.x,prs.y)) { r.x=prs.x; r.y=prs.y; }
         break;
       }
     }
@@ -2004,7 +2195,7 @@ function updateBuildings(dt) {
     }
     return true;
   });
-  if (G.buildings.length !== prevLen) { refreshFarmAdjacency(); updateAllResourceTotals(); }
+  if (G.buildings.length !== prevLen) { refreshFarmAdjacency(); updateAllResourceTotals(); refreshFogVisibility(); }
 }
 
 function updateParticles(dt) {
@@ -2035,6 +2226,33 @@ function setSpeed(s) {
     pauseButton.classList.toggle('active', s===0);
   }
 }
+
+function fireArrow(source,target,damage) {
+  G.projectiles.push(new ArrowProjectile(source,target,damage));
+}
+
+function updateProjectiles(dt) {
+  for(const arrow of G.projectiles) {
+    const target=arrow.target;
+    arrow.life+=dt;
+    if (!target || !target.alive || !isWorldVisible(target.x,target.y) || arrow.life>=arrow.maxLife) { arrow.alive=false; continue; }
+    const dx=target.x-arrow.x, dy=target.y-arrow.y;
+    const distance=Math.hypot(dx,dy);
+    const step=arrow.speed*dt;
+    if (distance<=step+target.size*0.45) {
+      arrow.x=target.x; arrow.y=target.y;
+      target.hp-=arrow.damage;
+      spawnParticles(target.x,target.y,'#ffaa00',2);
+      if (target.hp<=0) { target.alive=false; spawnParticles(target.x,target.y,'#ff6600',6); }
+      arrow.alive=false;
+      continue;
+    }
+    arrow.angle=Math.atan2(dy,dx);
+    arrow.x+=Math.cos(arrow.angle)*step;
+    arrow.y+=Math.sin(arrow.angle)*step;
+  }
+  G.projectiles=G.projectiles.filter(arrow=>arrow.alive);
+}
 function togglePause() { setSpeed(gameSpeed===0?1:0); }
 function setRes(type) {
   const inp = document.getElementById('dbg-'+type);
@@ -2045,7 +2263,7 @@ function setAllRes() {
   for (const type of ['food','wood','stone','iron','ingot']) setStartingResource(type, 9999);
 }
 function skipToNight() {
-  G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
+  G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.projectiles = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   for (const r of G.residents) {
     if (r.isGuard) { r.state = 'GUARD_FIND_TOWER'; r.hidden = false; continue; }
     r.tired = CFG.TIRED_THRESHOLD;
@@ -2070,7 +2288,7 @@ function upgradeTH() {
   updateBuildingPanel();
 }
 function skipToDay() {
-  G.phase = 'day'; G.dayTime = 0; G.day++; G.enemies = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
+  G.phase = 'day'; G.dayTime = 0; G.day++; G.enemies = []; G.projectiles = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   for (const r of G.residents) {
     if (r.isGuard) {
       r.state = 'GUARD_SLEEPING'; r.hidden = true; r.guardHP = r.guardMaxHP; r.manningTower = null;
@@ -2104,6 +2322,36 @@ const GLOBAL_EDIT_FIELDS = [
   { k:'FORESTER_CHOP_TIME', label:'单棵伐木时间', min:0.5, step:0.1, unit:'秒' },
   { k:'FORESTER_SAPLING_GROW_TIME', label:'树苗基础成长', min:0.5, step:0.1, unit:'秒' },
   { k:'FORESTER_GROW_JITTER', label:'树苗成长波动', min:0, max:0.9, step:0.05, unit:'比例' },
+  { k:'TOWN_HALL_VISION', label:'大本营视野', min:1, step:1, unit:'格' },
+  { k:'LAMP_VISION', label:'灯视野', min:1, step:1, unit:'格' },
+  { k:'RESIDENT_VISION', label:'居民视野', min:0, step:1, unit:'格' },
+  { k:'GUARD_VISION', label:'守卫视野', min:0, step:1, unit:'格' },
+];
+const ENEMY_SPAWN_EDIT_FIELDS = [
+  { k:'ENEMY_WAVE_BASE_COUNT', label:'每夜基础敌人数', min:0, step:1, unit:'个' },
+  { k:'ENEMY_WAVE_PER_DAY', label:'每天额外敌人数', min:0, step:1, unit:'个/天' },
+  { k:'ENEMY_WAVE_MAX', label:'每夜最大波数', min:1, step:1, unit:'波' },
+  { k:'ENEMY_WAVE_DAY_STEP', label:'增加一波所需天数', min:1, step:1, unit:'天' },
+  { k:'ENEMY_WAVE_DURATION', label:'波次生成持续时间', min:0.5, step:0.5, unit:'秒' },
+  { k:'ENEMY_WAVE_INTERVAL', label:'波次之间间隔', min:0, step:0.5, unit:'秒' },
+  { k:'ENEMY_SPAWN_JITTER', label:'单位生成随机扰动', min:0, max:1, step:0.05, unit:'比例' },
+  { k:'ENEMY_SPAWN_FOG_DEPTH', label:'迷雾生成最小深度', min:1, step:1, unit:'格' },
+];
+const WORLD_RESOURCE_EDIT_FIELDS = [
+  { k:'TREE_INITIAL_COUNT', label:'初始树木总数', min:5, step:1, unit:'棵' },
+  { k:'STONE_CLUSTER_COUNT', label:'石头簇数量', min:0, step:1, unit:'簇' },
+  { k:'IRON_CLUSTER_COUNT', label:'铁矿簇数量', min:0, step:1, unit:'簇' },
+  { k:'TREE_MIN_SPAWN_RADIUS', label:'树木最小生成半径', min:0, step:1, unit:'格' },
+  { k:'STONE_MIN_SPAWN_RADIUS', label:'石头最小生成半径', min:0, step:1, unit:'格' },
+  { k:'IRON_MIN_SPAWN_RADIUS', label:'铁矿最小生成半径', min:0, step:1, unit:'格' },
+  { k:'START_VISIBLE_TREE_MIN', label:'初始可见树木下限', min:0, step:1, unit:'棵' },
+  { k:'TREE_CLUSTER_AVERAGE', label:'树木簇平均数量', min:1, max:10, step:0.1, unit:'棵' },
+  { k:'TREE_CLUSTER_MAX', label:'树木簇最大数量', min:1, step:1, unit:'棵' },
+  { k:'STONE_CLUSTER_AVERAGE', label:'石头簇平均数量', min:1, max:6, step:0.1, unit:'块' },
+  { k:'STONE_CLUSTER_MAX', label:'石头簇最大数量', min:1, step:1, unit:'块' },
+  { k:'IRON_CLUSTER_AVERAGE', label:'铁矿簇平均数量', min:1, max:4, step:0.1, unit:'块' },
+  { k:'IRON_CLUSTER_MAX', label:'铁矿簇最大数量', min:1, step:1, unit:'块' },
+  { k:'IRON_RARE_CLUSTER_CHANCE', label:'铁矿稀有成簇概率', min:0, max:1, step:0.01, unit:'比例' },
 ];
 function settingsSetStatus(message, kind='normal') {
   const el=document.getElementById('settings-status');
@@ -2198,6 +2446,8 @@ function cfgSelectCategory() {
   sel.innerHTML='';
   if(cat==='globals') {
     const opt=document.createElement('option'); opt.value='gameplay'; opt.textContent='游戏节奏与单位'; sel.appendChild(opt);
+  } else if(cat==='enemySpawns') {
+    const opt=document.createElement('option'); opt.value='nightRaids'; opt.textContent='夜袭波次'; sel.appendChild(opt);
   } else if(cat==='unlocks') {
     const opt=document.createElement('option'); opt.value='town_hall'; opt.textContent='各等级可建建筑'; sel.appendChild(opt);
   } else if(cat==='buildings') {
@@ -2208,6 +2458,8 @@ function cfgSelectCategory() {
     }
   } else if(cat==='initialResources') {
     const opt=document.createElement('option'); opt.value='all'; opt.textContent='初始库存'; sel.appendChild(opt);
+  } else if(cat==='worldResources') {
+    const opt=document.createElement('option'); opt.value='generation'; opt.textContent='资源分布'; sel.appendChild(opt);
   }
   cfgSelectItem();
 }
@@ -2229,6 +2481,16 @@ function cfgSelectItem() {
     for(const f of GLOBAL_EDIT_FIELDS) {
       html+=`<div style="display:grid;grid-template-columns:120px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-global-${f.k}" type="number" min="${f.min}" step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:${f.restart?'#d5a85c':'#788898'}">${f.restart?'重开生效':f.unit}</span></div>`;
     }
+  } else if(cat==='enemySpawns') {
+    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">修改后将在下一次进入夜晚时使用，不会改变当前夜晚已固定的生成队列。</div>';
+    for(const f of ENEMY_SPAWN_EDIT_FIELDS) {
+      html+=`<div style="display:grid;grid-template-columns:150px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-spawn-${f.k}" type="number" min="${f.min}" ${f.max!==undefined?`max="${f.max}"`:''} step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:#788898">${f.unit}</span></div>`;
+    }
+  } else if(cat==='worldResources') {
+    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">重新开始游戏后生成新地图资源。半径以大本营中心计算，树木会优先保证初始视野内的数量。</div>';
+    for(const f of WORLD_RESOURCE_EDIT_FIELDS) {
+      html+=`<div style="display:grid;grid-template-columns:150px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-world-${f.k}" type="number" min="${f.min}" ${f.max!==undefined?`max="${f.max}"`:''} step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:#d5a85c">重开生效</span></div>`;
+    }
   } else if(cat==='buildings'&&BLD_DEFS[key]) {
     const d=BLD_DEFS[key];
     for(const f of BLD_EDIT_FIELDS) {
@@ -2238,8 +2500,10 @@ function cfgSelectItem() {
     }
   } else if(cat==='initialResources') {
     const resources=[['FOOD','食物'],['WOOD','木材'],['STONE','石材'],['IRON','铁矿'],['INGOT','铁锭']];
-    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">重新开始游戏时，大本营初始库存将使用以下数值。</div>';
+    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">重新开始游戏时，大本营初始库存与人口将使用以下数值。</div>';
     for(const [resKey,label] of resources) html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">${label}</label><input id="cfg-initial-${resKey}" type="number" min="0" step="1" value="${CFG['START_'+resKey]||0}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
+    html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">初始人口</label><input id="cfg-initial-POP" type="number" min="0" step="1" value="${CFG.START_POP}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
+    html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">人口上限基数</label><input id="cfg-initial-MAXPOP" type="number" min="1" step="1" value="${CFG.MAX_POP_BASE}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
   }
   container.innerHTML=html;
 }
@@ -2263,6 +2527,25 @@ function cfgApply() {
       CFG[f.k]=value;
     }
     cfgSetStatus('全局数值已应用；标记“重开生效”的项目需要重新开始。','ok');
+    return true;
+  } else if(cat==='enemySpawns') {
+    for(const f of ENEMY_SPAWN_EDIT_FIELDS) {
+      const value=Number(document.getElementById('cfg-spawn-'+f.k)?.value);
+      if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
+      CFG[f.k]=value;
+    }
+    cfgSetStatus('敌人生成配置已应用，将在下一次进入夜晚时生效。','ok');
+    return true;
+  } else if(cat==='worldResources') {
+    for(const f of WORLD_RESOURCE_EDIT_FIELDS) {
+      const value=Number(document.getElementById('cfg-world-'+f.k)?.value);
+      if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
+      CFG[f.k]=value;
+    }
+    if (CFG.TREE_CLUSTER_AVERAGE>CFG.TREE_CLUSTER_MAX||CFG.STONE_CLUSTER_AVERAGE>CFG.STONE_CLUSTER_MAX||CFG.IRON_CLUSTER_AVERAGE>CFG.IRON_CLUSTER_MAX) { cfgSetStatus('资源簇平均数量不能大于对应最大数量','error'); return false; }
+    if (CFG.START_VISIBLE_TREE_MIN>CFG.TREE_INITIAL_COUNT) { cfgSetStatus('初始可见树木下限不能大于初始树木总数','error'); return false; }
+    if (CFG.START_VISIBLE_TREE_MIN>0&&CFG.TREE_MIN_SPAWN_RADIUS>=CFG.TOWN_HALL_VISION) { cfgSetStatus('树木最小半径必须小于大本营视野，才能保证初始可见树木','error'); return false; }
+    cfgSetStatus('初始地图资源配置已应用，重新开始游戏后生成新分布。','ok');
     return true;
   } else if(cat==='buildings'&&BLD_DEFS[key]) {
     const d=BLD_DEFS[key];
@@ -2296,6 +2579,12 @@ function cfgApply() {
       if(!Number.isFinite(value)||value<0) { cfgSetStatus(resKey+'初始资源不是有效数值','error'); return false; }
       CFG['START_'+resKey]=Math.floor(value);
     }
+    const popVal=Number(document.getElementById('cfg-initial-POP')?.value);
+    if(!Number.isFinite(popVal)||popVal<0) { cfgSetStatus('初始人口不是有效数值','error'); return false; }
+    CFG.START_POP=Math.floor(popVal);
+    const maxpopVal=Number(document.getElementById('cfg-initial-MAXPOP')?.value);
+    if(!Number.isFinite(maxpopVal)||maxpopVal<1) { cfgSetStatus('人口上限基数不是有效数值','error'); return false; }
+    CFG.MAX_POP_BASE=Math.floor(maxpopVal);
     cfgSetStatus('初始拥有资源已更新，重新开始游戏后生效。','ok');
   }
   return true;
@@ -2303,7 +2592,10 @@ function cfgApply() {
 function collectBalanceData() {
   const globals={};
   for(const field of GLOBAL_EDIT_FIELDS) globals[field.k]=CFG[field.k];
+  for(const field of ENEMY_SPAWN_EDIT_FIELDS) globals[field.k]=CFG[field.k];
+  for(const field of WORLD_RESOURCE_EDIT_FIELDS) globals[field.k]=CFG[field.k];
   for(const type of ['food','wood','stone','iron','ingot']) globals['START_'+type.toUpperCase()]=CFG['START_'+type.toUpperCase()];
+  globals.START_POP=CFG.START_POP; globals.MAX_POP_BASE=CFG.MAX_POP_BASE;
   return {version:1, savedAt:new Date().toISOString(), globals, buildings:BLD_DEFS};
 }
 async function cfgSaveProject() {
@@ -2361,7 +2653,7 @@ function gameOver(msg) {
   document.getElementById('gameover-overlay').style.display = 'flex';
 }
 function restartGame() {
-  G.buildings = []; G.residents = []; G.enemies = []; G.particles = [];
+  G.buildings = []; G.residents = []; G.enemies = []; G.particles = []; G.projectiles = [];
   G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT };
   G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
   G.selectedBldType = null; G.selectedBuilding = null; G.placingMode = false; G.movingBuilding = null;
@@ -2380,10 +2672,12 @@ function update(dt) {
   updateDayNight(dt);
   updateBuildings(dt);
   updateResidents(dt);
+  updateFogVisibility(dt);
   if (G.phase==='night') {
     updateEnemies(dt);
     updateTowers(dt);
   }
+  updateProjectiles(dt);
   updateParticles(dt);
   G.tick++;
 }
@@ -2393,6 +2687,7 @@ function update(dt) {
 // ============================================================
 const canvas = document.getElementById('game');
 const ctx = canvas.getContext('2d');
+let nightOverlayCanvas=null, nightOverlayCtx=null;
 
 function resizeCanvas() {
   const container = document.getElementById('game-container');
@@ -2454,6 +2749,59 @@ function drawGroundDetails(vpL, vpT, vpR, vpB, nightAlpha) {
   }
 }
 
+function drawFogOverlay(vpL,vpT,vpR,vpB) {
+  if (!G.fogVisible) return;
+  ctx.fillStyle='rgba(6,12,10,0.97)';
+  for (let col=vpL; col<=vpR; col++) {
+    for (let row=vpT; row<=vpB; row++) {
+      if (!isFogCellVisible(col,row)) ctx.fillRect(gridX(col),gridY(row),CFG.CELL+0.5,CFG.CELL+0.5);
+    }
+  }
+}
+
+function drawNightLights(nightAlpha) {
+  if (nightAlpha<=0) return;
+  if (!nightOverlayCanvas) {
+    nightOverlayCanvas=document.createElement('canvas');
+    nightOverlayCtx=nightOverlayCanvas.getContext('2d');
+  }
+  if (nightOverlayCanvas.width!==CFG.CANVAS_W||nightOverlayCanvas.height!==CFG.CANVAS_H) {
+    nightOverlayCanvas.width=CFG.CANVAS_W; nightOverlayCanvas.height=CFG.CANVAS_H;
+  }
+  nightOverlayCtx.clearRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H);
+  nightOverlayCtx.fillStyle=`rgba(10,10,40,${nightAlpha})`;
+  nightOverlayCtx.fillRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H);
+  nightOverlayCtx.globalCompositeOperation='destination-out';
+  for(const b of G.buildings) {
+    if (b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
+    const radius=nightLightRadius(b);
+    if (!radius) continue;
+    const c=b.center(), screen=worldToScreen(c.x,c.y), screenRadius=radius*G.cam.zoom;
+    if (screen.x+screenRadius<0||screen.x-screenRadius>CFG.CANVAS_W||screen.y+screenRadius<0||screen.y-screenRadius>CFG.CANVAS_H) continue;
+    const gradient=nightOverlayCtx.createRadialGradient(screen.x,screen.y,0,screen.x,screen.y,screenRadius);
+    gradient.addColorStop(0,'rgba(0,0,0,0.94)');
+    gradient.addColorStop(0.38,'rgba(0,0,0,0.76)');
+    gradient.addColorStop(0.78,'rgba(0,0,0,0.28)');
+    gradient.addColorStop(0.94,'rgba(0,0,0,0.06)');
+    gradient.addColorStop(1,'rgba(0,0,0,0)');
+    nightOverlayCtx.fillStyle=gradient; nightOverlayCtx.fillRect(screen.x-screenRadius,screen.y-screenRadius,screenRadius*2,screenRadius*2);
+  }
+  nightOverlayCtx.globalCompositeOperation='source-over';
+  ctx.drawImage(nightOverlayCanvas,0,0);
+}
+
+function drawBuildingCoverage(type,cx,cy,valid=true) {
+  const coverage=buildingCoverage(type);
+  if (!coverage) return;
+  ctx.save();
+  ctx.fillStyle=valid?coverage.fill:'rgba(255,92,76,0.08)';
+  ctx.beginPath(); ctx.arc(cx,cy,coverage.radius,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle=valid?coverage.stroke:'rgba(255,105,90,0.72)'; ctx.lineWidth=1/G.cam.zoom;
+  if (coverage.dash) ctx.setLineDash(coverage.dash);
+  ctx.beginPath(); ctx.arc(cx,cy,coverage.radius,0,Math.PI*2); ctx.stroke();
+  ctx.setLineDash([]); ctx.restore();
+}
+
 function render() {
   const alpha=getAlpha();
   ctx.clearRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H);
@@ -2503,6 +2851,7 @@ function render() {
     ctx.fillStyle=ok?'rgba(0,255,0,0.35)':'rgba(255,0,0,0.35)';
     ctx.fillRect(gridX(cp.col),gridY(cp.row),def.sz[0]*CFG.CELL,def.sz[1]*CFG.CELL);
     ctx.globalAlpha=0.5; drawBuilding(b,gridX(cp.col),gridY(cp.row)); ctx.globalAlpha=1;
+    drawBuildingCoverage(b.type,gridX(cp.col)+def.sz[0]*CFG.CELL/2,gridY(cp.row)+def.sz[1]*CFG.CELL/2,ok);
   }
 
   // Buildings
@@ -2523,7 +2872,7 @@ function render() {
   for (const r of G.residents) if (!r.hidden && inView(r.x,r.y)) drawResident(r);
 
   // Enemies
-  for (const e of G.enemies) if(e.alive && inView(e.x,e.y)) drawEnemy(e);
+  for (const e of G.enemies) if(e.alive && isWorldVisible(e.x,e.y) && inView(e.x,e.y)) drawEnemy(e);
 
   // Resource nodes
   for (const node of G.resourceNodes) {
@@ -2539,6 +2888,11 @@ function render() {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(gridX(sx), gridY(sy), (ex - sx + 1) * CFG.CELL, (ey - sy + 1) * CFG.CELL); ctx.setLineDash([]);
   }
 
+  // Arrow projectiles
+  for (const arrow of G.projectiles) {
+    if (isWorldVisible(arrow.x,arrow.y) && inView(arrow.x,arrow.y)) drawArrowProjectile(arrow);
+  }
+
   // Particles
   for (const p of G.particles) {
     if (!inView(p.x,p.y)) continue;
@@ -2549,30 +2903,8 @@ function render() {
   // Selection outline & range (world space)
   if (G.selectedBuilding && !G.placingMode) {
     const b=G.selectedBuilding;
-    const def=BLD_DEFS[b.type];
-    if (b.type==='arrow_tower' || b.type==='auto_arrow_tower') {
-      const center=b.center();
-      ctx.fillStyle='rgba(255,255,255,0.08)';
-      ctx.beginPath(); ctx.arc(center.x, center.y, def.range, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle='rgba(255,255,255,0.3)'; ctx.lineWidth=1/G.cam.zoom;
-      ctx.beginPath(); ctx.arc(center.x, center.y, def.range, 0, Math.PI*2); ctx.stroke();
-    }
-    if (b.type==='forester') {
-      const center=b.center();
-      const fr = (def.foresterRadius||4) * CFG.CELL;
-      ctx.fillStyle='rgba(100,255,100,0.06)';
-      ctx.beginPath(); ctx.arc(center.x, center.y, fr, 0, Math.PI*2); ctx.fill();
-      ctx.strokeStyle='rgba(100,255,100,0.3)'; ctx.lineWidth=1/G.cam.zoom;
-      ctx.setLineDash([3,6]);
-      ctx.beginPath(); ctx.arc(center.x, center.y, fr, 0, Math.PI*2); ctx.stroke();
-      ctx.setLineDash([]);
-    }
-    if (def.sourceType) {
-      const center=b.center(), radius=(def.sourceRadius||3)*CFG.CELL;
-      ctx.fillStyle='rgba(225,190,105,0.05)'; ctx.beginPath(); ctx.arc(center.x,center.y,radius,0,Math.PI*2); ctx.fill();
-      ctx.strokeStyle='rgba(225,190,105,0.42)'; ctx.lineWidth=1/G.cam.zoom; ctx.setLineDash([5,5]);
-      ctx.beginPath(); ctx.arc(center.x,center.y,radius,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-    }
+    const center=b.center();
+    drawBuildingCoverage(b.type,center.x,center.y);
     ctx.strokeStyle='#ffd700'; ctx.lineWidth=2/G.cam.zoom; ctx.setLineDash([4,4]);
     ctx.strokeRect(b.x-2,b.y-2,b.size[0]*CFG.CELL+4,b.size[1]*CFG.CELL+4);
     ctx.setLineDash([]);
@@ -2584,21 +2916,19 @@ function render() {
     const wp=screenToWorld(G.mouseX, G.mouseY);
     const cp=pixelCenterPlacement(G.selectedBldType, wp.x, wp.y);
     const ok= G.selectedBldType==='floor' ? true : canPlaceBuilding(G.selectedBldType, cp.col, cp.row);
-    if (def.sourceType) {
-      const pcx=gridX(cp.col)+def.sz[0]*CFG.CELL/2, pcy=gridY(cp.row)+def.sz[1]*CFG.CELL/2;
-      ctx.strokeStyle=ok?'rgba(225,205,120,0.6)':'rgba(255,105,90,0.65)'; ctx.lineWidth=1/G.cam.zoom; ctx.setLineDash([5,5]);
-      ctx.beginPath(); ctx.arc(pcx,pcy,(def.sourceRadius||3)*CFG.CELL,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
-    }
+    const pcx=gridX(cp.col)+def.sz[0]*CFG.CELL/2, pcy=gridY(cp.row)+def.sz[1]*CFG.CELL/2;
+    drawBuildingCoverage(G.selectedBldType,pcx,pcy,ok);
     ctx.fillStyle=ok?'rgba(0,255,0,0.25)':'rgba(255,0,0,0.25)';
     ctx.fillRect(gridX(cp.col),gridY(cp.row),def.sz[0]*CFG.CELL,def.sz[1]*CFG.CELL);
   }
 
+  drawFogOverlay(vpL,vpT,vpR,vpB);
   ctx.restore();
 
   drawCommandCursor();
 
   // Night overlay (screen space)
-  if (alpha>0) { ctx.fillStyle=`rgba(10,10,40,${alpha})`; ctx.fillRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H); }
+  if (alpha>0) drawNightLights(alpha);
 
   // Clock (screen space)
   drawClock();
@@ -2752,10 +3082,22 @@ function drawBuilding(b, x, y) {
     ctx.fillStyle='rgba(255,214,126,0.92)'; ctx.font='700 8px Arial,sans-serif'; ctx.textAlign='center';
     ctx.fillText(`OUT ${b.pendingOutput}/${CFG.PRODUCTION_BATCH_SIZE}`, cx, y-4);
   }
-  if (!b.blueprint) {
+  if (!b.blueprint && b.type!=='town_hall') {
     const ts=b.stored?Object.values(b.stored).reduce((a,c)=>a+c,0):0;
     if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='700 8px Arial,sans-serif'; ctx.fillText(`BOX ${ts}`,cx,y-4); }
   }
+}
+
+function drawArrowProjectile(arrow) {
+  ctx.save();
+  ctx.translate(arrow.x,arrow.y); ctx.rotate(arrow.angle);
+  ctx.strokeStyle='#d8c28b'; ctx.lineWidth=1.4/G.cam.zoom;
+  ctx.beginPath(); ctx.moveTo(-9,0); ctx.lineTo(5,0); ctx.stroke();
+  ctx.fillStyle='#f0e2b0';
+  ctx.beginPath(); ctx.moveTo(7,0); ctx.lineTo(2,-2.5); ctx.lineTo(2,2.5); ctx.closePath(); ctx.fill();
+  ctx.strokeStyle='#876d4b'; ctx.lineWidth=1/G.cam.zoom;
+  ctx.beginPath(); ctx.moveTo(-8,0); ctx.lineTo(-11,-3); ctx.moveTo(-8,0); ctx.lineTo(-11,3); ctx.stroke();
+  ctx.restore();
 }
 
 function drawBuildingDetails(b,cx,cy,cr) {
@@ -2776,6 +3118,11 @@ function drawBuildingDetails(b,cx,cy,cr) {
     ctx.fillStyle='rgba(43,35,28,0.55)'; ctx.fillRect(cx-15,cy-8,30,20);
     ctx.fillStyle='#b96c4b'; ctx.beginPath(); ctx.moveTo(cx-19,cy-8); ctx.lineTo(cx,cy-21); ctx.lineTo(cx+19,cy-8); ctx.closePath(); ctx.fill();
     ctx.fillStyle='#f0cf7b'; ctx.fillRect(cx-9,cy-2,5,6); ctx.fillRect(cx+4,cy-2,5,6);
+  } else if (t==='lamp') {
+    ctx.fillStyle='rgba(255,211,102,0.16)'; ctx.beginPath(); ctx.arc(cx,cy-5,17,0,Math.PI*2); ctx.fill();
+    ctx.strokeStyle='#70563a'; ctx.lineWidth=2/G.cam.zoom; ctx.beginPath(); ctx.moveTo(cx,cy+13); ctx.lineTo(cx,cy-4); ctx.stroke();
+    ctx.fillStyle='#ffd56a'; ctx.beginPath(); ctx.arc(cx,cy-7,5,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#fff3c1'; ctx.beginPath(); ctx.arc(cx-1,cy-8,2,0,Math.PI*2); ctx.fill();
   } else if (t.includes('storage')) {
     ctx.strokeStyle='rgba(235,220,174,0.55)'; ctx.strokeRect(cx-15,cy-13,30,26);
     ctx.beginPath(); ctx.moveTo(cx-15,cy); ctx.lineTo(cx+15,cy); ctx.moveTo(cx,cy-13); ctx.lineTo(cx,cy+13); ctx.stroke();
@@ -2797,7 +3144,7 @@ function drawBuildingDetails(b,cx,cy,cr) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',forester:'#3d7a3d',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',lamp:'#806d42',farm:'#8b9a4b',forester:'#3d7a3d',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResidentAxeIcon(x, y) {
@@ -3186,7 +3533,7 @@ canvas.addEventListener('click', e => {
     const minC = Math.min(G.chopStartX, ex), maxC = Math.max(G.chopStartX, ex);
     const minR = Math.min(G.chopStartY, ey), maxR = Math.max(G.chopStartY, ey);
     for (const node of G.resourceNodes) {
-            if (canResidentHandHarvest(node) && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR) {
+            if (canResidentHandHarvest(node) && isWorldVisible(node.x,node.y) && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR) {
         if (G.chopMode) node.marked = true;
         else if (node.marked) node.marked = false;
       }
@@ -3321,7 +3668,7 @@ updateBuildingPanel();
 updateTopBar();
 lastTime=performance.now();
 requestAnimationFrame(gameLoop);
-console.log('殖民模拟塔防游戏已就绪');
+console.log('村庄模拟塔防游戏已就绪');
 </script>
 </body>
 </html>
