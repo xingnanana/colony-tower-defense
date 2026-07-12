@@ -48,6 +48,11 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
   display:flex; flex-direction:column; gap:4px; color:#fff; font-size:12px;
   overflow-y:auto; overflow-x:hidden;
 }
+.time-controls { display:flex; align-items:center; gap:3px; padding-left:5px; border-left:1px solid #596158; pointer-events:auto; }
+.time-control { min-width:30px; height:23px; padding:0 6px; border:1px solid #566158; background:#28342d; color:#dbe4d5; cursor:pointer; font:inherit; font-size:11px; }
+.time-control:hover { color:#fff0a5; border-color:#a7975d; }
+.time-control.active { background:#59613b; color:#fff4bd; border-color:#a7975d; }
+.time-control.settings-control { font-size:22px; line-height:18px; padding:0 4px; }
 #building-panel h3 { text-align:left; font-size:13px; margin:0 2px 6px; color:#e1c878; letter-spacing:1px; }
 .panel-title { display:flex; align-items:center; gap:7px; font-size:13px; color:#e1c878; letter-spacing:1px; padding:2px 2px 7px; border-bottom:1px solid #344239; }
 .panel-title::before { content:''; width:4px; height:15px; background:#c3a65e; border-radius:1px; }
@@ -130,17 +135,16 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 <div id="game-container">
   <div id="debug-panel">
     <div class="panel-title">开发控制</div>
-    <div class="panel-section"><div class="section-label">时间倍率</div><div class="debug-actions">
-      <button class="dbg-btn" onclick="setSpeed(0)">暂停</button><button class="dbg-btn" onclick="setSpeed(1)">正常</button>
-      <button class="dbg-btn" onclick="setSpeed(2)">2 倍</button><button class="dbg-btn" onclick="setSpeed(5)">5 倍</button>
-      <button class="dbg-btn full" onclick="setSpeed(20)">20 倍</button>
+    <div class="panel-section"><button class="dbg-btn full" style="min-height:34px;background:#3b5b49;color:#fff0a5;border-color:#7e9a68;" onclick="openConfigPanel()">编辑配置</button></div>
+    <div class="panel-section"><div class="section-label">调试倍率</div><div class="debug-actions">
+      <button class="dbg-btn" data-speed="10" onclick="setSpeed(10)">10 倍</button><button class="dbg-btn" data-speed="20" onclick="setSpeed(20)">20 倍</button>
     </div></div>
     <div class="panel-section"><div class="section-label">快速操作</div><div class="debug-actions">
       <button class="dbg-btn full" onclick="setAllRes()">无限资源</button>
       <button class="dbg-btn" onclick="addPop(1)">增加居民</button><button class="dbg-btn" onclick="addPop(-1)">减少居民</button>
       <button class="dbg-btn" onclick="skipToDay()">跳至白天</button><button class="dbg-btn" onclick="skipToNight()">跳至夜晚</button>
       <button class="dbg-btn" onclick="unlockAll()">全部解锁</button><button class="dbg-btn" onclick="upgradeTH()">升级大本营</button>
-      <button class="dbg-btn" onclick="restartGame()">重新开始</button><button class="dbg-btn" onclick="openConfigPanel()">编辑配置</button>
+      <button class="dbg-btn full" onclick="restartGame()">重新开始</button>
     </div></div>
     <div class="panel-section"><div class="section-label">资源注入</div>
       <div class="dbg-row"><span class="resource-mark food"></span><input id="dbg-food" type="number" value="50" size="4"><button class="dbg-btn" onclick="setRes('food')">设定</button></div>
@@ -185,6 +189,13 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     <div class="top-res"><span class="resource-mark guard"></span><span class="val" id="r-guard-top">0</span></div>
     <div style="color:#aaa;">|</div>
     <div class="top-res"><span class="resource-mark day" id="day-icon"></span><span class="val" id="r-time">第 1 天</span></div>
+    <div class="time-controls" aria-label="时间控制">
+      <button id="time-pause" class="time-control" data-speed="0" onclick="togglePause()" title="暂停或继续">暂停</button>
+      <button class="time-control" data-speed="1" onclick="setSpeed(1)" title="正常速度">1×</button>
+      <button class="time-control" data-speed="2" onclick="setSpeed(2)" title="两倍速度">2×</button>
+      <button class="time-control" data-speed="4" onclick="setSpeed(4)" title="四倍速度">4×</button>
+      <button class="time-control settings-control" onclick="openSettingsPanel()" title="游戏设置" aria-label="游戏设置">⚙</button>
+    </div>
   </div>
 
   <div id="time-indicator"></div>
@@ -200,7 +211,6 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 
 </div>
 
-<input type="file" id="config-file-import" accept=".json" style="display:none">
 <div id="config-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
   background:rgba(0,0,0,0.8); z-index:100; justify-content:center;align-items:center;">
   <div class="overlay-panel" style="background:#1a1a2e; border:2px solid #555; border-radius:12px; padding:20px;
@@ -212,8 +222,10 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     </div>
     <div style="display:flex; gap:8px; margin-bottom:10px;">
       <select id="cfg-category" onchange="cfgSelectCategory()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;">
+        <option value="globals">全局数值</option>
+        <option value="unlocks">大本营解锁</option>
         <option value="buildings">建筑</option>
-        <option value="resources">资源</option>
+        <option value="initialResources">初始拥有资源</option>
       </select>
       <select id="cfg-item" onchange="cfgSelectItem()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;flex:1;"></select>
     </div>
@@ -221,11 +233,25 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     <div style="display:flex; gap:8px;">
       <button onclick="cfgApply()" style="flex:1; padding:8px; background:#4a4; color:#fff;
         border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">应用</button>
-      <button onclick="cfgExportJSON()" style="flex:1; padding:8px; background:#4a6aaa; color:#fff;
-        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">导出 JSON</button>
-      <button onclick="cfgImportJSON()" style="flex:1; padding:8px; background:#6a5a2a; color:#fff;
-        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">导入 JSON</button>
+      <button id="cfg-save-btn" onclick="cfgSaveProject()" style="flex:1; padding:8px; background:#28706a; color:#fff;
+        border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">保存到项目</button>
     </div>
+    <div id="cfg-status" style="margin-top:10px;min-height:18px;color:#9aa7b8;line-height:18px;">应用会立即预览；保存到项目后刷新仍会保留。</div>
+  </div>
+</div>
+<div id="settings-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
+  background:rgba(0,0,0,0.8); z-index:101; justify-content:center;align-items:center;">
+  <div class="overlay-panel" style="width:520px; max-height:85vh; overflow-y:auto; color:#fff; font-size:12px; padding:20px;">
+    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+      <h2 style="color:#e5c66c; margin:0;">游戏设置</h2>
+      <button onclick="closeSettingsPanel()" style="background:#a44;color:#fff;border:none;padding:6px 14px;cursor:pointer;font:inherit;">关闭</button>
+    </div>
+    <div style="color:#9aa7b8;line-height:18px;margin-bottom:10px;">点击某项快捷键后，按下新的按键。修改会自动保存。</div>
+    <div id="settings-shortcuts" style="display:flex;flex-direction:column;gap:6px;"></div>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+      <button onclick="resetShortcuts()" style="background:#4c5960;color:#fff;border:none;padding:7px 12px;cursor:pointer;font:inherit;">恢复默认</button>
+    </div>
+    <div id="settings-status" style="min-height:18px;margin-top:8px;color:#9aa7b8;"></div>
   </div>
 </div>
 <div id="context-menu"></div>
@@ -259,8 +285,12 @@ const CFG = {
   TOWER_RANGE: 150, TOWER_DAMAGE: 15, TOWER_COOLDOWN: 0.8,
   RESIDENT_SPEED: 60,
   PRODUCTION_BATCH_SIZE: 5,
+  FORESTER_CHOP_TIME: 3,
+  FORESTER_SAPLING_GROW_TIME: 5,
+  FORESTER_GROW_JITTER: 0.2,
   NAV_RECHECK_INTERVAL: 0.25,
   NAV_STUCK_TIMEOUT: 0.5,
+  SPATIAL_CELL_SIZE: 96,
 };
 
 // ============================================================
@@ -301,6 +331,79 @@ const BLD_DEFS = {
 
 };
 
+const SETTINGS_STORAGE_KEY = 'colony-game-settings-v1';
+const SETTINGS_VERSION = 2;
+const SHORTCUT_ACTIONS = [
+  { id:'pause', label:'暂停 / 继续', defaultCode:'Space' },
+  { id:'speedNormal', label:'正常速度', defaultCode:'Digit1' },
+  { id:'speed2', label:'2 倍速度', defaultCode:'Digit2' },
+  { id:'speed4', label:'4 倍速度', defaultCode:'Digit3' },
+  { id:'cancel', label:'取消当前操作', defaultCode:'Escape' },
+  { id:'chop', label:'伐木标记', defaultCode:'KeyC' },
+  { id:'unchop', label:'取消伐木标记', defaultCode:'KeyX' },
+  { id:'settings', label:'打开游戏设置', defaultCode:'F1' },
+  { id:'config', label:'打开数值编辑器', defaultCode:'F2' },
+];
+const DEFAULT_SHORTCUTS = Object.fromEntries(SHORTCUT_ACTIONS.map(action => [action.id, action.defaultCode]));
+let gameSettings = { version:SETTINGS_VERSION, shortcuts:{...DEFAULT_SHORTCUTS} };
+let pendingShortcutAction = null;
+
+function loadGameSettings() {
+  let migrated=false;
+  try {
+    const saved=JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY));
+    if (saved && saved.shortcuts && typeof saved.shortcuts==='object') {
+      for (const action of SHORTCUT_ACTIONS) {
+        if (typeof saved.shortcuts[action.id]==='string') gameSettings.shortcuts[action.id]=saved.shortcuts[action.id];
+      }
+      if (saved.shortcuts.speedNormal==='Numpad1') { gameSettings.shortcuts.speedNormal='Digit1'; migrated=true; }
+      if (saved.shortcuts.speed2==='Numpad2') { gameSettings.shortcuts.speed2='Digit2'; migrated=true; }
+      if (saved.shortcuts.speed4==='Numpad3') { gameSettings.shortcuts.speed4='Digit3'; migrated=true; }
+    }
+  } catch (error) { console.warn('Game settings could not be loaded.', error); }
+  if (migrated) saveGameSettings();
+}
+function saveGameSettings() {
+  try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(gameSettings)); }
+  catch (error) { console.warn('Game settings could not be saved.', error); }
+}
+function shortcutLabel(code) {
+  const labels={Space:'空格',Escape:'Esc',Digit1:'1',Digit2:'2',Digit3:'3',KeyC:'C',KeyX:'X'};
+  return labels[code] || code.replace(/^Key/, '').replace(/^Digit/, '');
+}
+loadGameSettings();
+
+// The development server serves the saved overrides. Direct file opening keeps
+// using the defaults above, so the game remains portable.
+function applyBalanceData(data) {
+  if (!data || typeof data !== 'object') return;
+  if (data.globals && typeof data.globals === 'object') {
+    for (const [key, value] of Object.entries(data.globals)) {
+      if (Object.prototype.hasOwnProperty.call(CFG, key) && Number.isFinite(value)) CFG[key] = value;
+    }
+  }
+  if (data.buildings && typeof data.buildings === 'object') {
+    for (const [key, values] of Object.entries(data.buildings)) {
+      if (!BLD_DEFS[key] || !values || typeof values !== 'object') continue;
+      Object.assign(BLD_DEFS[key], values);
+      if (values.cost && typeof values.cost === 'object') BLD_DEFS[key].cost = {...values.cost};
+      if (Array.isArray(values.sz)) BLD_DEFS[key].sz = [...values.sz];
+    }
+  }
+}
+function loadSavedBalance() {
+  if (typeof location === 'undefined' || location.protocol === 'file:') return;
+  try {
+    const request = new XMLHttpRequest();
+    request.open('GET', '/api/balance', false);
+    request.send();
+    if (request.status === 200) applyBalanceData(JSON.parse(request.responseText));
+  } catch (error) {
+    console.warn('Saved balance could not be loaded; using inline defaults.', error);
+  }
+}
+loadSavedBalance();
+
 // ============================================================
 // GAME STATE
 // ============================================================
@@ -315,7 +418,7 @@ const G = {
   engineerCount: 0,
   enemySpawnQueue: [], enemySpawnTimer: 0,
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
-  dragging: false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
+  dragging: false, dragMoved:false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
   floorMask: null, drawingFloor: false, lastFloorCell: '',
   resourceNodes: [],
   chopMode: false, unchopMode: false, chopStartX: -1, chopStartY: -1, chopEndX: -1, chopEndY: -1,
@@ -323,6 +426,10 @@ const G = {
   farmLinks: [],
   resourceCleanupTimer: 0,
   navigationRevision: 0,
+  obstacleIndexRevision: -1,
+  obstacleSpatial: null,
+  residentSpatial: null,
+  targetedTrees: new Set(),
 };
 
 // ============================================================
@@ -336,6 +443,32 @@ function gridRow(py) { return Math.floor(py/CFG.CELL); }
 function gridX(col) { return col*CFG.CELL; }
 function gridY(row) { return row*CFG.CELL; }
 function invalidateNavigation() { G.navigationRevision++; }
+
+class SpatialHash {
+  constructor(cellSize) { this.cellSize = cellSize; this.buckets = new Map(); }
+  clear() { this.buckets.clear(); }
+  key(col, row) { return col+','+row; }
+  insert(item, minX, minY, maxX, maxY) {
+    const minCol=Math.floor(minX/this.cellSize), maxCol=Math.floor(maxX/this.cellSize);
+    const minRow=Math.floor(minY/this.cellSize), maxRow=Math.floor(maxY/this.cellSize);
+    for (let col=minCol; col<=maxCol; col++) for (let row=minRow; row<=maxRow; row++) {
+      const key=this.key(col,row);
+      if (!this.buckets.has(key)) this.buckets.set(key,[]);
+      this.buckets.get(key).push(item);
+    }
+  }
+  query(minX, minY, maxX, maxY) {
+    const found=[], seen=new Set();
+    const minCol=Math.floor(minX/this.cellSize), maxCol=Math.floor(maxX/this.cellSize);
+    const minRow=Math.floor(minY/this.cellSize), maxRow=Math.floor(maxY/this.cellSize);
+    for (let col=minCol; col<=maxCol; col++) for (let row=minRow; row<=maxRow; row++) {
+      const bucket=this.buckets.get(this.key(col,row));
+      if (!bucket) continue;
+      for (const item of bucket) if (!seen.has(item)) { seen.add(item); found.push(item); }
+    }
+    return found;
+  }
+}
 
 function canAfford(cost) {
   for (const [k,v] of Object.entries(cost||{}))
@@ -438,16 +571,28 @@ function generateResources() {
     }
   }
 }
+function clearChopCommand() {
+  G.chopMode=false; G.unchopMode=false; G.chopStartX=-1; G.chopStartY=-1; G.chopEndX=-1; G.chopEndY=-1;
+  const chopButton=document.getElementById('chop-btn');
+  const unchopButton=document.getElementById('unchop-btn');
+  chopButton.classList.remove('active'); unchopButton.classList.remove('active');
+  chopButton.style.background=''; unchopButton.style.background='';
+}
+function clearBlueprintCommand() {
+  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null;
+  document.querySelectorAll('.bld-btn').forEach(button=>button.classList.remove('selected'));
+}
 function toggleChopMode() {
-  G.chopMode = !G.chopMode; G.unchopMode = false; G.drawingFloor = false;
-  document.getElementById('chop-btn').style.background = G.chopMode ? '#5a5' : '';
-  document.getElementById('unchop-btn').style.background = '';
+  const activate=!G.chopMode;
+  if (activate) clearBlueprintCommand();
+  clearChopCommand(); G.chopMode=activate; G.drawingFloor=false;
+  document.getElementById('chop-btn').classList.toggle('active',activate);
 }
 function toggleUnchopMode() {
-  G.unchopMode = !G.unchopMode; G.chopMode = false; G.drawingFloor = false;
-  const btn = document.getElementById('unchop-btn');
-  btn.style.background = G.unchopMode ? '#a84' : '';
-  document.getElementById('chop-btn').style.background = '';
+  const activate=!G.unchopMode;
+  if (activate) clearBlueprintCommand();
+  clearChopCommand(); G.unchopMode=activate; G.drawingFloor=false;
+  document.getElementById('unchop-btn').classList.toggle('active',activate);
 }
 function resourceObstacle(node) {
   return {
@@ -458,6 +603,31 @@ function resourceObstacle(node) {
 }
 function isResourceObstacleNode(node) {
   return node && node.alive && node.type !== 'tree' && node.type !== 'sapling';
+}
+function ensureObstacleSpatialHash() {
+  if (!G.obstacleSpatial) G.obstacleSpatial = new SpatialHash(CFG.SPATIAL_CELL_SIZE);
+  if (G.obstacleIndexRevision === G.navigationRevision) return;
+  G.obstacleSpatial.clear();
+  for (const b of G.buildings) {
+    if (b.hp <= 0) continue;
+    const c=b.center(), radius=b.collisionRadius()+RESIDENT_RADIUS+16;
+    G.obstacleSpatial.insert(b,c.x-radius,c.y-radius,c.x+radius,c.y+radius);
+  }
+  for (const node of G.resourceNodes) {
+    if (!isResourceObstacleNode(node)) continue;
+    const obstacle=resourceObstacle(node), c=obstacle.center();
+    const radius=obstacle.collisionRadius()+RESIDENT_RADIUS+16;
+    G.obstacleSpatial.insert(obstacle,c.x-radius,c.y-radius,c.x+radius,c.y+radius);
+  }
+  G.obstacleIndexRevision = G.navigationRevision;
+}
+function rebuildResidentSpatialHash() {
+  if (!G.residentSpatial) G.residentSpatial = new SpatialHash(CFG.SPATIAL_CELL_SIZE);
+  G.residentSpatial.clear();
+  for (const r of G.residents) {
+    if (r.hidden) continue;
+    G.residentSpatial.insert(r,r.x-RESIDENT_RADIUS,r.y-RESIDENT_RADIUS,r.x+RESIDENT_RADIUS,r.y+RESIDENT_RADIUS);
+  }
 }
 function segmentHitsBuilding(x1, y1, x2, y2, b, r) {
   if (!b || (b.resourceNode ? !b.resourceNode.alive : b.hp <= 0)) return false;
@@ -475,19 +645,13 @@ function segmentHitsBuilding(x1, y1, x2, y2, b, r) {
 
 function firstBlockingObstacle(r, tx, ty) {
   let blocker = null, best = Infinity;
-  for (const b of G.buildings) {
+  ensureObstacleSpatialHash();
+  const obstacles=G.obstacleSpatial.query(Math.min(r.x,tx),Math.min(r.y,ty),Math.max(r.x,tx),Math.max(r.y,ty));
+  for (const b of obstacles) {
     if (!segmentHitsBuilding(r.x, r.y, tx, ty, b, r)) continue;
     const c = b.center();
     const d = Math.hypot(c.x - r.x, c.y - r.y);
-      if (d < best) { best = d; blocker = b; }
-  }
-  for (const node of G.resourceNodes) {
-    if (!isResourceObstacleNode(node)) continue;
-    const obstacle = resourceObstacle(node);
-    if (!segmentHitsBuilding(r.x, r.y, tx, ty, obstacle, r)) continue;
-    const c = obstacle.center();
-    const d = Math.hypot(c.x - r.x, c.y - r.y);
-    if (d < best) { best = d; blocker = obstacle; }
+    if (d < best) { best = d; blocker = b; }
   }
   return blocker;
 }
@@ -656,12 +820,15 @@ function findNearestBlueprint(resident) {
   return best;
 }
 function resolveCollisions(r, nx, ny) {
-  for (const b of G.buildings) {
-    if (b.hp <= 0) continue;
+  ensureObstacleSpatialHash();
+  for (const b of G.obstacleSpatial.query(nx,ny,nx,ny)) {
+    if (b.resourceNode) {
+      if (!isResourceObstacleNode(b.resourceNode)) continue;
+    } else if (b.hp <= 0) continue;
     const c = b.center();
-    if (r.buildTarget === b) continue; // always allow approaching build target
-    // Only allow leaving own home/workplace, not entering
-    if ((r.workplace === b || r.home === b) &&
+    if (!b.resourceNode && r.buildTarget === b) continue; // always allow approaching build target
+    // Only allow leaving own home/workplace, not entering.
+    if (!b.resourceNode && (r.workplace === b || r.home === b) &&
         Math.hypot(nx - c.x, ny - c.y) > Math.hypot(r.x - c.x, r.y - c.y)) continue;
     const minDist = b.collisionRadius() + RESIDENT_RADIUS;
     const dx = nx - c.x, dy = ny - c.y;
@@ -671,20 +838,10 @@ function resolveCollisions(r, nx, ny) {
       ny = c.y + (dy / dist) * minDist;
     }
   }
-  // Mineral nodes are solid obstacles; trees remain walkable harvesting targets.
-  for (const node of G.resourceNodes) {
-    if (!isResourceObstacleNode(node)) continue;
-    const obstacle = resourceObstacle(node);
-    const c = obstacle.center();
-    const minDist = obstacle.collisionRadius() + RESIDENT_RADIUS;
-    const dx = nx - c.x, dy = ny - c.y;
-    const dist = Math.hypot(dx, dy);
-    if (dist < minDist && dist > 0.01) {
-      nx = c.x + (dx / dist) * minDist;
-      ny = c.y + (dy / dist) * minDist;
-    }
-  }
-  for (const other of G.residents) {
+  const nearbyResidents=G.residentSpatial
+    ? G.residentSpatial.query(nx-RESIDENT_RADIUS*2,ny-RESIDENT_RADIUS*2,nx+RESIDENT_RADIUS*2,ny+RESIDENT_RADIUS*2)
+    : G.residents;
+  for (const other of nearbyResidents) {
     if (other === r || other.hidden) continue;
     const minDist = RESIDENT_RADIUS * 2;
     const dx = nx - other.x, dy = ny - other.y;
@@ -745,18 +902,58 @@ function canResidentHandHarvest(node) {
   return !!node && node.alive && node.type === 'tree';
 }
 
+function isFinishableResidentTask(r) {
+  return r.state==='CHOPPING' || r.state==='HAULING' || r.state==='GATHERING' ||
+    r.state==='BUILDING' || r.state==='CONSTRUCTING';
+}
+function beginEating(r) {
+  if ((G.resources.food||0) <= 0) return false;
+  const storage=findNearestStorage(r, 'food', {requireAmount:1});
+  if (storage) {
+    r.state='GOING_TO_EAT';
+    const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
+  } else {
+    r.state='EATING'; r.eatTimer=1.5;
+  }
+  return true;
+}
+function eatAfterFinishingTask(r) {
+  if (!r.finishBeforeEating || r.hunger < CFG.HUNGER_THRESHOLD) return false;
+  r.finishBeforeEating=false;
+  return beginEating(r);
+}
+
 function findForesterTree(r, forester) {
+  if (!forester || forester.type!=='forester' || forester.hp<=0) return null;
   const radius = (BLD_DEFS.forester.foresterRadius || 4) * CFG.CELL;
   const center = forester.center();
   let best=null, bestDist=Infinity;
   for (const node of G.resourceNodes) {
     if (!node.alive || node.type!=='tree' || !node.marked || node.ownerForester!==forester) continue;
     if (Math.hypot(node.x-center.x,node.y-center.y)>radius) continue;
-    if (G.residents.some(other => other!==r && other.chopTarget===node)) continue;
+    if (G.targetedTrees.has(node) && r.chopTarget!==node) continue;
     const d=Math.hypot(r.x-node.x,r.y-node.y);
     if (d<bestDist) { best=node; bestDist=d; }
   }
   return best;
+}
+function foresterGrowthSlots(def) {
+  return Math.max(1, Math.ceil(def.maxWorkers * CFG.FORESTER_SAPLING_GROW_TIME / CFG.FORESTER_CHOP_TIME));
+}
+function foresterPlantInterval(def) {
+  return CFG.FORESTER_SAPLING_GROW_TIME / foresterGrowthSlots(def);
+}
+function findForesterPlantCell(b) {
+  const def=BLD_DEFS[b.type], radius=(def.foresterRadius||4)*CFG.CELL, center=b.center();
+  const candidates=[];
+  const minCol=Math.max(0,Math.floor((center.x-radius)/CFG.CELL)), maxCol=Math.min(CFG.WORLD_COLS-1,Math.floor((center.x+radius)/CFG.CELL));
+  const minRow=Math.max(0,Math.floor((center.y-radius)/CFG.CELL)), maxRow=Math.min(CFG.WORLD_ROWS-1,Math.floor((center.y+radius)/CFG.CELL));
+  for(let col=minCol;col<=maxCol;col++) for(let row=minRow;row<=maxRow;row++) {
+    const x=gridX(col)+CFG.CELL/2, y=gridY(row)+CFG.CELL/2;
+    if (Math.hypot(x-center.x,y-center.y)>radius-CFG.CELL*0.5 || isCellBlocked(col,row)) continue;
+    candidates.push({col,row,x,y});
+  }
+  return candidates.length ? candidates[Math.floor(Math.random()*candidates.length)] : null;
 }
 function maxBuildingLevel(type) {
   const th = G.townHall;
@@ -827,7 +1024,11 @@ function removeResident(r) {
     r.workplace.assignedWorkers = Math.max(0, r.workplace.assignedWorkers - 1);
     if (r.workplace.outputHauler === r) r.workplace.outputHauler = null;
   }
+  if (r.assignedTower && r.assignedTower.assignedGuard === r) r.assignedTower.assignedGuard = null;
+  if (r.manningTower && r.manningTower.assignedGuard === r) r.manningTower.assignedGuard = null;
+  for (const enemy of G.enemies) if (enemy.fightingGuard === r) enemy.fightingGuard = null;
   if (r.buildTarget) r.buildTarget.assignedEngineer = null;
+  r.hidden = true;
   removeHome(r);
   G.residents = G.residents.filter(other => other !== r);
 }
@@ -902,7 +1103,8 @@ class Resident {
     this.hidden = false;
     this.buildTarget = null;
     this.isEngineer = false;
-    this.chopTarget = null; this.chopTimer = 0;
+    this.chopTarget = null; this.chopTimer = 0; this.chopShakeBeat = -1;
+    this.finishBeforeEating = false;
     this.starvationDays = 0;
     // Guard properties
     this.isGuard = false;
@@ -1364,7 +1566,8 @@ function updateTowers(dt) {
     if (!def.range || b.hp <= 0) continue;
     // Arrow tower: needs manning by a guard
     if (def.needsManning) {
-      const manned = G.residents.some(r => r.isGuard && r.manningTower === b && r.state === 'GUARD_MANNING');
+      const guard=b.assignedGuard;
+      const manned = guard && guard.manningTower === b && guard.state === 'GUARD_MANNING';
       if (!manned) continue;
     }
     b.attackCooldown -= dt;
@@ -1391,6 +1594,8 @@ function updateTowers(dt) {
 }
 
 function updateResidents(dt) {
+  rebuildResidentSpatialHash();
+  G.targetedTrees = new Set(G.residents.map(r=>r.chopTarget).filter(Boolean));
   for (const r of G.residents) {
     if (r.isGuard) continue; // guards don't get hungry or tired
     if (r.state!=='SLEEPING') {
@@ -1418,21 +1623,18 @@ function updateResidents(dt) {
 
     // Priority 1: Hungry
     if (r.hunger >= CFG.HUNGER_THRESHOLD && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
-      const storage = findNearestStorage(r, 'food', {requireAmount:1});
-      if ((G.resources.food||0) > 0) {
-        if (storage) {
-          r.state = 'GOING_TO_EAT';
-          const sc = storage.center(); r.targetX = sc.x; r.targetY = sc.y;
-        } else {
-          // No storage — eat directly
-          r.state = 'EATING'; r.eatTimer = 1.5;
-        }
+      if (r.finishBeforeEating) {
+        if (!isFinishableResidentTask(r)) eatAfterFinishingTask(r);
+      } else if (isFinishableResidentTask(r)) {
+        r.finishBeforeEating=true;
+      } else {
+        beginEating(r);
       }
     }
 
     // Priority 2: Tired
     if (r.tired >= CFG.TIRED_THRESHOLD && r.state!=='GOING_HOME' && r.state!=='SLEEPING'
-        && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
+        && r.state!=='GOING_TO_EAT' && r.state!=='EATING' && !r.finishBeforeEating) {
       const home = r.home || findNearestHome(r);
       if (home) {
         r.state = 'GOING_HOME';
@@ -1484,7 +1686,10 @@ function updateResidents(dt) {
         if (b.type==='forester') {
           if (r.carrying && r.carrying.amount >= CFG.PRODUCTION_BATCH_SIZE) { r.state='HAULING'; break; }
           const tree=findForesterTree(r,b);
-          if (tree) { r.chopTarget=tree; r.targetX=tree.x; r.targetY=tree.y; r.state='GOING_TO_CHOP'; }
+          if (tree) {
+            r.chopTarget=tree; r.targetX=tree.x; r.targetY=tree.y; r.state='GOING_TO_CHOP';
+            G.targetedTrees.add(tree);
+          }
           else if (r.carrying) r.state='HAULING';
           break;
         }
@@ -1515,32 +1720,39 @@ function updateResidents(dt) {
           if (source && source.outputHauler === r) source.outputHauler = null;
           r.carrying=null;
           r.carryingFrom=null;
-          r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
-            : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
+          if (!eatAfterFinishingTask(r)) {
+            r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
+              : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
+          }
         } else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
       case 'GOING_TO_CHOP': {
         if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) { r.chopTarget = null; r.state = 'IDLE'; break; }
         const ctx = r.chopTarget.x, cty = r.chopTarget.y;
-        if (Math.hypot(r.x - ctx, r.y - cty) < RESIDENT_RADIUS + 10) { r.state = 'CHOPPING'; r.chopTimer = 0; }
+        if (Math.hypot(r.x - ctx, r.y - cty) < RESIDENT_RADIUS + 10) { r.state = 'CHOPPING'; r.chopTimer = 0; r.chopShakeBeat = -1; }
         else moveViaFlow(r, ctx, cty, CFG.RESIDENT_SPEED, dt);
         break;
       }
       case 'CHOPPING': {
         if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) { r.chopTarget = null; r.state = 'IDLE'; break; }
         r.chopTimer += dt;
-        if (r.chopTimer >= 3) {
+        const shakeBeat=Math.floor(r.chopTimer/0.55);
+        if (shakeBeat !== r.chopShakeBeat) {
+          r.chopShakeBeat=shakeBeat;
+          r.chopTarget.shakeUntil=G.totalTime+0.12;
+        }
+        if (r.chopTimer >= CFG.FORESTER_CHOP_TIME) {
           const carried = r.carrying ? r.carrying.amount : 0;
           const s2 = findNearestStorage(r, 'wood', {requireSpace:Math.max(1, CFG.PRODUCTION_BATCH_SIZE - carried)});
-          if (!s2) { r.chopTimer = 3; break; }
+          if (!s2) { r.chopTimer = CFG.FORESTER_CHOP_TIME; break; }
           r.chopTarget.alive = false; r.chopTarget.marked = false;
           spawnParticles(r.chopTarget.x, r.chopTarget.y, '#8B4513', 5);
           if (!r.carrying) r.carrying = { type: 'wood', amount: 1 };
           else r.carrying.amount++;
           r.chopTarget = null;
           const nextTree = findForesterTree(r, r.workplace);
-          r.state = nextTree && r.carrying.amount < CFG.PRODUCTION_BATCH_SIZE ? 'WORKING' : 'HAULING';
+          r.state = !r.finishBeforeEating && nextTree && r.carrying.amount < CFG.PRODUCTION_BATCH_SIZE ? 'WORKING' : 'HAULING';
           if (r.state === 'HAULING') { const sc = s2.center(); r.targetX = sc.x; r.targetY = sc.y; }
         }
         break;
@@ -1548,7 +1760,7 @@ function updateResidents(dt) {
       case 'GATHERING': {
         if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
         const need = neededMaterials(r.buildTarget);
-        if (!need) { if(r.buildTarget.constructionTimer>0){r.state='CONSTRUCTING';}else{r.buildTarget.assignedEngineer=null;r.buildTarget=null;r.state=(r.workplace&&r.workplace.hp>0)?'GOING_TO_WORK':'IDLE';} break; }
+        if (!need) { if(r.buildTarget.constructionTimer>0){r.state='CONSTRUCTING';}else{r.buildTarget.assignedEngineer=null;r.buildTarget=null;if(!eatAfterFinishingTask(r))r.state=(r.workplace&&r.workplace.hp>0)?'GOING_TO_WORK':'IDLE';} break; }
         const gs = findNearestStorage(r, need.type, {requireAmount:1});
         if (!gs) { r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
         const gsc = gs.center(); r.targetX = gsc.x; r.targetY = gsc.y;
@@ -1592,6 +1804,7 @@ function updateResidents(dt) {
         if (!r.buildTarget || r.buildTarget.hp <= 0 || r.buildTarget.constructionTimer <= 0) {
           if (r.buildTarget && r.buildTarget.hp>0) r.buildTarget.assignedEngineer = null;
           r.buildTarget = null;
+          if (eatAfterFinishingTask(r)) break;
           const nbp = findNearestBlueprint(r);
           if (nbp) { r.buildTarget = nbp; nbp.assignedEngineer = r; r.state = 'GATHERING'; }
           else { r.state = 'IDLE'; }
@@ -1624,12 +1837,15 @@ function updateResidents(dt) {
           for (const node of G.resourceNodes) {
             if (canResidentHandHarvest(node) && node.marked && !node.ownerForester) {
               // Skip trees already targeted by another villager
-              if (G.residents.some(r2 => r2 !== r && r2.chopTarget === node)) continue;
+              if (G.targetedTrees.has(node)) continue;
               const d = Math.hypot(r.x - node.x, r.y - node.y);
               if (d < treeDist) { treeDist = d; treeTarget = node; }
             }
           }
-          if (treeTarget) { r.state = 'GOING_TO_CHOP'; r.targetX = treeTarget.x; r.targetY = treeTarget.y; r.chopTarget = treeTarget; break; }
+          if (treeTarget) {
+            r.state = 'GOING_TO_CHOP'; r.targetX = treeTarget.x; r.targetY = treeTarget.y; r.chopTarget = treeTarget;
+            G.targetedTrees.add(treeTarget); break;
+          }
         }
         r.state='PATROL';
         if ((r.patrolTimer-=dt)<=0) {
@@ -1650,15 +1866,15 @@ function updateResidents(dt) {
 
 function updateBuildings(dt) {
   const activeWorkersByBuilding = new Map();
-  const managedTreeCount = new Map();
+  const growingSaplingCount = new Map();
   for (const r of G.residents) {
     if (r.isGuard || r.state!=='WORKING' || !r.workplace) continue;
     if (!activeWorkersByBuilding.has(r.workplace)) activeWorkersByBuilding.set(r.workplace, []);
     activeWorkersByBuilding.get(r.workplace).push(r);
   }
   for (const node of G.resourceNodes) {
-    if (!node.alive || !node.ownerForester) continue;
-    managedTreeCount.set(node.ownerForester, (managedTreeCount.get(node.ownerForester)||0)+1);
+    if (!node.alive || node.type!=='sapling' || !node.ownerForester) continue;
+    growingSaplingCount.set(node.ownerForester, (growingSaplingCount.get(node.ownerForester)||0)+1);
   }
   for (const b of G.buildings) {
     if (b.constructionTimer > 0) {
@@ -1735,38 +1951,20 @@ function updateBuildings(dt) {
         }
       }
     }
-    // Forester: plant saplings in radius
-    if (b.type==='forester' && !b.blueprint && b.hp>0) {
-      const eff = Math.min(1, (activeWorkersByBuilding.get(b)||[]).length / BLD_DEFS[b.type].maxWorkers);
-      const managedTrees = managedTreeCount.get(b) || 0;
-      if (eff > 0 && managedTrees < 12) {
-        b.foresterPlantCooldown -= dt * eff;
-        if (b.foresterPlantCooldown <= 0) {
-          b.foresterPlantCooldown = 3; // plant every 3s at full speed
-          const def = BLD_DEFS[b.type];
-          const radius = (def.foresterRadius||4) * CFG.CELL;
-          const bc = b.center();
-          // Find empty cell in radius
-          for (let attempt=0; attempt<10; attempt++) {
-            const angle = Math.random()*Math.PI*2;
-            const dist = Math.random()*radius;
-            const px = bc.x + Math.cos(angle)*dist;
-            const py = bc.y + Math.sin(angle)*dist;
-            const col = gridCol(px), row = gridRow(py);
-            if (col<0||row<0||col>=CFG.WORLD_COLS||row>=CFG.WORLD_ROWS) continue;
-            if (isCellBlocked(col, row)) continue;
-            // Don't plant on existing resources
-            let hasResource = false;
-            for (const node of G.resourceNodes) {
-              if (!node.alive) continue;
-              if (Math.hypot(node.x-px, node.y-py) < CFG.CELL*0.6) { hasResource=true; break; }
-            }
-            if (hasResource) continue;
-            G.resourceNodes.push({
-              type:'sapling', col, row, x:gridX(col)+CFG.CELL/2, y:gridY(row)+CFG.CELL/2,
-              hp:1, alive:true, marked:false, growTimer:10, ownerForester:b
-            });
-            break;
+    // Forester: automatically refill empty cells with staggered saplings.
+    if (b.type==='forester' && !b.blueprint && b.constructionTimer<=0 && b.hp>0) {
+      const def=BLD_DEFS[b.type], growthSlots=foresterGrowthSlots(def);
+      if ((growingSaplingCount.get(b)||0) < growthSlots) {
+        b.foresterPlantCooldown-=dt;
+        if (b.foresterPlantCooldown<=0) {
+          const cell=findForesterPlantCell(b);
+          if (cell) {
+            const growDuration=CFG.FORESTER_SAPLING_GROW_TIME*(1+(Math.random()*2-1)*CFG.FORESTER_GROW_JITTER);
+            G.resourceNodes.push({type:'sapling',col:cell.col,row:cell.row,x:cell.x,y:cell.y,hp:1,alive:true,marked:false,growTimer:growDuration,growDuration,ownerForester:b});
+            growingSaplingCount.set(b,(growingSaplingCount.get(b)||0)+1);
+            b.foresterPlantCooldown=foresterPlantInterval(def);
+          } else {
+            b.foresterPlantCooldown=1;
           }
         }
       }
@@ -1777,7 +1975,7 @@ function updateBuildings(dt) {
     if (node.type==='sapling' && node.alive) {
       node.growTimer -= dt;
       if (node.growTimer <= 0) {
-        node.type = 'tree'; node.marked = true;
+        node.type = 'tree'; node.marked = !!node.ownerForester;
       }
     }
   }
@@ -1830,14 +2028,14 @@ let gameSpeed = 1;
 
 function setSpeed(s) {
   gameSpeed = s;
-  document.querySelectorAll('.dbg-btn').forEach(b=>b.style.background='#28342d');
-  const btns = document.querySelectorAll('#debug-panel .dbg-btn');
-  if(s===0) btns[0].style.background='#59613b';
-  else if(s===1) btns[1].style.background='#59613b';
-  else if(s===2) btns[2].style.background='#59613b';
-  else if(s===5) btns[3].style.background='#59613b';
-  else if(s===20) btns[4].style.background='#59613b';
+  document.querySelectorAll('[data-speed]').forEach(button => button.classList.toggle('active', Number(button.dataset.speed)===s));
+  const pauseButton=document.getElementById('time-pause');
+  if (pauseButton) {
+    pauseButton.textContent=s===0?'继续':'暂停';
+    pauseButton.classList.toggle('active', s===0);
+  }
 }
+function togglePause() { setSpeed(gameSpeed===0?1:0); }
 function setRes(type) {
   const inp = document.getElementById('dbg-'+type);
   setStartingResource(type, parseInt(inp.value) || 0);
@@ -1882,18 +2080,113 @@ function skipToDay() {
   }
   showTimeIndicator('跳至第 '+G.day+' 天');
 }
-// === In-game JSON Config Editor ===
+// === In-game balance editor ===
 const BLD_EDIT_FIELDS = [
   { k:'name',       label:'名称',     type:'text' },
   { k:'icon',       label:'图标',     type:'text' },
   { k:'hp',         label:'生命',     type:'num' },
   { k:'maxWorkers', label:'最大工人', type:'num' },
-  { k:'unlock',     label:'解锁等级', type:'num' },
   { k:'baseTime',   label:'基础生产时间', type:'num' },
   { k:'produces',   label:'产物',     type:'text' },
   { k:'popBonus',   label:'人口加成', type:'num' },
   { k:'cost',       label:'消耗(格式: wood:10,stone:5)', type:'text' },
 ];
+const GLOBAL_EDIT_FIELDS = [
+  { k:'DAY_DURATION', label:'白昼时长', min:10, step:1, unit:'秒', restart:true },
+  { k:'NIGHT_DURATION', label:'夜晚时长', min:10, step:1, unit:'秒', restart:true },
+  { k:'HUNGER_RATE', label:'饥饿增长', min:0, step:0.05, unit:'/秒' },
+  { k:'TIRED_RATE', label:'疲劳增长', min:0, step:0.05, unit:'/秒' },
+  { k:'RESIDENT_SPEED', label:'居民速度', min:1, step:1, unit:'像素/秒' },
+  { k:'ENEMY_BASE_HP', label:'敌人基础生命', min:1, step:1, unit:'生命' },
+  { k:'ENEMY_SPEED', label:'敌人速度', min:1, step:1, unit:'像素/秒' },
+  { k:'ENEMY_DAMAGE', label:'敌人伤害', min:0, step:1, unit:'伤害' },
+  { k:'PRODUCTION_BATCH_SIZE', label:'生产搬运批量', min:1, step:1, unit:'件' },
+  { k:'FORESTER_CHOP_TIME', label:'单棵伐木时间', min:0.5, step:0.1, unit:'秒' },
+  { k:'FORESTER_SAPLING_GROW_TIME', label:'树苗基础成长', min:0.5, step:0.1, unit:'秒' },
+  { k:'FORESTER_GROW_JITTER', label:'树苗成长波动', min:0, max:0.9, step:0.05, unit:'比例' },
+];
+function settingsSetStatus(message, kind='normal') {
+  const el=document.getElementById('settings-status');
+  el.textContent=message;
+  el.style.color=kind==='error'?'#f07162':kind==='ok'?'#70c080':'#9aa7b8';
+}
+function renderShortcutSettings() {
+  const container=document.getElementById('settings-shortcuts');
+  container.innerHTML='';
+  for (const action of SHORTCUT_ACTIONS) {
+    const row=document.createElement('div');
+    row.style.cssText='display:grid;grid-template-columns:1fr 110px;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #344038;';
+    const label=document.createElement('span'); label.textContent=action.label;
+    const button=document.createElement('button');
+    button.type='button'; button.dataset.action=action.id;
+    button.textContent=pendingShortcutAction===action.id?'请按按键...':shortcutLabel(gameSettings.shortcuts[action.id]);
+    button.style.cssText='background:#2d3a32;color:#e5c66c;border:1px solid #536158;padding:6px 8px;cursor:pointer;font:inherit;';
+    button.onclick=()=>beginShortcutCapture(action.id);
+    row.append(label,button); container.appendChild(row);
+  }
+}
+function openSettingsPanel() {
+  pendingShortcutAction=null;
+  document.getElementById('settings-overlay').style.display='flex';
+  renderShortcutSettings();
+  settingsSetStatus('修改会自动保存。');
+}
+function closeSettingsPanel() {
+  pendingShortcutAction=null;
+  document.getElementById('settings-overlay').style.display='none';
+}
+function beginShortcutCapture(actionId) {
+  pendingShortcutAction=actionId;
+  renderShortcutSettings();
+  settingsSetStatus('按下新的按键，按 Esc 取消录制。');
+}
+function assignShortcut(actionId, code) {
+  const conflict=Object.keys(gameSettings.shortcuts).find(id => id!==actionId && gameSettings.shortcuts[id]===code);
+  if (conflict) gameSettings.shortcuts[conflict]=DEFAULT_SHORTCUTS[conflict];
+  gameSettings.shortcuts[actionId]=code;
+  saveGameSettings();
+  pendingShortcutAction=null;
+  renderShortcutSettings();
+  const conflictText=conflict ? '；原快捷键已恢复默认。' : '。';
+  settingsSetStatus('已保存“'+SHORTCUT_ACTIONS.find(a=>a.id===actionId).label+'”快捷键'+conflictText,'ok');
+}
+function resetShortcuts() {
+  gameSettings.shortcuts={...DEFAULT_SHORTCUTS};
+  saveGameSettings();
+  pendingShortcutAction=null;
+  renderShortcutSettings();
+  settingsSetStatus('已恢复默认快捷键并自动保存。','ok');
+}
+function closeAllOverlays() {
+  closeSettingsPanel();
+  closeConfigPanel();
+}
+function cancelCurrentAction() {
+  clearBlueprintCommand();
+  clearChopCommand();
+  hideContextMenu();
+}
+function runShortcut(actionId) {
+  if (actionId==='pause') togglePause();
+  else if (actionId==='speedNormal') setSpeed(1);
+  else if (actionId==='speed2') setSpeed(2);
+  else if (actionId==='speed4') setSpeed(4);
+  else if (actionId==='cancel') cancelCurrentAction();
+  else if (actionId==='chop') toggleChopMode();
+  else if (actionId==='unchop') toggleUnchopMode();
+  else if (actionId==='settings') openSettingsPanel();
+  else if (actionId==='config') openConfigPanel();
+}
+function cfgSetStatus(message, kind='normal') {
+  const el=document.getElementById('cfg-status');
+  el.textContent=message;
+  el.style.color=kind==='error'?'#f07162':kind==='ok'?'#70c080':'#9aa7b8';
+}
+function cfgSetDevelopmentServerLink() {
+  const el=document.getElementById('cfg-status');
+  el.innerHTML='当前页面不支持写入项目。<a href="http://127.0.0.1:3010/game.html" style="color:#8ed7e0;text-decoration:underline;">打开可保存的开发版本</a>';
+  el.style.color='#f0c979';
+}
 function closeConfigPanel() { document.getElementById('config-overlay').style.display='none'; }
 function openConfigPanel() {
   document.getElementById('config-overlay').style.display='flex';
@@ -1903,19 +2196,18 @@ function cfgSelectCategory() {
   const cat=document.getElementById('cfg-category').value;
   const sel=document.getElementById('cfg-item');
   sel.innerHTML='';
-  if(cat==='buildings') {
+  if(cat==='globals') {
+    const opt=document.createElement('option'); opt.value='gameplay'; opt.textContent='游戏节奏与单位'; sel.appendChild(opt);
+  } else if(cat==='unlocks') {
+    const opt=document.createElement('option'); opt.value='town_hall'; opt.textContent='各等级可建建筑'; sel.appendChild(opt);
+  } else if(cat==='buildings') {
     for(const [k,d] of Object.entries(BLD_DEFS)) {
       const opt=document.createElement('option');
       opt.value=k; opt.textContent=d.icon+' '+d.name+' ('+k+')';
       sel.appendChild(opt);
     }
-  } else if(cat==='resources') {
-    const rn = {food:'食物',wood:'木材',stone:'石材',iron:'铁矿',ingot:'铁锭'};
-    for(const r of ['food','wood','stone','iron','ingot']) {
-      const opt=document.createElement('option');
-      opt.value=r; opt.textContent=rn[r]||r;
-      sel.appendChild(opt);
-    }
+  } else if(cat==='initialResources') {
+    const opt=document.createElement('option'); opt.value='all'; opt.textContent='初始库存'; sel.appendChild(opt);
   }
   cfgSelectItem();
 }
@@ -1924,23 +2216,55 @@ function cfgSelectItem() {
   const key=document.getElementById('cfg-item').value;
   const container=document.getElementById('cfg-fields');
   let html='';
-  if(cat==='buildings'&&BLD_DEFS[key]) {
+  if(cat==='unlocks') {
+    const maxUnlockLevel=Math.max(10,...Object.values(BLD_DEFS).map(def=>def.unlock||1));
+    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">为每种建筑选择首次可建造时所需的大本营等级。</div>';
+    for(const [type,def] of Object.entries(BLD_DEFS)) {
+      if(type==='town_hall') continue;
+      let options='';
+      for(let level=1;level<=maxUnlockLevel;level++) options+=`<option value="${level}" ${def.unlock===level?'selected':''}>大本营 ${level} 级</option>`;
+      html+=`<div style="display:grid;grid-template-columns:1fr 132px;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #344038;"><span>${def.name}</span><select id="cfg-unlock-${type}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;">${options}</select></div>`;
+    }
+  } else if(cat==='globals') {
+    for(const f of GLOBAL_EDIT_FIELDS) {
+      html+=`<div style="display:grid;grid-template-columns:120px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-global-${f.k}" type="number" min="${f.min}" step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:${f.restart?'#d5a85c':'#788898'}">${f.restart?'重开生效':f.unit}</span></div>`;
+    }
+  } else if(cat==='buildings'&&BLD_DEFS[key]) {
     const d=BLD_DEFS[key];
     for(const f of BLD_EDIT_FIELDS) {
       let val=d[f.k];
       if(f.k==='cost') val=Object.entries(d.cost||{}).map(([k,v])=>k+':'+v).join(',');
       html+=`<div style="display:flex;align-items:center;gap:8px;"><label style="width:100px;text-align:right;color:#aaa;">${f.label}</label><input id="cfg-fld-${f.k}" type="${f.type}" value="${val??''}" style="flex:1;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
     }
-  } else if(cat==='resources') {
-    const resNames = {food:'食物',wood:'木材',stone:'石材',iron:'铁矿',ingot:'铁锭'};
-    html += `<div style="display:flex;align-items:center;gap:8px;"><label style="width:100px;text-align:right;color:#aaa;">${resNames[key]||key}</label><input id="cfg-fld-res" type="num" value="${CFG['START_'+key.toUpperCase()]||0}" style="flex:1;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
+  } else if(cat==='initialResources') {
+    const resources=[['FOOD','食物'],['WOOD','木材'],['STONE','石材'],['IRON','铁矿'],['INGOT','铁锭']];
+    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">重新开始游戏时，大本营初始库存将使用以下数值。</div>';
+    for(const [resKey,label] of resources) html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">${label}</label><input id="cfg-initial-${resKey}" type="number" min="0" step="1" value="${CFG['START_'+resKey]||0}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
   }
   container.innerHTML=html;
 }
 function cfgApply() {
   const cat=document.getElementById('cfg-category').value;
   const key=document.getElementById('cfg-item').value;
-  if(cat==='buildings'&&BLD_DEFS[key]) {
+  if(cat==='unlocks') {
+    for(const [type,def] of Object.entries(BLD_DEFS)) {
+      if(type==='town_hall') continue;
+      const level=Number(document.getElementById('cfg-unlock-'+type)?.value);
+      if(!Number.isInteger(level)||level<1) { cfgSetStatus(def.name+'的解锁等级无效','error'); return false; }
+      def.unlock=level;
+    }
+    updateBuildingPanel();
+    cfgSetStatus('大本营解锁规则已应用到当前游戏。','ok');
+    return true;
+  } else if(cat==='globals') {
+    for(const f of GLOBAL_EDIT_FIELDS) {
+      const value=Number(document.getElementById('cfg-global-'+f.k)?.value);
+      if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
+      CFG[f.k]=value;
+    }
+    cfgSetStatus('全局数值已应用；标记“重开生效”的项目需要重新开始。','ok');
+    return true;
+  } else if(cat==='buildings'&&BLD_DEFS[key]) {
     const d=BLD_DEFS[key];
     const oldHp=d.hp;
     for(const f of BLD_EDIT_FIELDS) {
@@ -1965,47 +2289,38 @@ function cfgApply() {
     }
     updateBuildingPanel();
     showTimeIndicator(d.name+' 配置已应用');
-  } else if (cat==='resources') {
-    const el = document.getElementById('cfg-fld-res');
-    if (el) { CFG['START_'+key.toUpperCase()] = parseInt(el.value) || 0; }
-    showTimeIndicator(key+' 初始值已更新');
+    cfgSetStatus(d.name+'已应用到当前游戏。','ok');
+  } else if (cat==='initialResources') {
+    for(const resKey of ['FOOD','WOOD','STONE','IRON','INGOT']) {
+      const value=Number(document.getElementById('cfg-initial-'+resKey)?.value);
+      if(!Number.isFinite(value)||value<0) { cfgSetStatus(resKey+'初始资源不是有效数值','error'); return false; }
+      CFG['START_'+resKey]=Math.floor(value);
+    }
+    cfgSetStatus('初始拥有资源已更新，重新开始游戏后生效。','ok');
   }
+  return true;
 }
-function cfgExportJSON() {
-  const data={buildings:BLD_DEFS,resources:{start:{}}};
-  for(const r of ['food','wood','stone','iron','ingot']) data.resources.start[r]=CFG['START_'+r.toUpperCase()];
-  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
-  const a=document.createElement('a');
-  a.href=URL.createObjectURL(blob); a.download='colony-config.json'; a.click();
-  showTimeIndicator('配置已导出');
+function collectBalanceData() {
+  const globals={};
+  for(const field of GLOBAL_EDIT_FIELDS) globals[field.k]=CFG[field.k];
+  for(const type of ['food','wood','stone','iron','ingot']) globals['START_'+type.toUpperCase()]=CFG['START_'+type.toUpperCase()];
+  return {version:1, savedAt:new Date().toISOString(), globals, buildings:BLD_DEFS};
 }
-function cfgImportJSON() { document.getElementById('config-file-import').click(); }
-document.getElementById('config-file-import').addEventListener('change',function(e) {
-  const file=e.target.files[0]; if(!file) return;
-  const reader=new FileReader();
-  reader.onload=function(ev) {
-    try {
-      const data=JSON.parse(ev.target.result);
-      if(data.buildings) {
-        for(const [k,d] of Object.entries(data.buildings)) {
-          if(BLD_DEFS[k]) { Object.assign(BLD_DEFS[k],d); if(d.cost&&typeof d.cost==='object') BLD_DEFS[k].cost=Object.assign({},d.cost); }
-        }
-        updateBuildingPanel();
-      }
-      if(data.resources&&data.resources.start) {
-        for(const [k,v] of Object.entries(data.resources.start)) {
-          const key='START_'+k.toUpperCase();
-          if(CFG[key]!==undefined) CFG[key]=v;
-        }
-      }
-      cfgSelectItem();
-      showTimeIndicator('JSON 配置已导入');
-    } catch(ex) { showTimeIndicator('JSON 解析失败'); }
-  };
-  reader.readAsText(file);
-  this.value='';
-});
-
+async function cfgSaveProject() {
+  if(!cfgApply()) return;
+  if(location.protocol==='file:') { cfgSetStatus('请通过 tools/dev-server.js 启动游戏后再保存到项目。','error'); return; }
+  const button=document.getElementById('cfg-save-btn'); button.disabled=true; button.textContent='保存中...';
+  try {
+    const response=await fetch('/api/balance',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(collectBalanceData())});
+    const result=await response.json();
+    if(!response.ok) throw new Error(result.error||'保存失败');
+    cfgSetStatus('已写入 data/balance.json，刷新页面后仍会保留。','ok');
+  } catch(error) {
+    if (location.port!=='3010') cfgSetDevelopmentServerLink();
+    else cfgSetStatus('保存失败：'+error.message,'error');
+  }
+  finally { button.disabled=false; button.textContent='保存到项目'; }
+}
 function assignEngineer() {
   const idle = G.residents.find(r => (r.state === 'IDLE' || r.state === 'PATROL') && !r.workplace && !r.isEngineer);
   if (idle) {
@@ -2051,8 +2366,10 @@ function restartGame() {
   G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
   G.selectedBldType = null; G.selectedBuilding = null; G.placingMode = false; G.movingBuilding = null;
   G.maxPop = CFG.MAX_POP_BASE; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
-  G.resourceCleanupTimer = 0; G.farmLinks = []; G.navigationRevision = 0;
-  G.dragging = false; gameSpeed = 1; gameRunning = true;
+  G.resourceCleanupTimer = 0; G.farmLinks = []; G.navigationRevision = 0; G.obstacleIndexRevision = -1;
+  G.targetedTrees = new Set();
+  G.dragging = false; G.dragMoved=false; gameRunning = true;
+  setSpeed(1);
   G.infiniteResources = false;
   document.getElementById('gameover-overlay').style.display = 'none';
   initGame();
@@ -2278,6 +2595,8 @@ function render() {
 
   ctx.restore();
 
+  drawCommandCursor();
+
   // Night overlay (screen space)
   if (alpha>0) { ctx.fillStyle=`rgba(10,10,40,${alpha})`; ctx.fillRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H); }
 
@@ -2285,18 +2604,38 @@ function render() {
   drawClock();
 }
 
+function drawCommandCursor() {
+  if (!G.hoveredCell || (!G.chopMode && !G.unchopMode)) return;
+  const x=G.mouseX+15, y=G.mouseY+15;
+  ctx.save();
+  ctx.fillStyle='rgba(13,19,15,0.82)'; ctx.beginPath(); ctx.arc(x,y,11,0,Math.PI*2); ctx.fill();
+  if (G.chopMode) {
+    ctx.strokeStyle='#bf8146'; ctx.lineWidth=2.4; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(x-4,y+6); ctx.lineTo(x+5,y-5); ctx.stroke();
+    ctx.fillStyle='#d6dfd8'; ctx.beginPath(); ctx.moveTo(x+1,y-7); ctx.quadraticCurveTo(x+9,y-8,x+8,y); ctx.lineTo(x+3,y+3); ctx.closePath(); ctx.fill();
+  } else {
+    ctx.strokeStyle='#e77869'; ctx.lineWidth=2.6; ctx.lineCap='round';
+    ctx.beginPath(); ctx.moveTo(x-5,y-5); ctx.lineTo(x+5,y+5); ctx.moveTo(x+5,y-5); ctx.lineTo(x-5,y+5); ctx.stroke();
+  }
+  ctx.restore();
+}
+
 function drawResourceNode(node) {
   if (node.type === 'sapling') {
     ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(node.x,node.y+2,5,2,0,0,Math.PI*2); ctx.fill();
     ctx.fillStyle='#725036'; ctx.fillRect(node.x-1,node.y-5,2,8);
     ctx.fillStyle='#70a955'; ctx.beginPath(); ctx.arc(node.x-2,node.y-6,3,0,Math.PI*2); ctx.arc(node.x+2,node.y-7,3,0,Math.PI*2); ctx.fill();
-    const growProgress = clamp(1-(node.growTimer/10),0,1);
+    const growProgress = clamp(1-(node.growTimer/(node.growDuration||CFG.FORESTER_SAPLING_GROW_TIME)),0,1);
     ctx.strokeStyle='rgba(235,240,220,0.7)'; ctx.lineWidth=1/G.cam.zoom;
     ctx.beginPath(); ctx.arc(node.x,node.y-6,6,-Math.PI/2,-Math.PI/2+Math.PI*2*growProgress); ctx.stroke();
     return;
   }
   if (node.type === 'tree') {
     ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(node.x,node.y+7,11,4,0,0,Math.PI*2); ctx.fill();
+    ctx.save();
+    ctx.translate(node.x,node.y+7);
+    if (node.shakeUntil > G.totalTime) ctx.rotate(Math.sin(G.totalTime*42)*0.07);
+    ctx.translate(-node.x,-node.y-7);
     ctx.fillStyle='#65442d'; ctx.fillRect(node.x-3,node.y-7,6,14);
     ctx.fillStyle='#285d3c'; ctx.beginPath(); ctx.arc(node.x-5,node.y-10,7,0,Math.PI*2); ctx.arc(node.x+5,node.y-11,8,0,Math.PI*2); ctx.arc(node.x,node.y-17,9,0,Math.PI*2); ctx.fill();
     ctx.fillStyle='#3f7b4d'; ctx.beginPath(); ctx.arc(node.x-2,node.y-17,5,0,Math.PI*2); ctx.fill();
@@ -2304,6 +2643,7 @@ function drawResourceNode(node) {
       ctx.strokeStyle='#f4d77b'; ctx.lineWidth=1.5/G.cam.zoom; ctx.setLineDash([3,3]);
       ctx.strokeRect(node.x-12,node.y-27,24,36); ctx.setLineDash([]);
     }
+    ctx.restore();
     return;
   }
   const cx=node.x+CFG.CELL/2, cy=node.y+CFG.CELL/2;
@@ -2330,7 +2670,7 @@ function drawBuilding(b, x, y) {
   drawBuildingDetails(b,cx,cy,cr);
   if (!b.blueprint && def.needsManning) {
     const post = b.guardSpot();
-    const guard = G.residents.find(r => r.assignedTower === b || r.manningTower === b);
+    const guard = b.assignedGuard;
     ctx.fillStyle = guard ? 'rgba(112,170,238,0.9)' : 'rgba(220,220,190,0.32)';
     ctx.beginPath(); ctx.arc(post.x, post.y, guard ? 3 : 2, 0, Math.PI*2); ctx.fill();
   }
@@ -2392,13 +2732,13 @@ function drawBuilding(b, x, y) {
   if (!b.blueprint && b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.upgradeProgress); ctx.lineTo(cx,cy); ctx.fill(); }
   if (!b.blueprint && b.type==='town_hall' && b.recruitQueue>0) { ctx.fillStyle='rgba(100,255,100,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr-3,-Math.PI/2,-Math.PI/2+Math.PI*2*b.recruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
   if (!b.blueprint && b.type==='town_hall' && b.guardRecruitQueue>0) { ctx.fillStyle='rgba(100,150,255,0.4)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.guardRecruitProgress); ctx.lineTo(cx,cy); ctx.fill(); }
-  if (!b.blueprint && def.maxWorkers>0) {
+  if (!b.blueprint && b.constructionTimer <= 0 && def.maxWorkers>0) {
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle='#fff'; ctx.font='9px sans-serif'; ctx.textAlign='center';
     ctx.fillText(`W ${b.assignedWorkers}/${def.maxWorkers}`,cx,cy+h/2-6);
   }
   if (!b.blueprint && b.type==='arrow_tower') {
-    const guardAssigned = G.residents.some(r=>r.isGuard && (r.assignedTower===b || r.manningTower===b));
+    const guardAssigned = !!b.assignedGuard;
     ctx.fillStyle='rgba(0,0,0,0.7)'; ctx.fillRect(x+2,y+h-14,w-4,12);
     ctx.fillStyle=guardAssigned?'#e5c66c':'#aeb8ad'; ctx.font='8px sans-serif'; ctx.textAlign='center';
     ctx.fillText(`G ${guardAssigned?'1':'0'}/1`,cx,cy+h/2-6);
@@ -2460,6 +2800,29 @@ function buildingColor(t) {
   return {town_hall:'#8a7a4a',house:'#5b8c5a',farm:'#8b9a4b',forester:'#3d7a3d',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
 }
 
+function drawResidentAxeIcon(x, y) {
+  ctx.save();
+  ctx.fillStyle='rgba(19,27,22,0.78)'; ctx.beginPath(); ctx.arc(x,y,9,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#b77d45'; ctx.lineWidth=2; ctx.lineCap='round';
+  ctx.beginPath(); ctx.moveTo(x-3,y+5); ctx.lineTo(x+4,y-5); ctx.stroke();
+  ctx.fillStyle='#c7d1cb'; ctx.beginPath(); ctx.moveTo(x+1,y-6); ctx.quadraticCurveTo(x+8,y-7,x+7,y); ctx.lineTo(x+3,y+2); ctx.closePath(); ctx.fill();
+  ctx.restore();
+}
+function drawResidentFoodIcon(x, y) {
+  ctx.save();
+  ctx.fillStyle='rgba(19,27,22,0.78)'; ctx.beginPath(); ctx.arc(x,y,9,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#d6a83b'; ctx.beginPath(); ctx.ellipse(x,y+1,5.5,3.8,0,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle='#f4dc86'; ctx.lineWidth=1; ctx.beginPath(); ctx.arc(x,y+1,4.2,Math.PI*1.08,Math.PI*1.92); ctx.stroke();
+  ctx.restore();
+}
+function drawResidentSleepIcon(x, y) {
+  ctx.save();
+  ctx.fillStyle='rgba(19,27,22,0.78)'; ctx.beginPath(); ctx.arc(x,y,9,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#a9c5d8'; ctx.beginPath(); ctx.arc(x-1,y,4.8,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(19,27,22,0.92)'; ctx.beginPath(); ctx.arc(x+1.8,y-1.8,4.8,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='#d7e7ef'; ctx.beginPath(); ctx.arc(x+4,y+4,1,0,Math.PI*2); ctx.fill();
+  ctx.restore();
+}
 function drawResident(r) {
   const bodyColor = r.isGuard
     ? {GUARD_SLEEPING:'#6688aa',GUARD_FIND_TOWER:'#ff6644',GUARD_MANNING:'#4488ff',
@@ -2492,10 +2855,12 @@ function drawResident(r) {
     ctx.fillStyle = gpct > 0.5 ? '#4a4' : gpct > 0.25 ? '#fa4' : '#f44';
     ctx.fillRect(r.x - gbw/2, r.y + cr + 4, gbw * gpct, gbh);
   }
+  const iconY=r.y-31;
+  if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) drawResidentFoodIcon(r.x,iconY);
+  else if (r.state==='GOING_HOME' || r.state==='SLEEPING') drawResidentSleepIcon(r.x,iconY);
+  else if (!r.workplace && r.state==='GOING_TO_CHOP') drawResidentAxeIcon(r.x,iconY);
   if (r.starvationDays >= 2) { ctx.fillStyle='#f07162'; ctx.font='700 9px Arial,sans-serif'; ctx.fillText('!',r.x-5,r.y-24); }
   else if (r.starvationDays >= 1) { ctx.fillStyle='#e1a056'; ctx.font='700 9px Arial,sans-serif'; ctx.fillText('!',r.x-5,r.y-22); }
-  if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) { ctx.fillStyle='#e4c66b'; ctx.fillRect(r.x-7,r.y-22,8,2); }
-  if (r.tired>CFG.TIRED_THRESHOLD*0.8) { ctx.fillStyle='#91a8b7'; ctx.fillRect(r.x+3,r.y-22,8,2); }
 }
 
 function drawEnemy(e) {
@@ -2576,14 +2941,18 @@ function updateTopBar() {
   document.getElementById('r-stone').textContent = Math.floor(G.resources.stone);
   document.getElementById('r-iron').textContent = Math.floor(G.resources.iron);
   document.getElementById('r-ingot').textContent = Math.floor(G.resources.ingot);
-  const homeless = G.residents.filter(r=>!r.home).length;
-  const engActive = G.residents.filter(r => r.isEngineer && (r.state==='GATHERING'||r.state==='BUILDING')).length;
-  const engTotal = G.residents.filter(r => r.isEngineer).length;
-  const hasIdle = G.residents.some(r => (r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer);
+  let homeless=0, engActive=0, engTotal=0, guardTotal=0, hasIdle=false;
+  for (const r of G.residents) {
+    if (!r.home) homeless++;
+    if (r.isGuard) guardTotal++;
+    if (r.isEngineer) {
+      engTotal++;
+      if (r.state==='GATHERING'||r.state==='BUILDING') engActive++;
+    } else if ((r.state==='IDLE'||r.state==='PATROL') && !r.workplace) hasIdle=true;
+  }
   document.getElementById('eng-plus').style.display = hasIdle ? '' : 'none';
   document.getElementById('eng-minus').style.display = engTotal > 0 ? '' : 'none';
   document.getElementById('r-eng').textContent = engActive+'/'+engTotal;
-  const guardTotal = G.residents.filter(r => r.isGuard).length;
   document.getElementById('r-guard-top').textContent = guardTotal;
   document.getElementById('r-pop').textContent = `${G.residents.length}/${G.maxPop}` + (homeless>0?` !${homeless}`:'');
   document.getElementById('r-time').textContent = G.phase==='day'?`第 ${G.day} 天`:G.phase==='night'?`第 ${G.day} 夜`:`第 ${G.day} 天 · 过渡`;
@@ -2623,7 +2992,7 @@ function showContextMenu(building, mx, my) {
     const capped = b.level >= maxLv;
     h+=`<button onclick="actionUpgrade()"${capped?' disabled':''}>升级${b.upgrading?' (升级中...)':''}${capped?` [需大本营Lv.${b.level+1}]`:''}</button>`;
     if (b.type==='arrow_tower' && !b.blueprint) {
-      const assignedGuard = G.residents.find(r=>r.isGuard && (r.assignedTower===b || r.manningTower===b));
+      const assignedGuard = b.assignedGuard;
       const availableGuard = G.residents.some(r=>r.isGuard && !r.assignedTower && !r.manningTower && r.state!=='GUARD_RETURNING' && r.state!=='GUARD_HEALING');
       h+=`<div class="info-line" style="font-size:10px">守卫岗位: ${assignedGuard?'1/1':'0/1'}</div>`;
       h+=`<button onclick="actionAddGuard()"${assignedGuard||!availableGuard?' disabled':''}>增加守卫${assignedGuard?' [已分配]':!availableGuard?' [无可用守卫]':''}</button>`;
@@ -2748,6 +3117,7 @@ function updateBuildingPanel() {
 buildingPanel.addEventListener('click', e => {
   const btn=e.target.closest('.bld-btn'); if(!btn) return;
   const type=btn.dataset.type;
+  clearChopCommand();
   if(G.placingMode){G.placingMode=false;G.movingBuilding=null;}
   if(G.selectedBldType===type){
     G.selectedBldType=null; btn.classList.remove('selected');
@@ -2773,34 +3143,34 @@ canvas.addEventListener('mousemove', e => {
 
   // Camera drag
   if (G.dragging) {
+    if (Math.abs(mx-G.dragStartX)>3 || Math.abs(my-G.dragStartY)>3) G.dragMoved=true;
     G.cam.x = G.dragCamStartX - (mx - G.dragStartX) / G.cam.zoom;
     G.cam.y = G.dragCamStartY - (my - G.dragStartY) / G.cam.zoom;
     clampCamera();
   }
 });
 canvas.addEventListener('mousedown', e => {
+  if (e.button === 2) {
+    e.preventDefault();
+    const r=canvas.getBoundingClientRect();
+    const mx=e.clientX-r.left, my=e.clientY-r.top;
+    G.dragging=true; G.dragMoved=false;
+    G.dragStartX=mx; G.dragStartY=my;
+    G.dragCamStartX=G.cam.x; G.dragCamStartY=G.cam.y;
+    hideContextMenu();
+    return;
+  }
   if (e.button !== 0) return;
   const r=canvas.getBoundingClientRect();
   const mx=e.clientX-r.left, my=e.clientY-r.top;
 
-  // Check if clicking a building
   const wp=screenToWorld(mx, my);
   const col=gridCol(wp.x), row=gridRow(wp.y);
-  let clickedBld=null;
-  for(const b of G.buildings){
-    const d=BLD_DEFS[b.type];
-    if(col>=b.col&&col<b.col+d.sz[0]&&row>=b.row&&row<b.row+d.sz[1]){clickedBld=b;break;}
-  }
 
   // Chop/Unchop mode drag-select
   if (G.chopMode || G.unchopMode) {
     G.chopStartX = col; G.chopStartY = row; G.chopEndX = -1; G.chopEndY = -1;
     G.dragging = false;
-  } else if (!clickedBld && !G.selectedBldType && !G.placingMode) {
-    // Start camera drag on empty ground with no build selection
-    G.dragging = true;
-    G.dragStartX = mx; G.dragStartY = my;
-    G.dragCamStartX = G.cam.x; G.dragCamStartY = G.cam.y;
   }
 });
 canvas.addEventListener('click', e => {
@@ -2887,15 +3257,48 @@ canvas.addEventListener('wheel', e => {
 }, {passive: false});
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
-  G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null;
-  document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected')); hideContextMenu();
 });
 canvas.addEventListener('mouseleave', () => { G.dragging = false; });
+window.addEventListener('mouseup', e => {
+  if (e.button !== 2) return;
+  const isCancelClick=G.dragging && !G.dragMoved;
+  G.dragging=false; G.dragMoved=false;
+  if (isCancelClick) cancelCurrentAction();
+});
 contextMenu.addEventListener('click', e => e.stopPropagation());
 document.addEventListener('mousedown', e => {
   if(!e.target.closest('#context-menu')) hideContextMenu();
 });
 document.addEventListener('wheel', () => hideContextMenu());
+document.addEventListener('keydown', event => {
+  if (pendingShortcutAction) {
+    event.preventDefault();
+    if (event.code==='Escape') {
+      pendingShortcutAction=null;
+      renderShortcutSettings();
+      settingsSetStatus('已取消录制。');
+      return;
+    }
+    if (event.ctrlKey || event.altKey || event.metaKey) {
+      settingsSetStatus('请使用不带 Ctrl、Alt 或 Meta 的单个按键。','error');
+      return;
+    }
+    assignShortcut(pendingShortcutAction, event.code);
+    return;
+  }
+  const target=event.target;
+  if (target instanceof HTMLInputElement || target instanceof HTMLSelectElement || target instanceof HTMLTextAreaElement) return;
+  const settingsOpen=document.getElementById('settings-overlay').style.display==='flex';
+  const configOpen=document.getElementById('config-overlay').style.display==='flex';
+  if (settingsOpen || configOpen) {
+    if (event.code==='Escape') { event.preventDefault(); closeAllOverlays(); }
+    return;
+  }
+  const action=Object.keys(gameSettings.shortcuts).find(id => gameSettings.shortcuts[id]===event.code);
+  if (!action || event.ctrlKey || event.altKey || event.metaKey) return;
+  event.preventDefault();
+  runShortcut(action);
+});
 
 // ============================================================
 // LOOP
@@ -2913,6 +3316,7 @@ function gameLoop(ts) {
 }
 
 initGame();
+setSpeed(1);
 updateBuildingPanel();
 updateTopBar();
 lastTime=performance.now();

@@ -1,0 +1,328 @@
+{
+  "version": 1,
+  "savedAt": "2026-07-12T09:26:22.024Z",
+  "globals": {
+    "DAY_DURATION": 162,
+    "NIGHT_DURATION": 78,
+    "HUNGER_RATE": 0.6,
+    "TIRED_RATE": 0.4,
+    "RESIDENT_SPEED": 60,
+    "ENEMY_BASE_HP": 40,
+    "ENEMY_SPEED": 50,
+    "ENEMY_DAMAGE": 8,
+    "PRODUCTION_BATCH_SIZE": 5,
+    "START_FOOD": 50,
+    "START_WOOD": 40,
+    "START_STONE": 20,
+    "START_IRON": 0,
+    "START_INGOT": 0
+  },
+  "buildings": {
+    "floor": {
+      "name": "地板",
+      "icon": "",
+      "cat": "facility",
+      "sz": [
+        5,
+        5
+      ],
+      "cost": {
+        "wood": 1
+      },
+      "hp": 50,
+      "maxWorkers": 0,
+      "unlock": 5,
+      "buildTime": 0
+    },
+    "house": {
+      "name": "住房",
+      "icon": "",
+      "cat": "facility",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10,
+        "stone": 5
+      },
+      "hp": 200,
+      "maxWorkers": 0,
+      "popBonus": 4,
+      "unlock": 2,
+      "buildTime": 5
+    },
+    "farm": {
+      "name": "农场",
+      "icon": "农",
+      "cat": "production",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 5
+      },
+      "hp": 100,
+      "maxWorkers": 2,
+      "produces": "food",
+      "baseTime": 8,
+      "unlock": 1,
+      "buildTime": 2
+    },
+    "forester": {
+      "name": "护林员小屋",
+      "icon": "林",
+      "cat": "production",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 15,
+        "stone": 10
+      },
+      "hp": 150,
+      "maxWorkers": 3,
+      "produces": "wood",
+      "baseTime": 10,
+      "unlock": 2,
+      "buildTime": 5,
+      "foresterRadius": 4
+    },
+    "quarry": {
+      "name": "采石场",
+      "icon": "石",
+      "cat": "production",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10,
+        "stone": 5
+      },
+      "hp": 120,
+      "maxWorkers": 3,
+      "produces": "stone",
+      "sourceType": "stone",
+      "sourceRadius": 3,
+      "baseTime": 10,
+      "unlock": 3,
+      "buildTime": 8
+    },
+    "iron_mine": {
+      "name": "铁矿",
+      "icon": "矿",
+      "cat": "production",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 15,
+        "stone": 10
+      },
+      "hp": 150,
+      "maxWorkers": 4,
+      "produces": "iron",
+      "sourceType": "iron",
+      "sourceRadius": 3,
+      "baseTime": 12,
+      "unlock": 4,
+      "buildTime": 11
+    },
+    "smelter": {
+      "name": "炼铁机",
+      "icon": "炉",
+      "cat": "production",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 20,
+        "stone": 15
+      },
+      "hp": 120,
+      "maxWorkers": 2,
+      "inputs": {
+        "iron": 1
+      },
+      "produces": "ingot",
+      "baseTime": 8,
+      "unlock": 4,
+      "buildTime": 11
+    },
+    "food_storage": {
+      "name": "食物仓库",
+      "icon": "食",
+      "cat": "storage",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10,
+        "stone": 5
+      },
+      "hp": 150,
+      "maxWorkers": 0,
+      "capacity": 50,
+      "unlock": 2,
+      "buildTime": 5
+    },
+    "wood_storage": {
+      "name": "木材仓库",
+      "icon": "木",
+      "cat": "storage",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10,
+        "stone": 5
+      },
+      "hp": 150,
+      "maxWorkers": 0,
+      "capacity": 50,
+      "unlock": 2,
+      "buildTime": 5
+    },
+    "stone_storage": {
+      "name": "石材仓库",
+      "icon": "石",
+      "cat": "storage",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10,
+        "stone": 5
+      },
+      "hp": 150,
+      "maxWorkers": 0,
+      "capacity": 50,
+      "unlock": 3,
+      "buildTime": 8
+    },
+    "iron_storage": {
+      "name": "铁矿仓库",
+      "icon": "铁",
+      "cat": "storage",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10,
+        "stone": 10
+      },
+      "hp": 150,
+      "maxWorkers": 0,
+      "capacity": 50,
+      "unlock": 4,
+      "buildTime": 11
+    },
+    "ingot_storage": {
+      "name": "铁锭仓库",
+      "icon": "锭",
+      "cat": "storage",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10,
+        "stone": 10
+      },
+      "hp": 150,
+      "maxWorkers": 0,
+      "capacity": 50,
+      "unlock": 4,
+      "buildTime": 11
+    },
+    "arrow_tower": {
+      "name": "箭塔",
+      "icon": "塔",
+      "cat": "defense",
+      "sz": [
+        1,
+        1
+      ],
+      "cost": {
+        "wood": 20
+      },
+      "hp": 120,
+      "maxWorkers": 0,
+      "range": 150,
+      "damage": 15,
+      "cooldown": 0.8,
+      "unlock": 1,
+      "buildTime": 2,
+      "needsManning": 1,
+      "produces": ""
+    },
+    "auto_arrow_tower": {
+      "name": "自动箭塔",
+      "icon": "自",
+      "cat": "defense",
+      "sz": [
+        1,
+        1
+      ],
+      "cost": {
+        "wood": 30,
+        "stone": 20
+      },
+      "hp": 150,
+      "maxWorkers": 0,
+      "range": 160,
+      "damage": 18,
+      "cooldown": 0.7,
+      "unlock": 5,
+      "buildTime": 14
+    },
+    "town_hall": {
+      "name": "大本营",
+      "icon": "",
+      "cat": "facility",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {},
+      "hp": 500,
+      "maxWorkers": 0,
+      "capacity": 200,
+      "recruitTime": 10,
+      "recruitCost": {
+        "food": 5
+      },
+      "guardRecruitTime": 15,
+      "guardRecruitCost": {
+        "food": 20
+      },
+      "unlock": 1,
+      "buildTime": 2
+    },
+    "wall": {
+      "name": "城墙",
+      "icon": "墙",
+      "cat": "defense",
+      "sz": [
+        1,
+        1
+      ],
+      "cost": {
+        "stone": 5
+      },
+      "hp": 250,
+      "maxWorkers": 0,
+      "unlock": 3,
+      "buildTime": 8
+    }
+  }
+}
