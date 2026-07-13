@@ -250,7 +250,10 @@
 
 ### 开发者数值编辑
 
-- 运行 `node tools/dev-server.js`，访问 `http://127.0.0.1:3010/game.html`。
+- 在 VS Code 中运行“Tasks: Run Task”并选择“启动游戏开发服务器”，或运行 `node tools/dev-server.js`；随后访问 `http://127.0.0.1:3010/game.html`。
+- 使用 VS Code 内嵌预览时，运行“Browser: Open Integrated Browser”并输入上述地址；不要使用 Live Preview 的 3000 静态服务，否则无法保存项目数值配置。
+- `.vscode/launch.json` 提供“调试村庄模拟（内嵌浏览器）”：在“运行和调试”面板选择它并按 `F5`，VS Code 会先启动 3010 服务，再在内嵌浏览器中打开游戏并支持 JavaScript 调试。
+- 若 3010 服务已经运行，任务会复用它而不会因端口占用失败。
 - “应用”只更新当前运行中的游戏；“保存到项目”会写入 `data/balance.json`，刷新后自动加载。
 - 直接打开 `game.html` 仍可游玩和临时调参，但浏览器安全限制下不能写入项目文件。
 - 从不支持保存的页面点击“保存到项目”时，编辑器会直接提供“打开可保存的开发版本”链接，无需手动输入地址。

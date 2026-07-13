@@ -72,3 +72,11 @@ const server = http.createServer((request, response) => {
 server.listen(port, '127.0.0.1', () => {
   console.log(`Colony development server: http://127.0.0.1:${port}/game.html`);
 });
+
+server.on('error', error => {
+  if (error.code === 'EADDRINUSE') {
+    console.log(`Colony development server: http://127.0.0.1:${port}/game.html (already running)`);
+    process.exit(0);
+  }
+  throw error;
+});

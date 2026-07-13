@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-07-12T15:00:03.863Z",
+  "savedAt": "2026-07-12T15:07:08.218Z",
   "globals": {
     "DAY_DURATION": 162,
     "NIGHT_DURATION": 78,
@@ -44,7 +44,9 @@
     "START_WOOD": 10,
     "START_STONE": 0,
     "START_IRON": 0,
-    "START_INGOT": 0
+    "START_INGOT": 0,
+    "START_POP": 3,
+    "MAX_POP_BASE": 4
   },
   "buildings": {
     "floor": {
