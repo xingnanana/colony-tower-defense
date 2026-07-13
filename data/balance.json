@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-07-12T15:07:08.218Z",
+  "savedAt": "2026-07-13T16:07:14.642Z",
   "globals": {
     "DAY_DURATION": 162,
     "NIGHT_DURATION": 78,
@@ -10,14 +10,9 @@
     "ENEMY_BASE_HP": 40,
     "ENEMY_SPEED": 50,
     "ENEMY_DAMAGE": 8,
-    "PRODUCTION_BATCH_SIZE": 5,
-    "FORESTER_CHOP_TIME": 3,
-    "FORESTER_SAPLING_GROW_TIME": 5,
-    "FORESTER_GROW_JITTER": 0.2,
-    "TOWN_HALL_VISION": 8,
-    "LAMP_VISION": 5,
     "RESIDENT_VISION": 2,
     "GUARD_VISION": 3,
+    "ENGINEER_REPAIR_RATE": 12,
     "ENEMY_WAVE_BASE_COUNT": 3,
     "ENEMY_WAVE_PER_DAY": 2,
     "ENEMY_WAVE_MAX": 4,
@@ -26,27 +21,61 @@
     "ENEMY_WAVE_INTERVAL": 10,
     "ENEMY_SPAWN_JITTER": 0.35,
     "ENEMY_SPAWN_FOG_DEPTH": 2,
-    "TREE_INITIAL_COUNT": 150,
+    "TREE_INITIAL_COUNT": 3000,
     "STONE_CLUSTER_COUNT": 25,
     "IRON_CLUSTER_COUNT": 15,
     "TREE_MIN_SPAWN_RADIUS": 4,
     "STONE_MIN_SPAWN_RADIUS": 10,
     "IRON_MIN_SPAWN_RADIUS": 20,
     "START_VISIBLE_TREE_MIN": 5,
-    "TREE_CLUSTER_AVERAGE": 4,
-    "TREE_CLUSTER_MAX": 10,
+    "TREE_CLUSTER_AVERAGE": 10,
+    "TREE_CLUSTER_MAX": 50,
+    "TREE_WILD_MIN_COUNT": 2000,
+    "TREE_WILD_MAX_COUNT": 5000,
+    "WILD_TREE_SPAWN_INTERVAL_MIN": 12,
+    "WILD_TREE_SPAWN_INTERVAL_MAX": 28,
+    "WILD_TREE_GROW_TIME_MIN": 40,
+    "WILD_TREE_GROW_TIME_MAX": 80,
     "STONE_CLUSTER_AVERAGE": 1.5,
     "STONE_CLUSTER_MAX": 6,
     "IRON_CLUSTER_AVERAGE": 1,
     "IRON_CLUSTER_MAX": 4,
     "IRON_RARE_CLUSTER_CHANCE": 0.04,
-    "START_FOOD": 10,
-    "START_WOOD": 10,
-    "START_STONE": 0,
-    "START_IRON": 0,
-    "START_INGOT": 0,
     "START_POP": 3,
-    "MAX_POP_BASE": 4
+    "MAX_POP_BASE": 4,
+    "MAX_GUARD_BASE": 2
+  },
+  "enemies": {
+    "normal": {
+      "name": "普通敌人",
+      "hp": 40,
+      "speed": 50,
+      "damage": 8,
+      "size": 10,
+      "unlockDay": 1,
+      "spawnWeight": 1,
+      "color": "#ff6633"
+    },
+    "fast": {
+      "name": "快速敌人",
+      "hp": 24,
+      "speed": 88,
+      "damage": 5,
+      "size": 7,
+      "unlockDay": 3,
+      "spawnWeight": 0.5,
+      "color": "#c978df"
+    },
+    "breaker": {
+      "name": "破坏者",
+      "hp": 110,
+      "speed": 30,
+      "damage": 16,
+      "size": 14,
+      "unlockDay": 6,
+      "spawnWeight": 0.28,
+      "color": "#a94c38"
+    }
   },
   "buildings": {
     "floor": {
@@ -62,6 +91,8 @@
       },
       "hp": 50,
       "maxWorkers": 0,
+      "moveSpeedMultiplier": 1.5,
+      "maxLevel": 1,
       "unlock": 5,
       "buildTime": 0
     },
@@ -80,8 +111,73 @@
       "hp": 200,
       "maxWorkers": 0,
       "popBonus": 4,
+      "unlock": 3,
+      "buildTime": 5,
+      "maxLevel": 5
+    },
+    "nursery": {
+      "name": "产房",
+      "icon": "产",
+      "cat": "facility",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10
+      },
+      "hp": 150,
+      "maxWorkers": 0,
+      "recruits": "resident",
+      "recruitTime": 10,
+      "recruitCost": {
+        "food": 5
+      },
       "unlock": 2,
-      "buildTime": 5
+      "buildTime": 2,
+      "maxLevel": 5
+    },
+    "barracks": {
+      "name": "兵营",
+      "icon": "兵",
+      "cat": "facility",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 10,
+        "stone": 5
+      },
+      "hp": 200,
+      "maxWorkers": 0,
+      "guardBonus": 4,
+      "unlock": 3,
+      "buildTime": 5,
+      "maxLevel": 5
+    },
+    "training_ground": {
+      "name": "练兵房",
+      "icon": "练",
+      "cat": "facility",
+      "sz": [
+        2,
+        2
+      ],
+      "cost": {
+        "wood": 15,
+        "stone": 10
+      },
+      "hp": 160,
+      "maxWorkers": 0,
+      "recruits": "guard",
+      "recruitTime": 15,
+      "recruitCost": {
+        "food": 20
+      },
+      "unlock": 2,
+      "buildTime": 5,
+      "maxLevel": 5
     },
     "farm": {
       "name": "农场",
@@ -98,8 +194,12 @@
       "maxWorkers": 2,
       "produces": "food",
       "baseTime": 8,
+      "batchSize": 5,
+      "levelSpeedBonus": 0.2,
+      "levelBufferBonus": 2,
       "unlock": 1,
-      "buildTime": 2
+      "buildTime": 2,
+      "maxLevel": 5
     },
     "forester": {
       "name": "护林员小屋",
@@ -117,9 +217,16 @@
       "maxWorkers": 3,
       "produces": "wood",
       "baseTime": 10,
-      "unlock": 2,
+      "batchSize": 5,
+      "levelSpeedBonus": 0.2,
+      "levelBufferBonus": 2,
+      "chopTime": 3,
+      "saplingGrowTime": 5,
+      "growJitter": 0.2,
+      "unlock": 4,
       "buildTime": 5,
-      "foresterRadius": 4
+      "foresterRadius": 4,
+      "maxLevel": 5
     },
     "quarry": {
       "name": "采石场",
@@ -139,8 +246,12 @@
       "sourceType": "stone",
       "sourceRadius": 3,
       "baseTime": 10,
+      "batchSize": 5,
+      "levelSpeedBonus": 0.2,
+      "levelBufferBonus": 2,
       "unlock": 3,
-      "buildTime": 8
+      "buildTime": 8,
+      "maxLevel": 5
     },
     "iron_mine": {
       "name": "铁矿",
@@ -160,8 +271,12 @@
       "sourceType": "iron",
       "sourceRadius": 3,
       "baseTime": 12,
+      "batchSize": 5,
+      "levelSpeedBonus": 0.2,
+      "levelBufferBonus": 2,
       "unlock": 4,
-      "buildTime": 11
+      "buildTime": 11,
+      "maxLevel": 5
     },
     "smelter": {
       "name": "炼铁机",
@@ -182,8 +297,12 @@
       },
       "produces": "ingot",
       "baseTime": 8,
+      "batchSize": 5,
+      "levelSpeedBonus": 0.2,
+      "levelBufferBonus": 2,
       "unlock": 4,
-      "buildTime": 11
+      "buildTime": 11,
+      "maxLevel": 5
     },
     "food_storage": {
       "name": "食物仓库",
@@ -200,8 +319,10 @@
       "hp": 150,
       "maxWorkers": 0,
       "capacity": 50,
+      "levelCapacityBonus": 25,
       "unlock": 2,
-      "buildTime": 5
+      "buildTime": 5,
+      "maxLevel": 5
     },
     "wood_storage": {
       "name": "木材仓库",
@@ -218,8 +339,10 @@
       "hp": 150,
       "maxWorkers": 0,
       "capacity": 50,
-      "unlock": 2,
-      "buildTime": 5
+      "levelCapacityBonus": 25,
+      "unlock": 1,
+      "buildTime": 5,
+      "maxLevel": 5
     },
     "stone_storage": {
       "name": "石材仓库",
@@ -236,8 +359,10 @@
       "hp": 150,
       "maxWorkers": 0,
       "capacity": 50,
+      "levelCapacityBonus": 25,
       "unlock": 3,
-      "buildTime": 8
+      "buildTime": 8,
+      "maxLevel": 5
     },
     "iron_storage": {
       "name": "铁矿仓库",
@@ -254,8 +379,10 @@
       "hp": 150,
       "maxWorkers": 0,
       "capacity": 50,
-      "unlock": 4,
-      "buildTime": 11
+      "levelCapacityBonus": 25,
+      "unlock": 8,
+      "buildTime": 11,
+      "maxLevel": 5
     },
     "ingot_storage": {
       "name": "铁锭仓库",
@@ -272,8 +399,10 @@
       "hp": 150,
       "maxWorkers": 0,
       "capacity": 50,
-      "unlock": 4,
-      "buildTime": 11
+      "levelCapacityBonus": 25,
+      "unlock": 9,
+      "buildTime": 11,
+      "maxLevel": 5
     },
     "arrow_tower": {
       "name": "箭塔",
@@ -291,9 +420,11 @@
       "range": 150,
       "damage": 15,
       "cooldown": 0.8,
-      "unlock": 1,
+      "levelDamageBonus": 0.25,
+      "unlock": 5,
       "buildTime": 2,
       "needsManning": 1,
+      "maxLevel": 5,
       "produces": ""
     },
     "auto_arrow_tower": {
@@ -313,8 +444,10 @@
       "range": 160,
       "damage": 18,
       "cooldown": 0.7,
-      "unlock": 5,
-      "buildTime": 14
+      "levelRangeBonus": 20,
+      "unlock": 7,
+      "buildTime": 14,
+      "maxLevel": 5
     },
     "town_hall": {
       "name": "大本营",
@@ -328,16 +461,47 @@
       "hp": 500,
       "maxWorkers": 0,
       "capacity": 200,
-      "recruitTime": 10,
-      "recruitCost": {
-        "food": 5
+      "vision": 13,
+      "startResources": {
+        "food": 5,
+        "wood": 5,
+        "stone": 0,
+        "iron": 0,
+        "ingot": 0
       },
-      "guardRecruitTime": 15,
-      "guardRecruitCost": {
-        "food": 20
+      "storageCaps": {
+        "food": 200,
+        "wood": 200,
+        "stone": 200,
+        "iron": 200,
+        "ingot": 200
       },
       "unlock": 1,
-      "buildTime": 2
+      "buildTime": 2,
+      "maxLevel": 5,
+      "levels": {
+        "2": {
+          "hp": 650,
+          "vision": 15,
+          "startResources": {
+            "food": 5,
+            "wood": 5,
+            "stone": 0,
+            "iron": 0,
+            "ingot": 0
+          },
+          "storageCaps": {
+            "food": 200,
+            "wood": 200,
+            "stone": 200,
+            "iron": 200,
+            "ingot": 200
+          },
+          "upgradeCost": {
+            "wood": 20
+          }
+        }
+      }
     },
     "lamp": {
       "name": "灯",
@@ -348,13 +512,15 @@
         1
       ],
       "cost": {
-        "wood": 5
+        "wood": 2
       },
       "hp": 50,
       "maxWorkers": 0,
-      "unlock": 3,
+      "unlock": 1,
       "buildTime": 2,
-      "vision": 5
+      "vision": 8,
+      "levelVisionBonus": 1,
+      "maxLevel": 5
     },
     "wall": {
       "name": "城墙",
@@ -369,8 +535,10 @@
       },
       "hp": 250,
       "maxWorkers": 0,
-      "unlock": 3,
-      "buildTime": 8
+      "levelDamageReduction": 0.15,
+      "unlock": 4,
+      "buildTime": 8,
+      "maxLevel": 5
     }
   }
 }

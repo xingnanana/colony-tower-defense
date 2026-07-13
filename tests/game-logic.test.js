@@ -364,7 +364,7 @@ test('idle patrol uses completed building vision instead of its own dynamic visi
       selfVisible,
       patrolAllowedWithoutBuilding,
       inside:isStaticPatrolVisible(center.x, center.y),
-      outside:isStaticPatrolVisible(center.x + CFG.TOWN_HALL_VISION * CFG.CELL + 1, center.y)
+      outside:isStaticPatrolVisible(center.x + buildingLevelValue('town_hall',1,'vision') * CFG.CELL + 1, center.y)
     };
   `);
   assert.equal(result.selfVisible, true);
@@ -401,7 +401,7 @@ test('initial resource generation respects radii and visible tree minimum', () =
       treeRadius:trees.every(node=>distance(node)>CFG.TREE_MIN_SPAWN_RADIUS),
       stoneRadius:stones.every(node=>distance(node)>CFG.STONE_MIN_SPAWN_RADIUS),
       ironRadius:irons.every(node=>distance(node)>CFG.IRON_MIN_SPAWN_RADIUS),
-      visibleTrees:trees.filter(node=>distance(node)<=CFG.TOWN_HALL_VISION).length,
+      visibleTrees:trees.filter(node=>distance(node)<=buildingLevelValue('town_hall',1,'vision')).length,
       treeCount:trees.length
     };
   `);
@@ -426,4 +426,303 @@ test('resource cluster sizes stay within configured bounds and rare iron cluster
   assert.ok(result.tree >= 1 && result.tree <= 10);
   assert.ok(result.stone >= 1 && result.stone <= 6);
   assert.ok(result.iron >= 2 && result.iron <= 4);
+});
+
+test('building upgrades improve production, storage, defense, and lamp vision', () => {
+  const result = runGameScenario(`
+    const farm=new Building('farm', 10, 10); farm.level=3;
+    const storage=new Building('wood_storage', 20, 20); storage.level=2;
+    const tower=new Building('arrow_tower', 30, 30); tower.level=2;
+    const autoTower=new Building('auto_arrow_tower', 40, 40); autoTower.level=3;
+    const lamp=new Building('lamp', 50, 50); lamp.level=2;
+    const wall=new Building('wall', 60, 60); wall.level=3;
+    globalThis.__result={
+      speed:productionSpeedMultiplier(farm), buffer:productionBufferCapacity(farm), storage:storageCapacity(storage),
+      towerDamage:towerDamage(tower), autoRange:towerRange(autoTower), lampVision:buildingVisionRadius(lamp)/CFG.CELL,
+      wallDamage:buildingDamageTaken(wall, 100)
+    };
+  `);
+  assert.equal(result.speed, 1.4);
+  assert.equal(result.buffer, 9);
+  assert.equal(result.storage, 75);
+  assert.equal(result.towerDamage, 18.75);
+  assert.equal(result.autoRange, 200);
+  assert.equal(result.lampVision, 6);
+  assert.equal(result.wallDamage, 70);
+});
+
+test('enemies target the first building blocking their route instead of array order', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall', 20, 10);
+    const laterFarm=new Building('farm', 9, 10);
+    const frontWall=new Building('wall', 4, 10);
+    G.townHall=hall; G.buildings=[hall,laterFarm,frontWall];
+    const enemy=new Enemy(100, 420);
+    globalThis.__result={target:enemyRouteBlocker(enemy)?.type, isWall:enemyRouteBlocker(enemy)===frontWall};
+  `);
+  assert.equal(result.target, 'wall');
+  assert.equal(result.isWall, true);
+});
+
+test('enemy types unlock by day and carry their own combat stats', () => {
+  const result = runGameScenario(`
+    const originalRandom=Math.random;
+    Math.random=()=>0.99;
+    const dayOne=pickEnemyType(1), dayThree=pickEnemyType(3), daySix=pickEnemyType(6);
+    Math.random=originalRandom;
+    const fast=new Enemy(0, 0, 'fast');
+    const breaker=new Enemy(0, 0, 'breaker');
+    globalThis.__result={dayOne,dayThree,daySix,fast:{hp:fast.hp,damage:fast.damage},breaker:{hp:breaker.hp,damage:breaker.damage,speed:breaker.speed}};
+  `);
+  assert.equal(result.dayOne, 'normal');
+  assert.equal(result.dayThree, 'fast');
+  assert.equal(result.daySix, 'breaker');
+  assert.equal(result.fast.hp, 24);
+  assert.equal(result.fast.damage, 5);
+  assert.equal(result.breaker.hp, 110);
+  assert.equal(result.breaker.damage, 16);
+  assert.ok(result.breaker.speed < 40);
+});
+
+test('a breaker prioritizes a route-blocking defense while normal enemies take the first blocker', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall', 20, 10);
+    const frontFarm=new Building('farm', 4, 10);
+    const laterWall=new Building('wall', 9, 10);
+    G.townHall=hall; G.buildings=[hall,frontFarm,laterWall];
+    const normal=new Enemy(100, 420, 'normal');
+    const breaker=new Enemy(100, 420, 'breaker');
+    globalThis.__result={normal:enemyRouteBlocker(normal)?.type, breaker:enemyRouteBlocker(breaker)?.type};
+  `);
+  assert.equal(result.normal, 'farm');
+  assert.equal(result.breaker, 'wall');
+});
+
+test('town hall starts with one guard and separate worker and guard capacity', () => {
+  const result = runGameScenario(`
+    initGame();
+    globalThis.__result={
+      workers:residentCount(false), guards:residentCount(true), workerCap:G.maxPop, guardCap:G.maxGuards,
+      guardHome:G.residents.find(r=>r.isGuard).home.type, startPop:CFG.START_POP, startCap:CFG.MAX_POP_BASE
+    };
+  `);
+  assert.equal(result.guards, 1);
+  assert.equal(result.guardCap, 2);
+  assert.equal(result.workers, result.startPop);
+  assert.equal(result.workerCap, result.startCap);
+  assert.equal(result.guardHome, 'town_hall');
+});
+
+test('houses and barracks provide separate homes while nursery and training ground recruit their own roles', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall', 10, 10);
+    const house=new Building('house', 20, 10);
+    const barracks=new Building('barracks', 30, 10);
+    const nursery=new Building('nursery', 40, 10);
+    const training=new Building('training_ground', 50, 10);
+    G.townHall=hall; G.buildings=[hall,house,barracks,nursery,training]; G.residents=[];
+    G.maxPop=5; G.maxGuards=6; G.phase='day';
+    const worker=new Resident(0,0); const guard=new Resident(0,0); guard.isGuard=true;
+    assignHome(worker, house); assignHome(guard, barracks); G.residents.push(worker,guard);
+    nursery.recruitQueue=1; training.recruitQueue=1;
+    updateBuildings(20);
+    globalThis.__result={
+      workerHome:worker.home.type, guardHome:guard.home.type, workers:residentCount(false), guards:residentCount(true),
+      nurseryQueue:nursery.recruitQueue, trainingQueue:training.recruitQueue, hallCanRecruit:!!BLD_DEFS.town_hall.recruits
+    };
+  `);
+  assert.equal(result.workerHome, 'house');
+  assert.equal(result.guardHome, 'barracks');
+  assert.equal(result.workers, 2);
+  assert.equal(result.guards, 2);
+  assert.equal(result.nurseryQueue, 0);
+  assert.equal(result.trainingQueue, 0);
+  assert.equal(result.hallCanRecruit, false);
+});
+
+test('building editor fields are tailored by building type and lamp vision uses its definition', () => {
+  const result = runGameScenario(`
+    BLD_DEFS.lamp.vision=7;
+    const lamp=new Building('lamp', 20, 20); lamp.level=2;
+    globalThis.__result={
+      lampFields:buildingEditFields('lamp').map(field=>field.k).join(','),
+      farmFields:buildingEditFields('farm').map(field=>field.k).join(','),
+      storageFields:buildingEditFields('food_storage').map(field=>field.k).join(','),
+      townHallFields:buildingEditFields('town_hall').map(field=>field.k).join(','),
+      lampVision:buildingVisionRadius(lamp)/CFG.CELL,
+    };
+  `);
+  assert.match(result.lampFields, /vision/);
+  assert.doesNotMatch(result.lampFields, /maxWorkers/);
+  assert.match(result.farmFields, /maxWorkers/);
+  assert.match(result.farmFields, /baseTime/);
+  assert.match(result.farmFields, /unlock/);
+  assert.doesNotMatch(result.storageFields, /maxWorkers/);
+  assert.match(result.storageFields, /capacity/);
+  assert.match(result.lampFields, /unlock/);
+  assert.doesNotMatch(result.townHallFields, /unlock/);
+  assert.equal(result.lampVision, 8);
+});
+
+test('building level overrides and town hall resource configuration apply at runtime', () => {
+  const result = runGameScenario(`
+    BLD_DEFS.town_hall.maxLevel=3;
+    BLD_DEFS.town_hall.startResources={food:12,wood:9,stone:3,iron:1,ingot:0};
+    BLD_DEFS.town_hall.levels={2:{hp:820,vision:11,storageCaps:{food:80,wood:70,stone:60,iron:50,ingot:40},upgradeCost:{wood:33}}};
+    initGame();
+    const hall=G.townHall; hall.level=2;
+    globalThis.__result={
+      fields:buildingEditFields('town_hall').map(field=>field.k).join(','),
+      startFood:hall.stored.food, startWood:hall.stored.wood,
+      hp:buildingLevelValue('town_hall',2,'hp'), vision:buildingVisionRadius(hall)/CFG.CELL,
+      foodCap:storageCapacity(hall,'food'), ironCap:storageCapacity(hall,'iron'),
+      upgradeCost:upgradeCostForLevel('town_hall',2).wood, maxLevel:maxBuildingLevel('town_hall')
+    };
+  `);
+  assert.match(result.fields, /startResources/);
+  assert.match(result.fields, /storageCaps/);
+  assert.match(result.fields, /vision/);
+  assert.doesNotMatch(result.fields, /buildTime/);
+  assert.equal(result.startFood, 12);
+  assert.equal(result.startWood, 9);
+  assert.equal(result.hp, 820);
+  assert.equal(result.vision, 11);
+  assert.equal(result.foodCap, 80);
+  assert.equal(result.ironCap, 50);
+  assert.equal(result.upgradeCost, 33);
+  assert.equal(result.maxLevel, 3);
+});
+
+test('floor movement multiplier is configured by the floor definition', () => {
+  const result = runGameScenario(`
+    BLD_DEFS.floor.moveSpeedMultiplier=2;
+    G.floorMask=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);
+    const resident=new Resident(60,60);
+    G.floorMask[gridCol(resident.x)+gridRow(resident.y)*CFG.WORLD_COLS]=1;
+    const moved=flowMove(resident,160,60,10,1);
+    globalThis.__result={fields:buildingEditFields('floor').map(field=>field.k).join(','), multiplier:floorMovementMultiplier(), distance:moved.x-resident.x, maxLevel:BLD_DEFS.floor.maxLevel};
+  `);
+  assert.match(result.fields, /moveSpeedMultiplier/);
+  assert.equal(result.multiplier, 2);
+  assert.equal(result.distance, 20);
+  assert.equal(result.maxLevel, 1);
+});
+
+test('building growth parameters are owned by their respective building definitions', () => {
+  const result = runGameScenario(`
+    globalThis.__result={
+      globals:{storage:CFG.STORAGE_UPGRADE_CAPACITY,lamp:CFG.LAMP_UPGRADE_VISION},
+      farm:buildingEditFields('farm').map(field=>field.k).join(','),
+      storage:buildingEditFields('food_storage').map(field=>field.k).join(','),
+      tower:buildingEditFields('arrow_tower').map(field=>field.k).join(','),
+      lamp:buildingEditFields('lamp').map(field=>field.k).join(','),
+      wall:buildingEditFields('wall').map(field=>field.k).join(','),
+    };
+  `);
+  assert.equal(result.globals.storage, undefined);
+  assert.equal(result.globals.lamp, undefined);
+  assert.match(result.farm, /levelSpeedBonus/);
+  assert.match(result.storage, /levelCapacityBonus/);
+  assert.match(result.tower, /levelDamageBonus/);
+  assert.match(result.lamp, /levelVisionBonus/);
+  assert.match(result.wall, /levelDamageReduction/);
+});
+
+test('debug reveal removes fog across the whole map until restart state is cleared', () => {
+  const result = runGameScenario(`
+    G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);
+    G.debugRevealAllFog=true;
+    refreshFogVisibility();
+    globalThis.__result={first:G.fogVisible[0],last:G.fogVisible[G.fogVisible.length-1]};
+  `);
+  assert.equal(result.first, 1);
+  assert.equal(result.last, 1);
+});
+
+test('wild trees regrow as slow random saplings only below their configured range', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',74,74);
+    G.townHall=hall; G.buildings=[hall]; G.resourceNodes=[];
+    CFG.TREE_WILD_MIN_COUNT=1; CFG.TREE_WILD_MAX_COUNT=1;
+    CFG.WILD_TREE_SPAWN_INTERVAL_MIN=0; CFG.WILD_TREE_SPAWN_INTERVAL_MAX=0;
+    CFG.WILD_TREE_GROW_TIME_MIN=5; CFG.WILD_TREE_GROW_TIME_MAX=5;
+    G.wildTreeTarget=null; G.wildTreeSpawnTimer=0;
+    updateWildTreeRegrowth(0);
+    const first=G.resourceNodes[0];
+    updateWildTreeRegrowth(30);
+    globalThis.__result={
+      count:G.resourceNodes.length,
+      type:first.type,
+      owner:first.ownerForester,
+      growTimer:first.growTimer,
+      target:G.wildTreeTarget,
+    };
+  `);
+  assert.equal(result.count, 1);
+  assert.equal(result.type, 'sapling');
+  assert.equal(result.owner, null);
+  assert.equal(result.growTimer, 5);
+  assert.equal(result.target, null);
+});
+
+test('an engineer patrols instead of reserving a blueprint with no materials', () => {
+  const result = runGameScenario(`
+    const farm=new Building('farm',20,20);
+    farm.blueprint=true; farm.constructCost={wood:5}; farm.constructDelivered={wood:0};
+    const engineer=new Resident(0,0); engineer.isEngineer=true;
+    G.buildings=[farm]; G.residents=[engineer];
+    G.resources={food:0,wood:0,stone:0,iron:0,ingot:0}; G.phase='day';
+    updateResidents(0.1);
+    globalThis.__result={state:engineer.state,target:engineer.buildTarget,assigned:farm.assignedEngineer};
+  `);
+  assert.equal(result.state, 'PATROL');
+  assert.equal(result.target, null);
+  assert.equal(result.assigned, null);
+});
+
+test('a destroyed building remains as a blocking ruin with salvage and rebuild costs', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',10,10);
+    const farm=new Building('farm',20,20);
+    G.townHall=hall; G.buildings=[hall,farm]; G.residents=[]; G.resourceNodes=[];
+    farm.hp=0;
+    updateBuildings(0);
+    globalThis.__result={
+      ruin:farm.ruin,
+      remains:G.buildings.includes(farm),
+      blocked:isCellBlocked(farm.col,farm.row),
+      salvage:ruinSalvage(farm).wood,
+      rebuild:ruinRebuildCost(farm).wood,
+    };
+  `);
+  assert.equal(result.ruin, true);
+  assert.equal(result.remains, true);
+  assert.equal(result.blocked, true);
+  assert.equal(result.salvage, 1);
+  assert.equal(result.rebuild, 4);
+});
+
+test('an engineer repairs a damaged building during the day', () => {
+  const result = runGameScenario(`
+    const farm=new Building('farm',20,20);
+    const engineer=new Resident(farm.center().x,farm.center().y);
+    farm.hp=40; farm.assignedEngineer=engineer;
+    engineer.isEngineer=true; engineer.buildTarget=farm; engineer.state='REPAIRING';
+    G.buildings=[farm]; G.residents=[engineer]; G.phase='day';
+    updateResidents(1);
+    globalThis.__result={hp:farm.hp,state:engineer.state,rate:CFG.ENGINEER_REPAIR_RATE};
+  `);
+  assert.equal(result.rate, 12);
+  assert.equal(result.hp, 52);
+  assert.equal(result.state, 'REPAIRING');
+});
+
+test('resource costs render recognizable icon markup instead of resource text labels', () => {
+  const result = runGameScenario(`
+    globalThis.__result={cost:formatResourceCost({food:5,wood:10,stone:3})};
+  `);
+  assert.match(result.cost, /resource-mark food/);
+  assert.match(result.cost, /resource-mark wood/);
+  assert.match(result.cost, /resource-mark stone/);
+  assert.doesNotMatch(result.cost.replace(/<[^>]*>/g,''), /食物|木材|石材/);
 });
