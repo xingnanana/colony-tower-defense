@@ -24,6 +24,8 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 .top-res { display:flex; align-items:center; gap:5px; min-width:40px; }
 .top-res .icon { width:12px; height:12px; display:inline-block; position:relative; flex:none; }
 .top-res .val { font-weight:bold; color:#ffd700; }
+.top-res.full .val { color:#f07162; text-shadow:0 0 5px rgba(240,113,98,0.42); }
+.top-res.full .resource-mark { filter:sepia(1) saturate(6) hue-rotate(320deg); }
 .resource-mark { width:14px; height:14px; display:inline-block; position:relative; flex:none; vertical-align:-2px; }
 .resource-mark.food { width:11px; height:11px; top:2px; background:#d9574d; border:1px solid #f39a86; border-radius:48% 48% 52% 52%; }
 .resource-mark.food::before { content:''; position:absolute; width:2px; height:4px; left:4px; top:-4px; background:#805338; border-radius:2px; transform:rotate(-12deg); }
@@ -81,6 +83,9 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 .bld-btn:hover { background:#303c35; border-color:#718176; }
 .bld-btn.selected { background:#3e432a; border-color:#e1c878; }
 .bld-btn .cost { font-size:10px; color:#aaa; }
+.bld-btn.locked { filter:grayscale(1); opacity:0.5; cursor:not-allowed; }
+.bld-btn.locked:hover { background:#222b26; border-color:#3c4941; }
+.bld-btn .unlock-condition { font-size:10px; color:#d5a85c; margin-top:2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
 
 #context-menu {
   position:fixed; display:none; flex-direction:column; gap:2px;
@@ -103,6 +108,17 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
   font-size:48px; font-weight:bold; color:#fff;
   text-shadow:0 0 20px rgba(255,200,0,0.6);
   pointer-events:none; z-index:5; opacity:0; transition:opacity 0.5s;
+}
+#resource-full-notice {
+  position:absolute; top:50%; left:50%; transform:translate(-50%,-50%);
+  color:#f07162; font-size:28px; font-weight:bold; letter-spacing:0;
+  text-shadow:0 2px 10px rgba(92,18,14,0.88); pointer-events:none; z-index:6; opacity:0;
+}
+#resource-full-notice.show { animation:resource-full-float 1.65s ease-out forwards; }
+@keyframes resource-full-float {
+  0% { opacity:0; transform:translate(-50%,-38%); }
+  14% { opacity:1; }
+  100% { opacity:0; transform:translate(-50%,-145%); }
 }
 #debug-panel {
   width:auto; background:#171d1a; border:1px solid #354138; border-radius:6px; padding:10px;
@@ -192,11 +208,11 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
   </div>
 
   <div id="topbar">
-    <div class="top-res"><span class="resource-mark food"></span><span class="val" id="r-food">50</span></div>
-    <div class="top-res"><span class="resource-mark wood"></span><span class="val" id="r-wood">40</span></div>
-    <div class="top-res"><span class="resource-mark stone"></span><span class="val" id="r-stone">20</span></div>
-    <div class="top-res"><span class="resource-mark iron"></span><span class="val" id="r-iron">0</span></div>
-    <div class="top-res"><span class="resource-mark ingot"></span><span class="val" id="r-ingot">0</span></div>
+    <div class="top-res" id="top-res-food"><span class="resource-mark food"></span><span class="val" id="r-food">50</span></div>
+    <div class="top-res" id="top-res-wood"><span class="resource-mark wood"></span><span class="val" id="r-wood">40</span></div>
+    <div class="top-res" id="top-res-stone"><span class="resource-mark stone"></span><span class="val" id="r-stone">20</span></div>
+    <div class="top-res" id="top-res-iron"><span class="resource-mark iron"></span><span class="val" id="r-iron">0</span></div>
+    <div class="top-res" id="top-res-ingot"><span class="resource-mark ingot"></span><span class="val" id="r-ingot">0</span></div>
     <div style="color:#aaa;">|</div>
     <div class="top-res"><span class="resource-mark population"></span><span class="val" id="r-pop">4/4</span></div>
     <div class="top-res"><span class="resource-mark guard"></span><span class="val" id="r-guard-top">0</span></div>
@@ -212,6 +228,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
   </div>
 
   <div id="time-indicator"></div>
+  <div id="resource-full-notice" aria-live="polite"></div>
 
   <div id="chop-bar" class="tool-bar"><span class="section-label">林务</span>
     <button id="chop-btn" class="tool-btn" onclick="toggleChopMode()" title="框选砍伐">标记砍伐</button>
@@ -236,6 +253,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     <div style="display:flex; gap:8px; margin-bottom:10px;">
       <select id="cfg-category" onchange="cfgSelectCategory()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;">
         <option value="globals">全局数值</option>
+        <option value="professions">职业</option>
         <option value="enemySpawns">敌人生成与波次</option>
         <option value="enemies">敌人类型</option>
         <option value="buildings">建筑</option>
@@ -294,10 +312,10 @@ const CFG = {
   WORLD_W: 6000, WORLD_H: 6000,
   DAY_DURATION: 162, NIGHT_DURATION: 78, TRANSITION: 8,
   START_FOOD: 50, START_WOOD: 40, START_STONE: 20, START_IRON: 0, START_INGOT: 0,
-  START_POP: 4, MAX_POP_BASE: 4, MAX_GUARD_BASE: 2,
-  HUNGER_RATE: 0.6, HUNGER_THRESHOLD: 60,
+  START_POP: 4, START_ENGINEERS: 1, MAX_POP_BASE: 4, MAX_GUARD_BASE: 2,
+  MEAL_TIME_LUNCH: 12, MEAL_TIME_DINNER: 18,
   TIRED_RATE: 0.4, TIRED_THRESHOLD: 100,
-  ENEMY_BASE_HP: 40, ENEMY_SPEED: 50, ENEMY_DAMAGE: 8, ENEMY_ATTACK_RANGE: 30,
+  ENEMY_ATTACK_RANGE: 30,
   ENEMY_WAVE_BASE_COUNT: 3,
   ENEMY_WAVE_PER_DAY: 2,
   ENEMY_WAVE_MAX: 4,
@@ -335,6 +353,10 @@ const CFG = {
   FOG_UPDATE_INTERVAL: 0.2,
   RESIDENT_VISION: 2,
   GUARD_VISION: 3,
+  GUARD_MAX_HP: 80,
+  GUARD_DAMAGE: 12,
+  GUARD_SPEED: 60,
+  GUARD_ATTACK_COOLDOWN: 0.6,
   ENGINEER_REPAIR_RATE: 12,
 };
 
@@ -364,7 +386,7 @@ const BLD_DEFS = {
 
   food_storage:{ name:'食物仓库',icon:'食', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:2 , buildTime:5 },
 
-  wood_storage:{ name:'木材仓库',icon:'木', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:2 , buildTime:5 },
+  wood_storage:{ name:'木材仓库',icon:'木', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:1, unlockTreesChopped:10, buildTime:5 },
 
   stone_storage:{name:'石材仓库',icon:'石', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:3 , buildTime:8 },
 
@@ -387,11 +409,23 @@ const BLD_DEFS = {
 for (const def of Object.values(BLD_DEFS)) if (!Number.isInteger(def.maxLevel) || def.maxLevel<1) def.maxLevel=5;
 const RESOURCE_TYPES=['food','wood','stone','iron','ingot'];
 const RESOURCE_NAMES={food:'食物',wood:'木材',stone:'石材',iron:'铁矿',ingot:'铁锭'};
+const RESOURCE_STORAGE_TYPES={food:'food_storage',wood:'wood_storage',stone:'stone_storage',iron:'iron_storage',ingot:'ingot_storage'};
 function resourceIcon(type) { return `<span class="resource-mark ${type}" title="${RESOURCE_NAMES[type]||type}" aria-label="${RESOURCE_NAMES[type]||type}"></span>`; }
 function formatResourceCost(cost) {
   return Object.entries(cost||{}).filter(([,amount])=>amount>0).map(([type,amount])=>`<span class="resource-cost" title="${amount} ${RESOURCE_NAMES[type]||type}">${amount}${resourceIcon(type)}</span>`).join('');
 }
 function cloneResourceMap(value) { return {...(value||{})}; }
+function buildingUnlockStatus(def, townHallLevel=1) {
+  const unlockLevel=Math.max(1,Math.floor(Number(def?.unlock)||1));
+  const treeNeed=Math.max(0,Math.floor(Number(def?.unlockTreesChopped)||0));
+  const treesChopped=Math.min(treeNeed,Math.max(0,G.treesChopped||0));
+  const levelMet=townHallLevel>=unlockLevel;
+  const extraMet=treesChopped>=treeNeed;
+  let text='';
+  if(!levelMet) text=`需要${unlockLevel}级大本营${treeNeed>0?'与？':''}`;
+  else if(!extraMet) text=`砍伐树木 ${treesChopped}/${treeNeed}`;
+  return {visible:unlockLevel<=townHallLevel+1,unlocked:levelMet&&extraMet,text};
+}
 function buildingLevelOverrides(type, level) { return BLD_DEFS[type]?.levels?.[level]||{}; }
 function defaultBuildingLevelValue(type, level, key) {
   const def=BLD_DEFS[type];
@@ -418,7 +452,15 @@ function buildingRuntimeDef(b) {
   for (const key of ['hp','maxWorkers','baseTime','capacity','range','damage','cooldown','vision','foresterRadius','sourceRadius','popBonus','guardBonus','recruitTime','buildTime','startResources','storageCaps','batchSize','levelSpeedBonus','levelBufferBonus','levelCapacityBonus','levelDamageBonus','levelRangeBonus','levelVisionBonus','levelDamageReduction','chopTime','saplingGrowTime','growJitter']) runtime[key]=buildingLevelValue(b.type,b.level,key);
   return runtime;
 }
-function townHallStartingResources() { return cloneResourceMap(buildingLevelValue('town_hall',1,'startResources')); }
+function townHallResourceCapacity(type, level=1) { return buildingLevelValue('town_hall',level,'storageCaps')?.[type]||0; }
+function isResourceAvailable(type) {
+  return !G.townHall || townHallResourceCapacity(type,G.townHall.level)>0;
+}
+function townHallStartingResources() {
+  const resources=cloneResourceMap(buildingLevelValue('town_hall',1,'startResources'));
+  for(const type of RESOURCE_TYPES) if (townHallResourceCapacity(type,1)<=0) resources[type]=0;
+  return resources;
+}
 function floorMovementMultiplier() { return Math.max(0,buildingLevelValue('floor',1,'moveSpeedMultiplier')||1); }
 function defaultUpgradeCost(type, nextLevel) {
   if (type==='town_hall') return ({2:{wood:20},3:{wood:50},4:{wood:200,stone:50}})[nextLevel]||{wood:500,stone:200};
@@ -434,13 +476,6 @@ const ENEMY_DEFS = {
   fast:    { name:'快速敌人', hp:24,  speed:88, damage:5,  size:7,  unlockDay:3, spawnWeight:0.5,  color:'#c978df' },
   breaker: { name:'破坏者',   hp:110, speed:30, damage:16, size:14, unlockDay:6, spawnWeight:0.28, color:'#a94c38' },
 };
-
-function syncNormalEnemyDefinition() {
-  Object.assign(ENEMY_DEFS.normal, {
-    hp:CFG.ENEMY_BASE_HP, speed:CFG.ENEMY_SPEED, damage:CFG.ENEMY_DAMAGE
-  });
-}
-syncNormalEnemyDefinition();
 
 const SETTINGS_STORAGE_KEY = 'colony-game-settings-v1';
 const SETTINGS_VERSION = 2;
@@ -502,14 +537,12 @@ function applyBalanceData(data) {
       if (values.levels && typeof values.levels==='object') BLD_DEFS[key].levels=JSON.parse(JSON.stringify(values.levels));
     }
   }
-  const hasNormalEnemyOverride=!!(data.enemies && data.enemies.normal);
   if (data.enemies && typeof data.enemies === 'object') {
     for (const [key, values] of Object.entries(data.enemies)) {
       if (!ENEMY_DEFS[key] || !values || typeof values !== 'object') continue;
       Object.assign(ENEMY_DEFS[key], values);
     }
   }
-  if (!hasNormalEnemyOverride) syncNormalEnemyDefinition();
 }
 function loadSavedBalance() {
   if (typeof location === 'undefined' || location.protocol === 'file:') return;
@@ -541,6 +574,9 @@ const G = {
   dragging: false, dragMoved:false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
   floorMask: null, drawingFloor: false, lastFloorCell: '',
   resourceNodes: [],
+  treesChopped: 0,
+  buildingPanelDirty: true,
+  resourceFullNotices: new Set(),
   chopMode: false, unchopMode: false, chopStartX: -1, chopStartY: -1, chopEndX: -1, chopEndY: -1,
   infiniteResources: false,
   farmLinks: [],
@@ -673,7 +709,8 @@ function productionBufferCapacity(b) {
   return (def.batchSize||1)+(b.level-1)*(def.levelBufferBonus||0);
 }
 function storageCapacity(b, type) {
-  if (b.type==='town_hall'&&type) return buildingLevelValue('town_hall',b.level,'storageCaps')?.[type]||0;
+  if (b.type==='town_hall'&&type) return townHallResourceCapacity(type,b.level);
+  if (type&&!storageAcceptsResource(b,type)) return 0;
   return buildingLevelValue(b.type,b.level,'capacity')||0;
 }
 function towerDamage(b) {
@@ -700,19 +737,31 @@ function buildingUpgradeSummary(b, next=false) {
   return null;
 }
 function storedAmount(b, type) { return b.stored[type] || 0; }
+function storageAcceptsResource(b, type) { return !!b&&isResourceAvailable(type)&&isStorage(b.type)&&(b.type==='town_hall'||RESOURCE_STORAGE_TYPES[type]===b.type); }
 function storageUsedSpace(b) { return Object.values(b.stored || {}).reduce((sum, value) => sum + value, 0); }
 function storageFreeSpace(b, type) {
+  if (!storageAcceptsResource(b,type)) return 0;
   if (G.infiniteResources) return Infinity;
   if (b.type==='town_hall') return Math.max(0,storageCapacity(b,type)-storedAmount(b,type));
-  return Math.max(0, storageCapacity(b) - storageUsedSpace(b));
+  return Math.max(0, storageCapacity(b,type) - storedAmount(b,type));
+}
+function resourceStorageStatus(type) {
+  let capacity=0, stored=0;
+  for(const b of G.buildings) {
+    if(!storageAcceptsResource(b,type)||b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
+    capacity+=storageCapacity(b,type);
+    stored+=storedAmount(b,type);
+  }
+  return {capacity,stored,full:capacity>0&&stored>=capacity-0.001};
 }
 function updateResourceTotal(type) {
-  G.resources[type] = G.buildings.reduce((total, b) => total + (isStorage(b.type) ? storedAmount(b, type) : 0), 0);
+  G.resources[type] = G.buildings.reduce((total, b) => total + (storageAcceptsResource(b,type) ? storedAmount(b, type) : 0), 0);
 }
 function updateAllResourceTotals() {
   for (const type of ['food','wood','stone','iron','ingot']) updateResourceTotal(type);
 }
 function depositToStorage(b, type, amount) {
+  if (!storageAcceptsResource(b,type)) return 0;
   const deposited = Math.min(amount, storageFreeSpace(b, type));
   if (deposited <= 0) return 0;
   b.stored[type] = storedAmount(b, type) + deposited;
@@ -720,6 +769,7 @@ function depositToStorage(b, type, amount) {
   return deposited;
 }
 function withdrawFromStorage(b, type, amount) {
+  if (!storageAcceptsResource(b,type)) return 0;
   const withdrawn = Math.min(amount, storedAmount(b, type));
   if (withdrawn <= 0) return 0;
   b.stored[type] = storedAmount(b, type) - withdrawn;
@@ -729,7 +779,7 @@ function withdrawFromStorage(b, type, amount) {
 function withdrawFromAnyStorage(type, amount) {
   let remaining = amount;
   for (const b of G.buildings) {
-    if (!isStorage(b.type) || remaining <= 0) continue;
+    if (!storageAcceptsResource(b,type) || remaining <= 0) continue;
     remaining -= withdrawFromStorage(b, type, remaining);
   }
   return amount - remaining;
@@ -898,12 +948,15 @@ function resourceObstacle(node) {
 function isResourceObstacleNode(node) {
   return node && node.alive && node.type !== 'tree' && node.type !== 'sapling';
 }
+function buildingBlocksMovement(b) {
+  return !!b && (b.ruin || (b.hp > 0 && b.type !== 'farm'));
+}
 function ensureObstacleSpatialHash() {
   if (!G.obstacleSpatial) G.obstacleSpatial = new SpatialHash(CFG.SPATIAL_CELL_SIZE);
   if (G.obstacleIndexRevision === G.navigationRevision) return;
   G.obstacleSpatial.clear();
   for (const b of G.buildings) {
-    if (b.hp <= 0 && !b.ruin) continue;
+    if (!buildingBlocksMovement(b)) continue;
     const c=b.center(), radius=b.collisionRadius()+RESIDENT_RADIUS+16;
     G.obstacleSpatial.insert(b,c.x-radius,c.y-radius,c.x+radius,c.y+radius);
   }
@@ -924,7 +977,7 @@ function rebuildResidentSpatialHash() {
   }
 }
 function segmentHitsBuilding(x1, y1, x2, y2, b, r) {
-  if (!b || (b.resourceNode ? !b.resourceNode.alive : (b.hp <= 0 && !b.ruin))) return false;
+  if (!b || (b.resourceNode ? !b.resourceNode.alive : !buildingBlocksMovement(b))) return false;
   if (b.resourceNode && !isResourceObstacleNode(b.resourceNode)) return false;
   if (b === r.workplace || b === r.home || b === r.buildTarget) return false;
   const goalDist = Math.hypot(x2 - b.center().x, y2 - b.center().y);
@@ -979,7 +1032,39 @@ function clearNavigation(r) {
   r.navStuckTimer = 0;
 }
 function navigationBlockIsActive(block) {
-  return !!block && (block.resourceNode ? isResourceObstacleNode(block.resourceNode) : block.hp > 0);
+  return !!block && (block.resourceNode ? isResourceObstacleNode(block.resourceNode) : buildingBlocksMovement(block));
+}
+function workplaceWorkRange(b) {
+  const normalRange=b.collisionRadius()+RESIDENT_RADIUS+2;
+  return b.type==='farm' ? normalRange*0.5 : normalRange;
+}
+function steerAroundResidents(r, nx, ny, speed, dt) {
+  const dx=nx-r.x, dy=ny-r.y, moveDistance=Math.hypot(dx,dy);
+  if (moveDistance<0.01) return {x:nx,y:ny};
+  const ux=dx/moveDistance, uy=dy/moveDistance;
+  const px=-uy, py=ux;
+  const lookAhead=Math.max(RESIDENT_RADIUS*4,moveDistance+RESIDENT_RADIUS*2);
+  const clearance=RESIDENT_RADIUS*2+4;
+  const nearby=G.residentSpatial
+    ? G.residentSpatial.query(r.x-lookAhead,r.y-lookAhead,r.x+lookAhead,r.y+lookAhead)
+    : G.residents;
+  let steer=0;
+  for (const other of nearby) {
+    if (other===r || other.hidden) continue;
+    const ox=other.x-r.x, oy=other.y-r.y;
+    const along=ox*ux+oy*uy;
+    if (along < -RESIDENT_RADIUS || along > lookAhead) continue;
+    const side=ox*px+oy*py;
+    if (Math.abs(side)>=clearance) continue;
+    const lateralNeed=1-Math.abs(side)/clearance;
+    const forwardNeed=1-clamp(Math.max(0,along)/lookAhead,0,1);
+    // When directly ahead, choose a stable local side so the mover commits to passing it.
+    const direction=side>0.5 ? -1 : 1;
+    steer+=direction*lateralNeed*(0.7+forwardNeed*0.3);
+  }
+  const maxSteer=speed*dt*1.2;
+  steer=clamp(steer,-maxSteer,maxSteer);
+  return {x:nx+px*steer,y:ny+py*steer};
 }
 function flowMove(r, tx, ty, speed, dt) {
   if (Math.hypot(tx - r.navTargetX, ty - r.navTargetY) > 18) {
@@ -1012,7 +1097,6 @@ function flowMove(r, tx, ty, speed, dt) {
   }
   const moveTarget = r.navWaypoint || {x:tx, y:ty};
   tx = moveTarget.x; ty = moveTarget.y;
-  speed *= starvationDebuff(r);
   if (G.floorMask) {
     const gi = gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS;
     if (gi < G.floorMask.length && G.floorMask[gi]) speed *= floorMovementMultiplier();
@@ -1020,7 +1104,8 @@ function flowMove(r, tx, ty, speed, dt) {
   const dx = tx - r.x, dy = ty - r.y, mag = Math.hypot(dx, dy) || 1;
   const nx = r.x + (dx / mag) * speed * dt;
   const ny = r.y + (dy / mag) * speed * dt;
-  return resolveCollisions(r, nx, ny);
+  const steered=steerAroundResidents(r,nx,ny,speed,dt);
+  return resolveCollisions(r, steered.x, steered.y);
 }
 function moveViaFlow(r, tx, ty, speed, dt) {
   const beforeX = r.x, beforeY = r.y;
@@ -1031,12 +1116,6 @@ function moveViaFlow(r, tx, ty, speed, dt) {
   if (remaining > 48 && moved < Math.max(0.25, speed * dt * 0.12)) r.navStuckTimer += dt;
   else r.navStuckTimer = 0;
   if (r.navStuckTimer >= CFG.NAV_STUCK_TIMEOUT) clearNavigation(r);
-}
-function starvationDebuff(r) {
-  if (r.isGuard) return 1;
-  if (r.starvationDays >= 2) return 0.4;
-  if (r.starvationDays >= 1) return 0.7;
-  return 1;
 }
 function isCellBlocked(col, row, excludeBld) {
   if (col<0 || row<0 || col>=CFG.WORLD_COLS || row>=CFG.WORLD_ROWS) return true;
@@ -1115,12 +1194,22 @@ function findNearestBlueprint(resident) {
   }
   return best;
 }
+function findNearestConstruction(resident) {
+  let best = null, bestD = Infinity;
+  for (const b of G.buildings) {
+    if (b.ruin || b.blueprint || b.hp <= 0 || b.constructionTimer <= 0 || b.assignedEngineer) continue;
+    const bc=b.center();
+    const d=Math.hypot(resident.x-bc.x,resident.y-bc.y);
+    if (d<bestD) { bestD=d; best=b; }
+  }
+  return best;
+}
 function resolveCollisions(r, nx, ny) {
   ensureObstacleSpatialHash();
   for (const b of G.obstacleSpatial.query(nx,ny,nx,ny)) {
     if (b.resourceNode) {
       if (!isResourceObstacleNode(b.resourceNode)) continue;
-    } else if (b.hp <= 0 && !b.ruin) continue;
+    } else if (!buildingBlocksMovement(b)) continue;
     const c = b.center();
     if (!b.resourceNode && r.buildTarget === b) continue; // always allow approaching build target
     // Only allow leaving own home/workplace, not entering.
@@ -1162,12 +1251,7 @@ function findNearestStorage(pos, resType, options={}) {
   const { requireAmount=0, requireSpace=0 } = options;
   let best=null, bestD=Infinity;
   for (const b of G.buildings) {
-    if (!isStorage(b.type) || b.hp<=0 || b.blueprint || b.constructionTimer>0) continue;
-    if (resType === 'food' && b.type !== 'food_storage' && b.type !== 'town_hall') continue;
-    if (resType === 'wood' && b.type !== 'wood_storage' && b.type !== 'town_hall') continue;
-    if (resType === 'stone' && b.type !== 'stone_storage' && b.type !== 'town_hall') continue;
-    if (resType === 'iron' && b.type !== 'iron_storage' && b.type !== 'town_hall') continue;
-    if (resType === 'ingot' && b.type !== 'ingot_storage' && b.type !== 'town_hall') continue;
+    if (!storageAcceptsResource(b,resType) || b.hp<=0 || b.blueprint || b.constructionTimer>0) continue;
     if (requireAmount > 0 && storedAmount(b, resType) < requireAmount) continue;
     if (requireSpace > 0 && storageFreeSpace(b, resType) < requireSpace) continue;
     const access = b.center();
@@ -1214,13 +1298,16 @@ function beginEating(r) {
   return true;
 }
 function eatAfterFinishingTask(r) {
-  if (!r.finishBeforeEating || r.hunger < CFG.HUNGER_THRESHOLD) return false;
+  if (!r.finishBeforeEating || !r.mealPending) return false;
   r.finishBeforeEating=false;
   return beginEating(r);
 }
 
 function findForesterTree(r, forester) {
   if (!forester || forester.type!=='forester' || forester.hp<=0) return null;
+  const carryCapacity=productionBufferCapacity(forester);
+  const carried=r.carrying?.amount||0;
+  if (!findNearestStorage(r,'wood',{requireSpace:Math.max(1,carryCapacity-carried)})) return null;
   const radius = (buildingRuntimeDef(forester).foresterRadius || 4) * CFG.CELL;
   const center = forester.center();
   let best=null, bestDist=Infinity;
@@ -1428,7 +1515,7 @@ class Resident {
     this.x = x; this.y = y;
     this.state = 'IDLE';
     this.workplace = null; this.home = null;
-    this.hunger = 0; this.tired = 0;
+    this.tired = 0;
     this.carrying = null;
     this.carryingFrom = null;
     this.targetX = x; this.targetY = y;
@@ -1442,11 +1529,11 @@ class Resident {
     this.isEngineer = false;
     this.chopTarget = null; this.chopTimer = 0; this.chopShakeBeat = -1;
     this.finishBeforeEating = false;
-    this.starvationDays = 0;
+    this.mealPending = false;
     // Guard properties
     this.isGuard = false;
-    this.guardHP = 80;
-    this.guardMaxHP = 80;
+    this.guardHP = CFG.GUARD_MAX_HP;
+    this.guardMaxHP = CFG.GUARD_MAX_HP;
     this.guardAttackCD = 0;
     this.manningTower = null;
     this.assignedTower = null;
@@ -1508,8 +1595,7 @@ function initGame() {
     assignHome(r, th);
     G.residents.push(r);
   }
-  if (G.residents[0]) G.residents[0].isEngineer = true;
-  if (G.residents[1]) G.residents[1].isEngineer = true;
+  for (let i=0; i<Math.min(CFG.START_ENGINEERS, G.residents.length); i++) G.residents[i].isEngineer = true;
   const guard=new Resident(th.x+55, th.y+45);
   guard.isGuard=true; guard.state='GUARD_SLEEPING'; guard.hidden=true;
   assignHome(guard, th);
@@ -1521,8 +1607,9 @@ function initGame() {
 }
 
 function addBuilding(type, col, row, skipBlueprint) {
-  if (!canPlaceBuilding(type, col, row)) return null;
   const def = BLD_DEFS[type];
+  const townHallLevel=G.townHall ? G.townHall.level : 1;
+  if (!def||!buildingUnlockStatus(def,townHallLevel).unlocked||!canPlaceBuilding(type, col, row)) return null;
   const hasCost = Object.keys(def.cost||{}).length > 0;
   const b = new Building(type, col, row);
   if (hasCost && !skipBlueprint) {
@@ -1635,32 +1722,32 @@ function addRuinSalvage(b) {
 // ============================================================
 // UPDATE
 // ============================================================
+function gameDayDuration() { return CFG.DAY_DURATION+CFG.NIGHT_DURATION+CFG.TRANSITION*2; }
+function scheduledMealOffset(hour) { return ((hour-6+24)%24)/24*gameDayDuration(); }
+function triggerScheduledMeals(startTime,endTime) {
+  const cycle=gameDayDuration();
+  const startCycle=Math.floor(startTime/cycle), endCycle=Math.floor(endTime/cycle);
+  const offsets=[scheduledMealOffset(CFG.MEAL_TIME_LUNCH),scheduledMealOffset(CFG.MEAL_TIME_DINNER)];
+  for(let cycleIndex=startCycle;cycleIndex<=endCycle;cycleIndex++) {
+    for(const offset of offsets) {
+      const mealTime=cycleIndex*cycle+offset;
+      if(mealTime>startTime&&mealTime<=endTime) {
+        for(const r of G.residents) if(!r.isGuard&&!r.hidden) r.mealPending=true;
+      }
+    }
+  }
+}
 function updateDayNight(dt) {
   const phaseDuration = G.phase==='day' ? CFG.DAY_DURATION :
     G.phase==='night' ? CFG.NIGHT_DURATION : CFG.TRANSITION;
   G.dayTime += dt;
+  const previousTime=G.totalTime;
   G.totalTime += dt;
+  triggerScheduledMeals(previousTime,G.totalTime);
   if (G.dayTime >= phaseDuration) {
     G.dayTime = 0;
     if (G.phase==='day') {
       G.phase='dusk'; showTimeIndicator('黄昏');
-      // 饥饿天数累计 + 饿死检查
-      const toRemove = [];
-      for (const r of G.residents) {
-        if (r.isGuard) continue;
-        if (r.hunger >= CFG.HUNGER_THRESHOLD) {
-          r.starvationDays++;
-          if (r.starvationDays >= 3) {
-            toRemove.push(r);
-            spawnParticles(r.x, r.y, '#ff0000', 10);
-          }
-        } else if (r.hunger < CFG.HUNGER_THRESHOLD * 0.5) {
-          r.starvationDays = Math.max(0, r.starvationDays - 1);
-        }
-      }
-      for (const r of toRemove) {
-        removeResident(r);
-      }
       // 让居民回家睡觉
       for (const r of G.residents) {
         if (r.isGuard) continue; // guards handle their own sleep
@@ -1787,7 +1874,7 @@ function enemyRouteBlocker(e) {
   let best=null, bestAlong=Infinity, bestDistance=Infinity;
   let preferred=null, preferredAlong=Infinity, preferredDistance=Infinity;
   for (const b of G.buildings) {
-    if (b.hp<=0) continue;
+    if (!buildingBlocksMovement(b)) continue;
     const c=b.center();
     const along=((c.x-e.x)*dx+(c.y-e.y)*dy)/routeLength;
     if (along < -0.01 || along > routeLength+0.01) continue;
@@ -1934,7 +2021,7 @@ function guardUpdateAI(r, dt) {
         if (Math.hypot(r.x - tc.x, r.y - tc.y) < tower.collisionRadius() + RESIDENT_RADIUS + 5) {
           r.state = 'GUARD_MANNING'; r.manningTower = tower; tower.assignedGuard = r;
         } else {
-          moveViaFlow(r, tc.x, tc.y, CFG.RESIDENT_SPEED, dt);
+          moveViaFlow(r, tc.x, tc.y, CFG.GUARD_SPEED, dt);
         }
       } else {
         r.assignedTower = null;
@@ -1980,8 +2067,8 @@ function guardUpdateAI(r, dt) {
           // Attack
           r.guardAttackCD -= dt;
           if (r.guardAttackCD <= 0) {
-            r.guardAttackCD = 0.6;
-            targetEnemy.hp -= 12;
+            r.guardAttackCD = CFG.GUARD_ATTACK_COOLDOWN;
+            targetEnemy.hp -= CFG.GUARD_DAMAGE;
             spawnParticles(targetEnemy.x, targetEnemy.y, '#ffaa00', 2);
             if (targetEnemy.hp <= 0) {
               targetEnemy.alive = false;
@@ -1990,7 +2077,7 @@ function guardUpdateAI(r, dt) {
           }
         } else {
           // Move toward enemy
-          moveViaFlow(r, targetEnemy.x, targetEnemy.y, CFG.RESIDENT_SPEED, dt);
+          moveViaFlow(r, targetEnemy.x, targetEnemy.y, CFG.GUARD_SPEED, dt);
         }
       } else {
         // Patrol within building boundary
@@ -2006,8 +2093,8 @@ function guardUpdateAI(r, dt) {
         if (dc > pb.r) {
           r.patrolAngle = Math.atan2(-dyc, -dxc);
         }
-        const pnx = r.x + Math.cos(r.patrolAngle) * 20 * dt;
-        const pny = r.y + Math.sin(r.patrolAngle) * 20 * dt;
+        const pnx = r.x + Math.cos(r.patrolAngle) * CFG.GUARD_SPEED * dt;
+        const pny = r.y + Math.sin(r.patrolAngle) * CFG.GUARD_SPEED * dt;
         // Clamp to boundary
         const ndc = Math.hypot(pnx - pb.x, pny - pb.y);
         const fx = Math.max(0, ndc - pb.r);
@@ -2029,7 +2116,7 @@ function guardUpdateAI(r, dt) {
       if (Math.hypot(r.x - thCenter.x, r.y - thCenter.y) < th.collisionRadius() + RESIDENT_RADIUS + 3) {
         r.state = 'GUARD_HEALING'; r.guardHealTimer = twoGameHours; r.hidden = true;
       } else {
-        moveViaFlow(r, thCenter.x, thCenter.y, CFG.RESIDENT_SPEED, dt);
+        moveViaFlow(r, thCenter.x, thCenter.y, CFG.GUARD_SPEED, dt);
       }
       break;
     }
@@ -2079,9 +2166,8 @@ function updateResidents(dt) {
   rebuildResidentSpatialHash();
   G.targetedTrees = new Set(G.residents.map(r=>r.chopTarget).filter(Boolean));
   for (const r of G.residents) {
-    if (r.isGuard) continue; // guards don't get hungry or tired
+    if (r.isGuard) continue;
     if (r.state!=='SLEEPING') {
-      r.hunger += CFG.HUNGER_RATE * dt;
       r.tired += CFG.TIRED_RATE * dt;
       if (G.phase==='night') r.tired += CFG.TIRED_RATE*2*dt;
     }
@@ -2103,8 +2189,8 @@ function updateResidents(dt) {
       continue;
     }
 
-    // Priority 1: Hungry
-    if (r.hunger >= CFG.HUNGER_THRESHOLD && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
+    // Priority 1: scheduled meal
+    if (r.mealPending && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
       if (r.finishBeforeEating) {
         if (!isFinishableResidentTask(r)) eatAfterFinishingTask(r);
       } else if (isFinishableResidentTask(r)) {
@@ -2140,7 +2226,7 @@ function updateResidents(dt) {
       case 'EATING':
         if ((r.eatTimer-=dt)<=0) {
           const storage = findNearestStorage(r, 'food', {requireAmount:1});
-          if (storage && withdrawFromStorage(storage, 'food', 1) === 1) { r.hunger=0; r.starvationDays=0; }
+          if (storage && withdrawFromStorage(storage, 'food', 1) === 1) r.mealPending=false;
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.carrying?'HAULING' : r.workplace?'GOING_TO_WORK':'IDLE';
         }
@@ -2158,7 +2244,7 @@ function updateResidents(dt) {
         const wc=r.workplace.center();
         const dx=wc.x-r.x, dy=wc.y-r.y, dd=Math.hypot(dx,dy)||1;
         r.targetX=wc.x; r.targetY=wc.y;
-        if (Math.hypot(r.x-wc.x, r.y-wc.y) < r.workplace.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='WORKING'; r.prodTimer=0; }
+        if (Math.hypot(r.x-wc.x, r.y-wc.y) < workplaceWorkRange(r.workplace)) { r.state='WORKING'; r.prodTimer=0; }
         else { moveViaFlow(r, wc.x, wc.y, CFG.RESIDENT_SPEED, dt); }
         break;
       }
@@ -2231,8 +2317,14 @@ function updateResidents(dt) {
           const carried = r.carrying ? r.carrying.amount : 0;
           const carryCapacity=productionBufferCapacity(r.workplace||{level:1});
           const s2 = findNearestStorage(r, 'wood', {requireSpace:Math.max(1, carryCapacity - carried)});
-          if (!s2) { r.chopTimer = chopTime; break; }
+          if (!s2) {
+            r.chopTarget=null; r.chopTimer=0;
+            r.state=r.workplace?'GOING_TO_WORK':'IDLE';
+            break;
+          }
           r.chopTarget.alive = false; r.chopTarget.marked = false;
+          G.treesChopped++;
+          G.buildingPanelDirty=true;
           spawnParticles(r.chopTarget.x, r.chopTarget.y, '#8B4513', 5);
           if (!r.carrying) r.carrying = { type: 'wood', amount: 1 };
           else r.carrying.amount++;
@@ -2334,13 +2426,15 @@ function updateResidents(dt) {
         if (r.workplace && r.workplace.hp>0) { r.state='GOING_TO_WORK'; break; }
         if (r.isEngineer) {
           if (r.buildTarget && r.buildTarget.hp>0 && r.buildTarget.constructionTimer>0) { r.state='CONSTRUCTING'; break; }
+          const constructionTarget=findNearestConstruction(r);
+          if (constructionTarget) { r.buildTarget=constructionTarget; constructionTarget.assignedEngineer=r; r.state='CONSTRUCTING'; break; }
           const repairTarget=findNearestRepairTarget(r);
           if(repairTarget) { r.buildTarget=repairTarget; repairTarget.assignedEngineer=r; r.state='GOING_TO_REPAIR'; break; }
           const ebp = findNearestBlueprint(r);
           if (ebp) { r.buildTarget = ebp; ebp.assignedEngineer = r; r.state = 'GATHERING'; break; }
         }
         // Only idle non-engineers chop trees
-        if (!r.isEngineer) {
+        if (!r.isEngineer && findNearestStorage(r,'wood',{requireSpace:1})) {
           let treeTarget = null, treeDist = Infinity;
           for (const node of G.resourceNodes) {
             if (canResidentHandHarvest(node) && node.marked && !node.ownerForester) {
@@ -2447,9 +2541,8 @@ function updateBuildings(dt) {
       const activeWorkers = activeWorkersByBuilding.get(b) || [];
       const efficiency = def.maxWorkers > 0 ? Math.min(1, activeWorkers.length / def.maxWorkers) : 0;
       if (efficiency > 0 && b.pendingOutput < productionBufferCapacity(b)) {
-        const healthEfficiency = activeWorkers.reduce((sum, r) => sum + starvationDebuff(r), 0) / activeWorkers.length;
         const adjacency = b.type === 'farm' ? getFarmAdjacencyBonus(b) : 1;
-        b.productionProgress += dt / def.baseTime * efficiency * healthEfficiency * adjacency * productionSpeedMultiplier(b);
+        b.productionProgress += dt / def.baseTime * efficiency * adjacency * productionSpeedMultiplier(b);
         if (b.productionProgress >= 1) {
           const sourceNode = def.sourceType ? findResourceNode(b, def.sourceType) : null;
           const hasSource = !def.sourceType || !!sourceNode;
@@ -2519,6 +2612,15 @@ function showTimeIndicator(text) {
   const el=document.getElementById('time-indicator');
   el.textContent=text; el.style.opacity='1';
   setTimeout(()=>el.style.opacity='0', 1500);
+}
+function showResourceFullNotice(type) {
+  if (G.resourceFullNotices.has(type)) return;
+  G.resourceFullNotices.add(type);
+  const el=document.getElementById('resource-full-notice');
+  el.textContent=(RESOURCE_NAMES[type]||type)+'已满';
+  el.classList.remove('show');
+  void el.offsetWidth;
+  el.classList.add('show');
 }
 
 let gameRunning = true;
@@ -2688,7 +2790,7 @@ const BLD_TYPE_EDIT_FIELDS = {
     { k:'produces', label:'产物', type:'text' },
   ],
   food_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
-  wood_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
+  wood_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }, { k:'unlockTreesChopped', label:'砍伐树木解锁要求', type:'num', min:0, step:1, unit:'棵' }],
   stone_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
   iron_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
   ingot_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
@@ -2707,23 +2809,32 @@ const BLD_TYPE_EDIT_FIELDS = {
   lamp: [{ k:'vision', label:'迷雾驱散范围', type:'num', min:1, step:1, unit:'格' }, { k:'levelVisionBonus', label:'每级视野加成', type:'num', min:0, step:1, unit:'格' }],
   wall: [{ k:'levelDamageReduction', label:'每级减伤', type:'num', min:0, max:0.75, step:0.05, unit:'比例' }],
 };
-function buildingEditFields(type) {
+function buildingEditFields(type, level=1) {
   const common=type==='town_hall' ? BLD_COMMON_EDIT_FIELDS.filter(field=>field.k!=='buildTime'&&field.k!=='unlock') : BLD_COMMON_EDIT_FIELDS;
-  return [...common, ...(BLD_TYPE_EDIT_FIELDS[type]||[])];
+  const typeFields=(BLD_TYPE_EDIT_FIELDS[type]||[]).filter(field=>!(type==='town_hall'&&level>1&&field.k==='startResources'));
+  return [...common, ...typeFields];
 }
 const GLOBAL_EDIT_FIELDS = [
   { k:'DAY_DURATION', label:'白昼时长', min:10, step:1, unit:'秒', restart:true },
   { k:'NIGHT_DURATION', label:'夜晚时长', min:10, step:1, unit:'秒', restart:true },
-  { k:'HUNGER_RATE', label:'饥饿增长', min:0, step:0.05, unit:'/秒' },
+  { k:'MEAL_TIME_LUNCH', label:'第一餐时间', min:0, max:23.5, step:0.5, unit:'时' },
+  { k:'MEAL_TIME_DINNER', label:'第二餐时间', min:0, max:23.5, step:0.5, unit:'时' },
   { k:'TIRED_RATE', label:'疲劳增长', min:0, step:0.05, unit:'/秒' },
   { k:'RESIDENT_SPEED', label:'居民速度', min:1, step:1, unit:'像素/秒' },
-  { k:'ENEMY_BASE_HP', label:'敌人基础生命', min:1, step:1, unit:'生命' },
-  { k:'ENEMY_SPEED', label:'敌人速度', min:1, step:1, unit:'像素/秒' },
-  { k:'ENEMY_DAMAGE', label:'敌人伤害', min:0, step:1, unit:'伤害' },
   { k:'RESIDENT_VISION', label:'居民视野', min:0, step:1, unit:'格' },
-  { k:'GUARD_VISION', label:'守卫视野', min:0, step:1, unit:'格' },
-  { k:'ENGINEER_REPAIR_RATE', label:'工程师修理速度', min:1, step:1, unit:'生命/秒' },
 ];
+const PROFESSION_EDIT_FIELDS = {
+  guard: [
+    { k:'GUARD_MAX_HP', label:'生命', min:1, step:1, unit:'生命' },
+    { k:'GUARD_DAMAGE', label:'攻击', min:0, step:1, unit:'伤害' },
+    { k:'GUARD_SPEED', label:'移动速度', min:1, step:1, unit:'像素/秒' },
+    { k:'GUARD_ATTACK_COOLDOWN', label:'攻击间隔', min:0.05, step:0.05, unit:'秒' },
+    { k:'GUARD_VISION', label:'视野', min:0, step:1, unit:'格' },
+  ],
+  engineer: [
+    { k:'ENGINEER_REPAIR_RATE', label:'修理速度', min:1, step:1, unit:'生命/秒' },
+  ],
+};
 const ENEMY_SPAWN_EDIT_FIELDS = [
   { k:'ENEMY_WAVE_BASE_COUNT', label:'每夜基础敌人数', min:0, step:1, unit:'个' },
   { k:'ENEMY_WAVE_PER_DAY', label:'每天额外敌人数', min:0, step:1, unit:'个/天' },
@@ -2873,6 +2984,9 @@ function cfgSelectCategory() {
   sel.innerHTML='';
   if(cat==='globals') {
     const opt=document.createElement('option'); opt.value='gameplay'; opt.textContent='游戏节奏与单位'; sel.appendChild(opt);
+  } else if(cat==='professions') {
+    const guard=document.createElement('option'); guard.value='guard'; guard.textContent='守卫'; sel.appendChild(guard);
+    const engineer=document.createElement('option'); engineer.value='engineer'; engineer.textContent='工程师'; sel.appendChild(engineer);
   } else if(cat==='enemySpawns') {
     const opt=document.createElement('option'); opt.value='nightRaids'; opt.textContent='夜袭波次'; sel.appendChild(opt);
   } else if(cat==='enemies') {
@@ -2910,6 +3024,12 @@ function cfgSelectItem() {
     for(const f of GLOBAL_EDIT_FIELDS) {
       html+=`<div style="display:grid;grid-template-columns:120px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-global-${f.k}" type="number" min="${f.min}" step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:${f.restart?'#d5a85c':'#788898'}">${f.restart?'重开生效':f.unit}</span></div>`;
     }
+  } else if(cat==='professions') {
+    const fields=PROFESSION_EDIT_FIELDS[key]||[];
+    html=`<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">${key==='guard'?'守卫参数会立即作用于当前与后续守卫。':'工程师修理速度会立即作用于当前游戏。'}</div>`;
+    for(const f of fields) {
+      html+=`<div style="display:grid;grid-template-columns:120px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-profession-${f.k}" type="number" min="${f.min}" ${f.max!==undefined?`max="${f.max}"`:''} step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:#788898">${f.unit}</span></div>`;
+    }
   } else if(cat==='enemySpawns') {
     html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">修改后将在下一次进入夜晚时使用，不会改变当前夜晚已固定的生成队列。</div>';
     for(const f of ENEMY_SPAWN_EDIT_FIELDS) {
@@ -2931,7 +3051,7 @@ function cfgSelectItem() {
   } else if(cat==='buildings'&&BLD_DEFS[key]) {
     const d=BLD_DEFS[key];
     const level=syncCfgBuildingLevelOptions(key);
-    const fields=buildingEditFields(key).filter(field=>level===1||!['name','icon','maxLevel','cost'].includes(field.k));
+    const fields=buildingEditFields(key,level).filter(field=>level===1||!['name','icon','maxLevel','cost'].includes(field.k));
     if(level>1) fields.push({k:'upgradeCost',label:'升至本级消耗',type:'resources'});
     html=`<div style="color:#9aa7b8;line-height:18px;margin-bottom:8px;">正在编辑 ${d.name} 的等级 ${level} 参数。未单独填写的等级会沿用默认升级曲线；范围、射程和容量会立即作用于当前游戏。</div>`;
     for(const f of fields) {
@@ -2944,6 +3064,7 @@ function cfgSelectItem() {
   } else if(cat==='initialResources') {
     html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">重新开始游戏时将使用以下初始人口配置。初始资源与大本营各资源仓储上限请在“建筑 → 大本营 → 等级 1”中编辑。</div>';
     html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">初始人口</label><input id="cfg-initial-POP" type="number" min="0" step="1" value="${CFG.START_POP}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
+    html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">初始工程师</label><input id="cfg-initial-ENGINEERS" type="number" min="0" step="1" value="${CFG.START_ENGINEERS}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
     html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">人口上限基数</label><input id="cfg-initial-MAXPOP" type="number" min="1" step="1" value="${CFG.MAX_POP_BASE}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
     html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">初始守卫上限</label><input id="cfg-initial-MAXGUARD" type="number" min="0" step="1" value="${CFG.MAX_GUARD_BASE}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
   }
@@ -2968,8 +3089,24 @@ function cfgApply() {
       if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
       CFG[f.k]=value;
     }
-    syncNormalEnemyDefinition();
+    if(CFG.MEAL_TIME_LUNCH===CFG.MEAL_TIME_DINNER) { cfgSetStatus('两次用餐时间不能相同','error'); return false; }
     cfgSetStatus('全局数值已应用；标记“重开生效”的项目需要重新开始。','ok');
+    return true;
+  } else if(cat==='professions') {
+    const fields=PROFESSION_EDIT_FIELDS[key]||[];
+    for(const f of fields) {
+      const value=Number(document.getElementById('cfg-profession-'+f.k)?.value);
+      if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
+      CFG[f.k]=value;
+    }
+    if(key==='guard') {
+      for(const r of G.residents) if(r.isGuard) {
+        r.guardMaxHP=CFG.GUARD_MAX_HP;
+        r.guardHP=Math.min(r.guardHP,r.guardMaxHP);
+      }
+      refreshFogVisibility();
+    }
+    cfgSetStatus((key==='guard'?'守卫':'工程师')+'参数已应用到当前游戏。','ok');
     return true;
   } else if(cat==='enemySpawns') {
     for(const f of ENEMY_SPAWN_EDIT_FIELDS) {
@@ -2987,9 +3124,6 @@ function cfgApply() {
       const value=f.type==='text'?el.value.trim():Number(el.value);
       if (f.type==='num' && (!Number.isFinite(value)||value<f.min)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
       d[f.k]=value;
-    }
-    if (key==='normal') {
-      CFG.ENEMY_BASE_HP=d.hp; CFG.ENEMY_SPEED=d.speed; CFG.ENEMY_DAMAGE=d.damage;
     }
     cfgSetStatus(d.name+'已应用；下一次夜晚的新敌人会使用该数值。','ok');
     return true;
@@ -3009,7 +3143,7 @@ function cfgApply() {
   } else if(cat==='buildings'&&BLD_DEFS[key]) {
     const d=BLD_DEFS[key];
     const level=Number(document.getElementById('cfg-building-level').value)||1;
-    const fields=buildingEditFields(key).filter(field=>level===1||!['name','icon','maxLevel','cost'].includes(field.k));
+    const fields=buildingEditFields(key,level).filter(field=>level===1||!['name','icon','maxLevel','cost'].includes(field.k));
     if(level>1) fields.push({k:'upgradeCost',label:'升至本级消耗',type:'resources'});
     const target=level===1 ? d : (d.levels||(d.levels={}))[level]||((d.levels||(d.levels={}))[level]={});
     for(const f of fields) {
@@ -3038,6 +3172,7 @@ function cfgApply() {
       b.hp=Math.min(b.hp,b.maxHp);
     }
     if(key==='town_hall'||key==='house'||key==='barracks') recalculatePopulationLimits();
+    if(key==='town_hall') updateAllResourceTotals();
     const btn=document.querySelector(`.bld-btn[data-type="${key}"]`);
     if(btn&&d.cost) {
       const costDiv=btn.querySelector('.cost');
@@ -3051,6 +3186,9 @@ function cfgApply() {
     const popVal=Number(document.getElementById('cfg-initial-POP')?.value);
     if(!Number.isFinite(popVal)||popVal<0) { cfgSetStatus('初始人口不是有效数值','error'); return false; }
     CFG.START_POP=Math.floor(popVal);
+    const engineerVal=Number(document.getElementById('cfg-initial-ENGINEERS')?.value);
+    if(!Number.isFinite(engineerVal)||engineerVal<0||engineerVal>CFG.START_POP) { cfgSetStatus('初始工程师必须介于 0 和初始人口之间','error'); return false; }
+    CFG.START_ENGINEERS=Math.floor(engineerVal);
     const maxpopVal=Number(document.getElementById('cfg-initial-MAXPOP')?.value);
     if(!Number.isFinite(maxpopVal)||maxpopVal<1) { cfgSetStatus('人口上限基数不是有效数值','error'); return false; }
     CFG.MAX_POP_BASE=Math.floor(maxpopVal);
@@ -3064,9 +3202,10 @@ function cfgApply() {
 function collectBalanceData() {
   const globals={};
   for(const field of GLOBAL_EDIT_FIELDS) globals[field.k]=CFG[field.k];
+  for(const fields of Object.values(PROFESSION_EDIT_FIELDS)) for(const field of fields) globals[field.k]=CFG[field.k];
   for(const field of ENEMY_SPAWN_EDIT_FIELDS) globals[field.k]=CFG[field.k];
   for(const field of WORLD_RESOURCE_EDIT_FIELDS) globals[field.k]=CFG[field.k];
-  globals.START_POP=CFG.START_POP; globals.MAX_POP_BASE=CFG.MAX_POP_BASE; globals.MAX_GUARD_BASE=CFG.MAX_GUARD_BASE;
+  globals.START_POP=CFG.START_POP; globals.START_ENGINEERS=CFG.START_ENGINEERS; globals.MAX_POP_BASE=CFG.MAX_POP_BASE; globals.MAX_GUARD_BASE=CFG.MAX_GUARD_BASE;
   return {version:1, savedAt:new Date().toISOString(), globals, enemies:ENEMY_DEFS, buildings:BLD_DEFS};
 }
 async function cfgSaveProject() {
@@ -3088,18 +3227,32 @@ function assignEngineer() {
   const idle = G.residents.find(r => (r.state === 'IDLE' || r.state === 'PATROL') && !r.workplace && !r.isEngineer);
   if (idle) {
     idle.isEngineer = true;
-    const bp = findNearestBlueprint(idle);
-    if (bp) {
-      idle.buildTarget = bp; bp.assignedEngineer = idle; idle.state = 'GATHERING';
+    const construction=findNearestConstruction(idle);
+    if (construction) {
+      idle.buildTarget=construction; construction.assignedEngineer=idle; idle.state='CONSTRUCTING';
+    } else {
+      const bp = findNearestBlueprint(idle);
+      if (bp) {
+        idle.buildTarget = bp; bp.assignedEngineer = idle; idle.state = 'GATHERING';
+      }
     }
   }
 }
 function unassignEngineer() {
-  const eng = G.residents.find(r => r.isEngineer);
+  const priority={IDLE:0,PATROL:0,GOING_HOME:1,SLEEPING:1,GOING_TO_REPAIR:2,REPAIRING:2,GATHERING:3,BUILDING:3,CONSTRUCTING:3};
+  const eng=G.residents.filter(r=>r.isEngineer).sort((a,b)=>(priority[a.state]??2)-(priority[b.state]??2))[0];
   if (eng) {
+    const target=eng.buildTarget;
     eng.isEngineer = false;
-    if (eng.buildTarget) eng.buildTarget.assignedEngineer = null;
+    if (target && target.assignedEngineer===eng) target.assignedEngineer = null;
     eng.buildTarget = null; eng.state = eng.carrying ? 'HAULING' : 'IDLE';
+    // Keep an in-progress build staffed immediately when another idle engineer exists.
+    if (target && target.constructionTimer>0 && target.hp>0 && !target.assignedEngineer) {
+      const replacement=G.residents.find(r=>r.isEngineer && !r.buildTarget && (r.state==='IDLE'||r.state==='PATROL'));
+      if (replacement) {
+        replacement.buildTarget=target; target.assignedEngineer=replacement; replacement.state='CONSTRUCTING';
+      }
+    }
   }
 }
 function addPop(n) {
@@ -3130,6 +3283,9 @@ function restartGame() {
   G.selectedBldType = null; G.selectedBuilding = null; G.placingMode = false; G.movingBuilding = null;
   G.maxPop = CFG.MAX_POP_BASE; G.maxGuards = CFG.MAX_GUARD_BASE; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   G.resourceCleanupTimer = 0; G.farmLinks = []; G.navigationRevision = 0; G.obstacleIndexRevision = -1;
+  G.resourceFullNotices = new Set();
+  G.treesChopped = 0;
+  G.buildingPanelDirty = true;
   G.debugRevealAllFog = false;
   G.targetedTrees = new Set();
   G.dragging = false; G.dragMoved=false; gameRunning = true;
@@ -3718,11 +3874,9 @@ function drawResident(r) {
     ctx.fillRect(r.x - gbw/2, r.y + cr + 4, gbw * gpct, gbh);
   }
   const iconY=r.y-31;
-  if (r.hunger>CFG.HUNGER_THRESHOLD*0.8) drawResidentFoodIcon(r.x,iconY);
+  if (r.state==='GOING_TO_EAT'||r.state==='EATING') drawResidentFoodIcon(r.x,iconY);
   else if (r.state==='GOING_HOME' || r.state==='SLEEPING') drawResidentSleepIcon(r.x,iconY);
   else if (!r.workplace && r.state==='GOING_TO_CHOP') drawResidentAxeIcon(r.x,iconY);
-  if (r.starvationDays >= 2) { ctx.fillStyle='#f07162'; ctx.font='700 9px Arial,sans-serif'; ctx.fillText('!',r.x-5,r.y-24); }
-  else if (r.starvationDays >= 1) { ctx.fillStyle='#e1a056'; ctx.font='700 9px Arial,sans-serif'; ctx.fillText('!',r.x-5,r.y-22); }
 }
 
 function drawEnemy(e) {
@@ -3815,11 +3969,16 @@ const contextMenu = document.getElementById('context-menu');
 const buildingPanel = document.getElementById('building-panel');
 
 function updateTopBar() {
-  document.getElementById('r-food').textContent = Math.floor(G.resources.food);
-  document.getElementById('r-wood').textContent = Math.floor(G.resources.wood);
-  document.getElementById('r-stone').textContent = Math.floor(G.resources.stone);
-  document.getElementById('r-iron').textContent = Math.floor(G.resources.iron);
-  document.getElementById('r-ingot').textContent = Math.floor(G.resources.ingot);
+  for(const type of RESOURCE_TYPES) {
+    document.getElementById('r-'+type).textContent=Math.floor(G.resources[type]||0);
+    const item=document.getElementById('top-res-'+type);
+    item.style.display=isResourceAvailable(type)?'':'none';
+    const status=resourceStorageStatus(type);
+    item.classList.toggle('full',status.full);
+    if(status.full) showResourceFullNotice(type);
+    else G.resourceFullNotices.delete(type);
+  }
+  if (G.buildingPanelDirty) { updateBuildingPanel(); G.buildingPanelDirty=false; }
   let homeless=0, engActive=0, engTotal=0, guardTotal=0, hasIdle=false;
   for (const r of G.residents) {
     if (!r.home && !r.isGuard) homeless++;
@@ -4024,15 +4183,27 @@ function updateBuildingPanel() {
   for (const btn of document.querySelectorAll('.bld-btn')) {
     const def = BLD_DEFS[btn.dataset.type];
     if (!def) continue;
-    const locked = def.unlock > lv;
-    btn.style.display = locked ? "none" : "";
+    const status=buildingUnlockStatus(def,lv);
+    btn.style.display = status.visible ? '' : 'none';
+    btn.disabled=!status.unlocked;
+    btn.classList.toggle('locked',!status.unlocked);
+    btn.title=status.unlocked ? '' : status.text;
+    let condition=btn.querySelector('.unlock-condition');
+    if(!condition) {
+      condition=document.createElement('div'); condition.className='unlock-condition';
+      const copy=btn.querySelector('.bld-copy'); if(copy) copy.appendChild(condition);
+    }
+    if(condition) { condition.textContent=status.text; condition.style.display=status.unlocked?'none':''; }
+    if(!status.unlocked&&G.selectedBldType===btn.dataset.type) clearBlueprintCommand();
     const cost=btn.querySelector('.cost');
     if(cost) cost.innerHTML=formatResourceCost(def.cost);
   }
+  G.buildingPanelDirty=false;
 }
 buildingPanel.addEventListener('click', e => {
   const btn=e.target.closest('.bld-btn'); if(!btn) return;
   const type=btn.dataset.type;
+  if(btn.disabled) return;
   clearChopCommand();
   if(G.placingMode){G.placingMode=false;G.movingBuilding=null;}
   if(G.selectedBldType===type){

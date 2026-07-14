@@ -1,16 +1,18 @@
 {
   "version": 1,
-  "savedAt": "2026-07-13T16:07:14.642Z",
+  "savedAt": "2026-07-14T01:12:23.835Z",
   "globals": {
-    "DAY_DURATION": 162,
-    "NIGHT_DURATION": 78,
-    "HUNGER_RATE": 0.6,
+    "DAY_DURATION": 160,
+    "NIGHT_DURATION": 80,
+    "MEAL_TIME_LUNCH": 12,
+    "MEAL_TIME_DINNER": 18,
     "TIRED_RATE": 0.4,
     "RESIDENT_SPEED": 60,
-    "ENEMY_BASE_HP": 40,
-    "ENEMY_SPEED": 50,
-    "ENEMY_DAMAGE": 8,
     "RESIDENT_VISION": 2,
+    "GUARD_MAX_HP": 80,
+    "GUARD_DAMAGE": 12,
+    "GUARD_SPEED": 60,
+    "GUARD_ATTACK_COOLDOWN": 0.6,
     "GUARD_VISION": 3,
     "ENGINEER_REPAIR_RATE": 12,
     "ENEMY_WAVE_BASE_COUNT": 3,
@@ -42,6 +44,7 @@
     "IRON_CLUSTER_MAX": 4,
     "IRON_RARE_CLUSTER_CHANCE": 0.04,
     "START_POP": 3,
+    "START_ENGINEERS": 1,
     "MAX_POP_BASE": 4,
     "MAX_GUARD_BASE": 2
   },
@@ -124,17 +127,17 @@
         2
       ],
       "cost": {
-        "wood": 10
+        "wood": 40
       },
       "hp": 150,
       "maxWorkers": 0,
       "recruits": "resident",
-      "recruitTime": 10,
+      "recruitTime": 30,
       "recruitCost": {
-        "food": 5
+        "food": 10
       },
       "unlock": 2,
-      "buildTime": 2,
+      "buildTime": 10,
       "maxLevel": 5
     },
     "barracks": {
@@ -193,7 +196,7 @@
       "hp": 100,
       "maxWorkers": 2,
       "produces": "food",
-      "baseTime": 8,
+      "baseTime": 35,
       "batchSize": 5,
       "levelSpeedBonus": 0.2,
       "levelBufferBonus": 2,
@@ -333,14 +336,14 @@
         2
       ],
       "cost": {
-        "wood": 10,
-        "stone": 5
+        "wood": 10
       },
       "hp": 150,
       "maxWorkers": 0,
-      "capacity": 50,
-      "levelCapacityBonus": 25,
+      "capacity": 10,
+      "levelCapacityBonus": 20,
       "unlock": 1,
+      "unlockTreesChopped": 10,
       "buildTime": 5,
       "maxLevel": 5
     },
@@ -470,15 +473,15 @@
         "ingot": 0
       },
       "storageCaps": {
-        "food": 200,
-        "wood": 200,
-        "stone": 200,
-        "iron": 200,
-        "ingot": 200
+        "food": 10,
+        "wood": 10,
+        "stone": 0,
+        "iron": 0,
+        "ingot": 0
       },
       "unlock": 1,
       "buildTime": 2,
-      "maxLevel": 5,
+      "maxLevel": 10,
       "levels": {
         "2": {
           "hp": 650,
@@ -491,14 +494,43 @@
             "ingot": 0
           },
           "storageCaps": {
-            "food": 200,
-            "wood": 200,
-            "stone": 200,
-            "iron": 200,
-            "ingot": 200
+            "food": 20,
+            "wood": 20,
+            "stone": 0,
+            "iron": 0,
+            "ingot": 0
           },
           "upgradeCost": {
-            "wood": 20
+            "wood": 30
+          }
+        },
+        "3": {
+          "hp": 845,
+          "vision": 13,
+          "storageCaps": {
+            "food": 20,
+            "wood": 20,
+            "stone": 0,
+            "iron": 0,
+            "ingot": 0
+          },
+          "upgradeCost": {
+            "wood": 50
+          }
+        },
+        "5": {
+          "hp": 1428,
+          "vision": 13,
+          "storageCaps": {
+            "food": 10,
+            "wood": 10,
+            "stone": 10,
+            "iron": 0,
+            "ingot": 0
+          },
+          "upgradeCost": {
+            "wood": 500,
+            "stone": 200
           }
         }
       }
@@ -516,10 +548,10 @@
       },
       "hp": 50,
       "maxWorkers": 0,
-      "unlock": 1,
-      "buildTime": 2,
+      "unlock": 2,
+      "buildTime": 1,
       "vision": 8,
-      "levelVisionBonus": 1,
+      "levelVisionBonus": 3,
       "maxLevel": 5
     },
     "wall": {
