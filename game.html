@@ -127,6 +127,8 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 }
 .debug-actions { display:grid; grid-template-columns:1fr 1fr; gap:4px; }
 .debug-actions .full { grid-column:1 / -1; }
+.debug-stepper { grid-column:1 / -1; display:grid; grid-template-columns:32px 1fr 32px; gap:4px; align-items:center; }
+.debug-stepper span { color:#cbd5c7; text-align:center; font-size:11px; }
 .control-label { color:#87968a; font-size:10px; letter-spacing:1px; padding:3px 0 2px; }
 .dbg-btn { min-height:27px; }
 .dbg-btn {
@@ -165,7 +167,8 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     </div></div>
     <div class="panel-section"><div class="section-label">快速操作</div><div class="debug-actions">
       <button class="dbg-btn full" onclick="setAllRes()">无限资源</button>
-      <button class="dbg-btn" onclick="addPop(1)">增加居民</button><button class="dbg-btn" onclick="addPop(-1)">减少居民</button>
+      <div class="debug-stepper"><button class="dbg-btn" onclick="addPop(-1)" aria-label="减少居民" title="减少居民">-</button><span>居民</span><button class="dbg-btn" onclick="addPop(1)" aria-label="增加居民" title="增加居民">+</button></div>
+      <div class="debug-stepper"><button class="dbg-btn" onclick="addDebugGuard(-1)" aria-label="减少守卫" title="减少守卫">-</button><span>守卫</span><button class="dbg-btn" onclick="addDebugGuard(1)" aria-label="增加守卫" title="增加守卫">+</button></div>
       <button class="dbg-btn" onclick="skipToDay()">跳至白天</button><button class="dbg-btn" onclick="skipToNight()">跳至夜晚</button>
       <button class="dbg-btn" onclick="unlockAll()">全部解锁</button><button class="dbg-btn" onclick="upgradeTH()">升级大本营</button>
       <button class="dbg-btn full" onclick="debugRevealAllFog()">去除迷雾</button>
@@ -357,6 +360,7 @@ const CFG = {
   GUARD_DAMAGE: 12,
   GUARD_SPEED: 60,
   GUARD_ATTACK_COOLDOWN: 0.6,
+  ENEMY_GUARD_LEASH: 180,
   ENGINEER_REPAIR_RATE: 12,
 };
 
@@ -564,7 +568,7 @@ const G = {
   tick: 0, dt: 0, day: 1, dayTime: 0, phase: 'day', totalTime: 0,
   resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT },
   buildings: [], residents: [], enemies: [], particles: [], projectiles: [],
-  selectedBldType: null, selectedBuilding: null, hoveredCell: null,
+  selectedBldType: null, selectedBuilding: null, selectedGuard: null, selectedGuards: [], hoveredCell: null,
   mouseX: 0, mouseY: 0,
   placingMode: false, movingBuilding: null,
   maxPop: CFG.MAX_POP_BASE, maxGuards: CFG.MAX_GUARD_BASE, popGrowthTimer: 0,
@@ -572,6 +576,7 @@ const G = {
   enemySpawnQueue: [], enemySpawnTimer: 0,
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
   dragging: false, dragMoved:false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
+  guardSelectStart: null, guardSelectEnd: null, guardSelectMoved: false,
   floorMask: null, drawingFloor: false, lastFloorCell: '',
   resourceNodes: [],
   treesChopped: 0,
@@ -754,6 +759,7 @@ function resourceStorageStatus(type) {
   }
   return {capacity,stored,full:capacity>0&&stored>=capacity-0.001};
 }
+function resourceStorageCapacity(type) { return resourceStorageStatus(type).capacity; }
 function updateResourceTotal(type) {
   G.resources[type] = G.buildings.reduce((total, b) => total + (storageAcceptsResource(b,type) ? storedAmount(b, type) : 0), 0);
 }
@@ -926,6 +932,11 @@ function clearBlueprintCommand() {
   G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null;
   document.querySelectorAll('.bld-btn').forEach(button=>button.classList.remove('selected'));
 }
+function setSelectedGuards(guards) {
+  G.selectedGuards=[...new Set(guards||[])].filter(guard=>guard?.isGuard&&!guard.hidden&&G.residents.includes(guard));
+  G.selectedGuard=G.selectedGuards[0]||null;
+}
+function clearSelectedGuards() { setSelectedGuards([]); }
 function toggleChopMode() {
   const activate=!G.chopMode;
   if (activate) clearBlueprintCommand();
@@ -1447,7 +1458,11 @@ function removeResident(r) {
   }
   if (r.assignedTower && r.assignedTower.assignedGuard === r) r.assignedTower.assignedGuard = null;
   if (r.manningTower && r.manningTower.assignedGuard === r) r.manningTower.assignedGuard = null;
-  for (const enemy of G.enemies) if (enemy.fightingGuard === r) enemy.fightingGuard = null;
+  for (const enemy of G.enemies) {
+    if (enemy.fightingGuard === r) enemy.fightingGuard = null;
+    if (enemy.guardTarget === r) enemy.guardTarget = null;
+  }
+  if (G.selectedGuards.includes(r)) setSelectedGuards(G.selectedGuards.filter(guard=>guard!==r));
   if (r.buildTarget) r.buildTarget.assignedEngineer = null;
   r.hidden = true;
   removeHome(r);
@@ -1538,6 +1553,9 @@ class Resident {
     this.manningTower = null;
     this.assignedTower = null;
     this.guardHealTimer = 0;
+    this.controlMode = 'auto';
+    this.manualTarget = null;
+    this.manualTargetEnemy = null;
   }
 }
 
@@ -1558,6 +1576,7 @@ class Enemy {
     else { this.targetX = CFG.WORLD_W/2; this.targetY = CFG.WORLD_H/2; }
     this.attacking = null; this.attackTimer = 0;
     this.fightingGuard = null;
+    this.guardTarget = null;
     this.alive = true;
     this.size = def.size * (0.9+Math.random()*0.15);
   }
@@ -1785,6 +1804,7 @@ function updateDayNight(dt) {
       for (const r of G.residents) {
         if (r.isGuard) {
           // Guards: go sleep for the day, heal fully
+          r.controlMode='auto'; r.manualTarget=null; r.manualTargetEnemy=null;
           r.state = 'GUARD_SLEEPING'; r.hidden = true;
           r.guardHP = r.guardMaxHP;
           r.manningTower = null;
@@ -1899,6 +1919,49 @@ function enemyCanAttackBuilding(e,b) {
   return Math.hypot(e.x-c.x,e.y-c.y) <= b.collisionRadius()+e.attackRange+5;
 }
 
+function enemyAggroGuard(e, guard) {
+  if (!e || !e.alive || !guard || !guard.isGuard || guard.guardHP<=0 || guard.hidden) return;
+  e.guardTarget=guard;
+  e.attacking=null;
+}
+
+function enemyCanChaseGuard(e, guard) {
+  if (!guard || !guard.isGuard || guard.guardHP<=0 || guard.hidden) return false;
+  if (guard.state==='GUARD_RETURNING' || guard.state==='GUARD_HEALING' || guard.state==='GUARD_SLEEPING') return false;
+  return Math.hypot(e.x-guard.x,e.y-guard.y)<=CFG.ENEMY_GUARD_LEASH;
+}
+
+function updateEnemyGuardCombat(e, dt) {
+  const guard=e.guardTarget || e.fightingGuard;
+  if (!enemyCanChaseGuard(e,guard)) {
+    e.guardTarget=null; e.fightingGuard=null;
+    return false;
+  }
+  e.attacking=null;
+  const distance=Math.hypot(e.x-guard.x,e.y-guard.y);
+  if (distance>e.attackRange+4) {
+    e.fightingGuard=null;
+    const dx=guard.x-e.x, dy=guard.y-e.y, dd=distance||1;
+    e.x+=(dx/dd)*e.speed*dt;
+    e.y+=(dy/dd)*e.speed*dt;
+    return true;
+  }
+  e.fightingGuard=guard;
+  e.attackTimer += dt;
+  if (e.attackTimer >= 0.5) {
+    e.attackTimer = 0;
+    guard.guardHP -= e.damage;
+    spawnParticles(e.x, e.y, '#ff4444', 2);
+    if (guard.guardHP <= 0) {
+      guard.guardHP=0;
+      guard.controlMode='auto'; guard.manualTarget=null; guard.manualTargetEnemy=null;
+      guard.state='GUARD_RETURNING'; guard.manningTower=null;
+      e.guardTarget=null; e.fightingGuard=null;
+    }
+  }
+  return true;
+}
+
 function updateEnemies(dt) {
   G.enemySpawnTimer += dt;
   for (let i=G.enemySpawnQueue.length-1; i>=0; i--) {
@@ -1908,25 +1971,7 @@ function updateEnemies(dt) {
   }
   for (const e of G.enemies) {
     if (!e.alive) continue;
-    // Guard combat: enemy attacking a guard
-    if (e.fightingGuard) {
-      if (e.fightingGuard.guardHP <= 0) {
-        e.fightingGuard = null; continue;
-      }
-      e.attackTimer += dt;
-      if (e.attackTimer >= 0.5) {
-        e.attackTimer = 0;
-        e.fightingGuard.guardHP -= e.damage;
-        spawnParticles(e.x, e.y, '#ff4444', 2);
-        if (e.fightingGuard.guardHP <= 0) {
-          e.fightingGuard.guardHP = 0;
-          e.fightingGuard.state = 'GUARD_RETURNING';
-          e.fightingGuard.manningTower = null;
-          e.fightingGuard = null;
-        }
-      }
-      continue;
-    }
+    if (updateEnemyGuardCombat(e,dt)) continue;
     // Building attack
     if (e.attacking && e.attacking.hp>0) {
       e.attackTimer += dt;
@@ -1938,18 +1983,7 @@ function updateEnemies(dt) {
       }
     } else {
       e.attacking = null;
-      // Priority 1: check for nearby fighting guards
-      let guardBlocked = false;
-      for (const r of G.residents) {
-        if (!r.isGuard) continue;
-        if (r.state !== 'GUARD_FIGHTING' && r.state !== 'GUARD_MANNING') continue;
-        const d = Math.hypot(e.x - r.x, e.y - r.y);
-        if (d < e.attackRange + 10) {
-          e.fightingGuard = r; e.attackTimer = 0; guardBlocked = true; break;
-        }
-      }
-      if (guardBlocked) continue;
-      // Priority 2: attack the first building that physically blocks the route
+      // Attack the first building that physically blocks the route
       // to the town hall. This makes walls and front-line buildings reliable.
       const blocker=enemyRouteBlocker(e);
       if (enemyCanAttackBuilding(e, blocker)) {
@@ -1967,7 +2001,7 @@ function updateEnemies(dt) {
   // Homeless residents at night can be attacked (exclude guards)
   if (G.phase==='night') {
     for (const e of G.enemies) {
-      if (!e.alive || e.attacking || e.fightingGuard) continue;
+      if (!e.alive || e.attacking || e.fightingGuard || e.guardTarget) continue;
       for (const r of G.residents) {
         if (r.isGuard) continue;
         if (r.state==='SLEEPING') continue;
@@ -2002,8 +2036,60 @@ function getGuardPatrol() {
   return { x: cx, y: cy, r: maxR + 100 };
 }
 
+function releaseGuardTower(r) {
+  const tower=r.manningTower || r.assignedTower;
+  if (tower && tower.assignedGuard===r) tower.assignedGuard=null;
+  r.manningTower=null;
+  r.assignedTower=null;
+}
+
+function setGuardControlMode(r, mode) {
+  if (!r || !r.isGuard || r.guardHP<=0 || r.hidden) return false;
+  if (mode==='manual') {
+    releaseGuardTower(r);
+    r.controlMode='manual'; r.manualTarget=null; r.manualTargetEnemy=null;
+    r.state='GUARD_MANUAL';
+  } else {
+    r.controlMode='auto'; r.manualTarget=null; r.manualTargetEnemy=null;
+    r.state=(G.phase==='night'||G.phase==='dusk') ? 'GUARD_FIGHTING' : 'GUARD_SLEEPING';
+    r.hidden=G.phase!=='night'&&G.phase!=='dusk';
+  }
+  return true;
+}
+
+function guardAttackEnemy(r, enemy, dt) {
+  r.guardAttackCD -= dt;
+  if (r.guardAttackCD > 0) return;
+  r.guardAttackCD=CFG.GUARD_ATTACK_COOLDOWN;
+  enemy.hp-=CFG.GUARD_DAMAGE;
+  enemyAggroGuard(enemy,r);
+  spawnParticles(enemy.x,enemy.y,'#ffaa00',2);
+  if (enemy.hp<=0) {
+    enemy.alive=false;
+    spawnParticles(enemy.x,enemy.y,'#ff6600',5);
+  }
+}
+
+function updateManualGuard(r, dt) {
+  let target=r.manualTargetEnemy;
+  if (target && (!target.alive || target.hp<=0 || !isWorldVisible(target.x,target.y))) {
+    r.manualTargetEnemy=null; target=null;
+  }
+  if (target) {
+    const distance=Math.hypot(target.x-r.x,target.y-r.y);
+    if (distance<=20) guardAttackEnemy(r,target,dt);
+    else moveViaFlow(r,target.x,target.y,CFG.GUARD_SPEED,dt);
+    return;
+  }
+  if (!r.manualTarget) return;
+  const distance=Math.hypot(r.manualTarget.x-r.x,r.manualTarget.y-r.y);
+  if (distance<=3) { r.manualTarget=null; return; }
+  moveViaFlow(r,r.manualTarget.x,r.manualTarget.y,CFG.GUARD_SPEED,dt);
+}
+
 function guardUpdateAI(r, dt) {
   const th = G.townHall; if (!th) return;
+  if (r.controlMode==='manual') { updateManualGuard(r,dt); return; }
   const thCenter = th.center();
   const cycleLen = CFG.DAY_DURATION + CFG.NIGHT_DURATION + CFG.TRANSITION * 2;
   const twoGameHours = cycleLen * 2 / 24;
@@ -2064,17 +2150,7 @@ function guardUpdateAI(r, dt) {
       if (targetEnemy) {
         const dx = targetEnemy.x - r.x, dy = targetEnemy.y - r.y, dd = Math.hypot(dx, dy) || 1;
         if (dd < 20) {
-          // Attack
-          r.guardAttackCD -= dt;
-          if (r.guardAttackCD <= 0) {
-            r.guardAttackCD = CFG.GUARD_ATTACK_COOLDOWN;
-            targetEnemy.hp -= CFG.GUARD_DAMAGE;
-            spawnParticles(targetEnemy.x, targetEnemy.y, '#ffaa00', 2);
-            if (targetEnemy.hp <= 0) {
-              targetEnemy.alive = false;
-              spawnParticles(targetEnemy.x, targetEnemy.y, '#ff6600', 5);
-            }
-          }
+          guardAttackEnemy(r,targetEnemy,dt);
         } else {
           // Move toward enemy
           moveViaFlow(r, targetEnemy.x, targetEnemy.y, CFG.GUARD_SPEED, dt);
@@ -2499,6 +2575,7 @@ function updateBuildings(dt) {
           if (b.type==='house') G.maxPop += houseCapacity(b);
           if (b.type==='barracks') G.maxGuards += guardCapacity(b);
           if (b.type==='farm') refreshFarmAdjacency();
+          if (isStorage(b.type)) updateAllResourceTotals();
         }
       }
     }
@@ -2513,6 +2590,7 @@ function updateBuildings(dt) {
         if (b.type==='house'||b.type==='town_hall') G.maxPop += houseCapacity(b)-oldPop;
         if (b.type==='barracks'||b.type==='town_hall') G.maxGuards += guardCapacity(b)-oldGuard;
         if (b.type==='town_hall') { updateBuildingPanel(); refreshFogVisibility(); }
+        if (isStorage(b.type)) updateAllResourceTotals();
       }
     }
     // Recruitment belongs to its dedicated building, not the town hall.
@@ -2693,6 +2771,7 @@ function skipToNight() {
 function unlockAll() {
   const th = G.townHall; if (!th) return;
   th.level = maxBuildingLevel('town_hall'); th.maxHp = Math.floor(buildingLevelValue('town_hall',th.level,'hp')); th.hp = th.maxHp;
+  G.treesChopped = Math.max(G.treesChopped||0, ...Object.values(BLD_DEFS).map(def=>Math.max(0, Number(def.unlockTreesChopped)||0)));
   G.maxPop = CFG.MAX_POP_BASE;
   G.maxGuards = CFG.MAX_GUARD_BASE;
   for (const b of G.buildings) { if (b.type==='house') G.maxPop += houseCapacity(b); }
@@ -2712,6 +2791,7 @@ function skipToDay() {
   G.phase = 'day'; G.dayTime = 0; G.day++; G.enemies = []; G.projectiles = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   for (const r of G.residents) {
     if (r.isGuard) {
+      r.controlMode='auto'; r.manualTarget=null; r.manualTargetEnemy=null;
       r.state = 'GUARD_SLEEPING'; r.hidden = true; r.guardHP = r.guardMaxHP; r.manningTower = null;
     } else {
       r.state = 'IDLE'; r.tired = 0; r.hidden = false;
@@ -3263,12 +3343,33 @@ function addPop(n) {
       assignHome(r, findNearestHome(r, r.isGuard)); G.residents.push(r);
     }
   } else {
-    for (let i=0; i<-n && G.residents.length>0; i++) {
-      const r = G.residents[G.residents.length-1];
+    for (let i=0; i<-n; i++) {
+      const r = [...G.residents].reverse().find(resident=>!resident.isGuard);
+      if (!r) break;
       removeResident(r);
     }
   }
   G.popGrowthTimer = 0;
+}
+function addDebugGuard(n) {
+  const th=G.townHall;
+  if (!th) return;
+  if (n>0) {
+    for (let i=0;i<n;i++) {
+      const r=new Resident(th.x+55+(Math.random()-0.5)*60,th.y+45+(Math.random()-0.5)*60);
+      r.isGuard=true;
+      r.state=(G.phase==='night'||G.phase==='dusk') ? 'GUARD_FIND_TOWER' : 'GUARD_SLEEPING';
+      r.hidden=G.phase!=='night'&&G.phase!=='dusk';
+      assignHome(r,findNearestHome(r,true));
+      G.residents.push(r);
+    }
+  } else {
+    for (let i=0;i<-n;i++) {
+      const guard=[...G.residents].reverse().find(resident=>resident.isGuard);
+      if (!guard) break;
+      removeResident(guard);
+    }
+  }
 }
 
 function gameOver(msg) {
@@ -3280,7 +3381,8 @@ function restartGame() {
   G.buildings = []; G.residents = []; G.enemies = []; G.particles = []; G.projectiles = [];
   G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT };
   G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
-  G.selectedBldType = null; G.selectedBuilding = null; G.placingMode = false; G.movingBuilding = null;
+  G.selectedBldType = null; G.selectedBuilding = null; clearSelectedGuards(); G.placingMode = false; G.movingBuilding = null;
+  G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false;
   G.maxPop = CFG.MAX_POP_BASE; G.maxGuards = CFG.MAX_GUARD_BASE; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   G.resourceCleanupTimer = 0; G.farmLinks = []; G.navigationRevision = 0; G.obstacleIndexRevision = -1;
   G.resourceFullNotices = new Set();
@@ -3516,6 +3618,13 @@ function render() {
     ctx.strokeStyle = '#fff'; ctx.lineWidth = 1; ctx.setLineDash([4, 4]); ctx.strokeRect(gridX(sx), gridY(sy), (ex - sx + 1) * CFG.CELL, (ey - sy + 1) * CFG.CELL); ctx.setLineDash([]);
   }
 
+  if (G.guardSelectStart && G.guardSelectEnd && G.guardSelectMoved) {
+    const x=Math.min(G.guardSelectStart.x,G.guardSelectEnd.x), y=Math.min(G.guardSelectStart.y,G.guardSelectEnd.y);
+    const w=Math.abs(G.guardSelectEnd.x-G.guardSelectStart.x), h=Math.abs(G.guardSelectEnd.y-G.guardSelectStart.y);
+    ctx.fillStyle='rgba(120,184,237,0.12)'; ctx.fillRect(x,y,w,h);
+    ctx.strokeStyle='rgba(120,184,237,0.9)'; ctx.lineWidth=1.5/G.cam.zoom; ctx.setLineDash([4,3]); ctx.strokeRect(x,y,w,h); ctx.setLineDash([]);
+  }
+
   // Arrow projectiles
   for (const arrow of G.projectiles) {
     if (isWorldVisible(arrow.x,arrow.y) && inView(arrow.x,arrow.y)) drawArrowProjectile(arrow);
@@ -3626,10 +3735,17 @@ function drawBuilding(b, x, y) {
   ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.setLineDash([3,6]); ctx.strokeRect(x+1,y+1,w-2,h-2); ctx.setLineDash([]);
   if (b.blueprint) ctx.globalAlpha = 0.5;
   ctx.save(); ctx.shadowColor='rgba(0,0,0,0.42)'; ctx.shadowBlur=7/G.cam.zoom; ctx.shadowOffsetY=3/G.cam.zoom;
-  ctx.fillStyle=buildingColor(b.type); ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.fill(); ctx.restore();
-  ctx.strokeStyle='rgba(238,238,220,0.5)'; ctx.lineWidth=1.5/G.cam.zoom; ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.stroke();
-  ctx.strokeStyle='rgba(255,255,255,0.13)'; ctx.lineWidth=4/G.cam.zoom; ctx.beginPath(); ctx.arc(cx-2,cy-2,Math.max(2,cr-5),Math.PI*1.05,Math.PI*1.8); ctx.stroke();
-  drawBuildingDetails(b,cx,cy,cr);
+  ctx.fillStyle=buildingColor(b.type);
+  if (b.type==='farm') ctx.fillRect(x+3,y+3,w-6,h-6);
+  else { ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.fill(); }
+  ctx.restore();
+  ctx.strokeStyle='rgba(238,238,220,0.5)'; ctx.lineWidth=1.5/G.cam.zoom;
+  if (b.type==='farm') ctx.strokeRect(x+3,y+3,w-6,h-6);
+  else { ctx.beginPath(); ctx.arc(cx, cy, cr, 0, Math.PI*2); ctx.stroke(); }
+  ctx.strokeStyle='rgba(255,255,255,0.13)'; ctx.lineWidth=3/G.cam.zoom;
+  if (b.type==='farm') { ctx.beginPath(); ctx.moveTo(x+7,y+7); ctx.lineTo(x+w-7,y+7); ctx.stroke(); }
+  else { ctx.beginPath(); ctx.arc(cx-2,cy-2,Math.max(2,cr-5),Math.PI*1.05,Math.PI*1.8); ctx.stroke(); }
+  drawBuildingDetails(b,cx,cy,cr,w,h);
   if (!b.blueprint && def.needsManning) {
     const post = b.guardSpot();
     const guard = b.assignedGuard;
@@ -3721,7 +3837,7 @@ function drawBuilding(b, x, y) {
     ctx.fillStyle='rgba(255,214,126,0.92)'; ctx.font='700 8px Arial,sans-serif'; ctx.textAlign='center';
     ctx.fillText(`产 ${b.pendingOutput}/${productionBufferCapacity(b)}`, cx, y-4);
   }
-  if (!b.blueprint && b.type!=='town_hall') {
+  if (!b.blueprint && b.type!=='town_hall' && b.type!=='wood_storage') {
     const ts=b.stored?Object.values(b.stored).reduce((a,c)=>a+c,0):0;
     if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='700 8px Arial,sans-serif'; ctx.fillText(`BOX ${ts}`,cx,y-4); }
   }
@@ -3755,12 +3871,15 @@ function drawArrowProjectile(arrow) {
   ctx.restore();
 }
 
-function drawBuildingDetails(b,cx,cy,cr) {
+function drawBuildingDetails(b,cx,cy,cr,w,h) {
   const t=b.type;
   ctx.save(); ctx.lineWidth=1.2/G.cam.zoom;
   if (t==='farm') {
     ctx.strokeStyle='rgba(232,220,139,0.6)';
-    for (let i=-2;i<=2;i++) { ctx.beginPath(); ctx.moveTo(cx-cr*0.62,cy+i*5); ctx.lineTo(cx+cr*0.62,cy+i*5); ctx.stroke(); }
+    const left=cx-w/2+7, right=cx+w/2-7, top=cy-h/2+9, bottom=cy+h/2-7;
+    for (let y=top;y<=bottom;y+=6) { ctx.beginPath(); ctx.moveTo(left,y); ctx.lineTo(right,y); ctx.stroke(); }
+    ctx.strokeStyle='rgba(101,119,57,0.55)';
+    for (let x=left+7;x<right;x+=9) { ctx.beginPath(); ctx.moveTo(x,top); ctx.lineTo(x,bottom); ctx.stroke(); }
   } else if (t==='forester') {
     ctx.fillStyle='rgba(16,64,37,0.7)';
     for (const [ox,oy,s] of [[-11,3,7],[0,-8,9],[11,4,7]]) { ctx.beginPath(); ctx.arc(cx+ox,cy+oy,s,0,Math.PI*2); ctx.fill(); }
@@ -3856,6 +3975,11 @@ function drawResident(r) {
 	    :r.isEngineer?'#ff8800'
     :'#aaaaaa';
   const cr = RESIDENT_RADIUS;
+  if (G.selectedGuards.includes(r)) {
+    ctx.strokeStyle=r.controlMode==='manual'?'#f2d06b':'#78b8ed';
+    ctx.lineWidth=2/G.cam.zoom; ctx.setLineDash(r.controlMode==='manual'?[3,3]:[]);
+    ctx.beginPath(); ctx.arc(r.x,r.y,cr+5,0,Math.PI*2); ctx.stroke(); ctx.setLineDash([]);
+  }
   ctx.fillStyle='rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.arc(r.x,r.y,cr,0,Math.PI*2); ctx.fill();
   ctx.save(); ctx.translate(r.x, r.y + cr/2 - 10); ctx.scale(0.5, 1.0);
   ctx.fillStyle=bodyColor; ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
@@ -3970,10 +4094,10 @@ const buildingPanel = document.getElementById('building-panel');
 
 function updateTopBar() {
   for(const type of RESOURCE_TYPES) {
-    document.getElementById('r-'+type).textContent=Math.floor(G.resources[type]||0);
+    const status=resourceStorageStatus(type);
+    document.getElementById('r-'+type).textContent=`${Math.floor(G.resources[type]||0)}/${Math.floor(status.capacity)}`;
     const item=document.getElementById('top-res-'+type);
     item.style.display=isResourceAvailable(type)?'':'none';
-    const status=resourceStorageStatus(type);
     item.classList.toggle('full',status.full);
     if(status.full) showResourceFullNotice(type);
     else G.resourceFullNotices.delete(type);
@@ -4117,7 +4241,10 @@ function actionRemoveGuard() {
   const b=G.selectedBuilding; if(!b||b.type!=='arrow_tower') return;
   const guard=G.residents.find(r=>r.isGuard && (r.assignedTower===b || r.manningTower===b));
   if(!guard) return;
-  for (const enemy of G.enemies) if (enemy.fightingGuard===guard) enemy.fightingGuard=null;
+  for (const enemy of G.enemies) {
+    if (enemy.fightingGuard===guard) enemy.fightingGuard=null;
+    if (enemy.guardTarget===guard) enemy.guardTarget=null;
+  }
   if(guard.manningTower===b) guard.manningTower=null;
   guard.assignedTower=null; b.assignedGuard=null;
   guard.state=(G.phase==='night'||G.phase==='dusk')?'GUARD_FIGHTING':'GUARD_SLEEPING';
@@ -4218,6 +4345,28 @@ buildingPanel.addEventListener('click', e => {
 // ============================================================
 // INPUT
 // ============================================================
+function issueManualGuardCommand(clientX, clientY) {
+  const guards=G.selectedGuards.filter(guard=>guard.controlMode==='manual'&&!guard.hidden);
+  if (!guards.length) return false;
+  const rect=canvas.getBoundingClientRect();
+  if (clientX<rect.left || clientX>rect.right || clientY<rect.top || clientY>rect.bottom) return false;
+  const wp=screenToWorld(clientX-rect.left,clientY-rect.top);
+  const enemy=G.enemies.find(e=>e.alive && isWorldVisible(e.x,e.y) && Math.hypot(e.x-wp.x,e.y-wp.y)<=e.size+8);
+  const columns=Math.ceil(Math.sqrt(guards.length));
+  for (let index=0;index<guards.length;index++) {
+    const guard=guards[index];
+    clearNavigation(guard);
+    guard.manualTargetEnemy=enemy||null;
+    if (enemy) guard.manualTarget=null;
+    else {
+      const offsetX=(index%columns-(columns-1)/2)*(RESIDENT_RADIUS*2.5);
+      const offsetY=(Math.floor(index/columns)-(Math.ceil(guards.length/columns)-1)/2)*(RESIDENT_RADIUS*2.5);
+      guard.manualTarget={x:clamp(wp.x+offsetX,0,CFG.WORLD_W),y:clamp(wp.y+offsetY,0,CFG.WORLD_H)};
+    }
+  }
+  return true;
+}
+
 canvas.addEventListener('mousemove', e => {
   const r=canvas.getBoundingClientRect();
   const mx=e.clientX-r.left, my=e.clientY-r.top;
@@ -4234,6 +4383,10 @@ canvas.addEventListener('mousemove', e => {
     G.cam.x = G.dragCamStartX - (mx - G.dragStartX) / G.cam.zoom;
     G.cam.y = G.dragCamStartY - (my - G.dragStartY) / G.cam.zoom;
     clampCamera();
+  }
+  if (G.guardSelectStart) {
+    G.guardSelectEnd={x:wp.x,y:wp.y};
+    if (Math.hypot(mx-G.guardSelectScreenX,my-G.guardSelectScreenY)>4) G.guardSelectMoved=true;
   }
 });
 canvas.addEventListener('mousedown', e => {
@@ -4258,6 +4411,9 @@ canvas.addEventListener('mousedown', e => {
   if (G.chopMode || G.unchopMode) {
     G.chopStartX = col; G.chopStartY = row; G.chopEndX = -1; G.chopEndY = -1;
     G.dragging = false;
+  } else if (!G.selectedBldType && !G.placingMode) {
+    G.guardSelectStart={x:wp.x,y:wp.y}; G.guardSelectEnd={x:wp.x,y:wp.y};
+    G.guardSelectScreenX=mx; G.guardSelectScreenY=my; G.guardSelectMoved=false;
   }
 });
 canvas.addEventListener('click', e => {
@@ -4265,6 +4421,16 @@ canvas.addEventListener('click', e => {
   const mx=e.clientX-r.left, my=e.clientY-r.top;
   const wp=screenToWorld(mx, my);
   const col=gridCol(wp.x), row=gridRow(wp.y);
+
+  if (G.guardSelectStart && G.guardSelectMoved) {
+    const start=G.guardSelectStart, end=G.guardSelectEnd||start;
+    const minX=Math.min(start.x,end.x), maxX=Math.max(start.x,end.x), minY=Math.min(start.y,end.y), maxY=Math.max(start.y,end.y);
+    setSelectedGuards(G.residents.filter(resident=>resident.isGuard&&!resident.hidden&&resident.x>=minX&&resident.x<=maxX&&resident.y>=minY&&resident.y<=maxY));
+    G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false;
+    G.selectedBuilding=null; hideContextMenu();
+    return;
+  }
+  G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false;
 
   // Apply chop/unchop selection on mouse release
   if ((G.chopMode || G.unchopMode) && G.chopStartX >= 0) {
@@ -4298,6 +4464,14 @@ canvas.addEventListener('click', e => {
   }
   G.dragging = false;
 
+  const clickedGuard=G.residents.find(resident=>resident.isGuard && !resident.hidden && Math.hypot(resident.x-wp.x,resident.y-wp.y)<=RESIDENT_RADIUS+5);
+  if (clickedGuard) {
+    setSelectedGuards([clickedGuard]); G.selectedBuilding=null; G.selectedBldType=null;
+    document.querySelectorAll('.bld-btn').forEach(button=>button.classList.remove('selected'));
+    hideContextMenu();
+    return;
+  }
+
   if(G.placingMode && G.movingBuilding) {
     const b=G.movingBuilding;
     const cp=pixelCenterPlacement(b.type, wp.x, wp.y);
@@ -4321,13 +4495,13 @@ canvas.addEventListener('click', e => {
   }
 
   if(clicked){
-    G.selectedBuilding=clicked; G.selectedBldType=null;
+    G.selectedBuilding=clicked; clearSelectedGuards(); G.selectedBldType=null;
     document.querySelectorAll('.bld-btn').forEach(b=>b.classList.remove('selected'));
     showContextMenu(clicked,e.clientX,e.clientY);
   } else if(G.selectedBldType && !G.placingMode){
     const cp=pixelCenterPlacement(G.selectedBldType, wp.x, wp.y);
     addBuilding(G.selectedBldType,cp.col,cp.row);
-  } else { G.selectedBuilding=null; hideContextMenu(); }
+  } else { G.selectedBuilding=null; clearSelectedGuards(); hideContextMenu(); }
 });
 canvas.addEventListener('wheel', e => {
   e.preventDefault();
@@ -4345,12 +4519,12 @@ canvas.addEventListener('wheel', e => {
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
 });
-canvas.addEventListener('mouseleave', () => { G.dragging = false; });
+canvas.addEventListener('mouseleave', () => { G.dragging = false; G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false; });
 window.addEventListener('mouseup', e => {
   if (e.button !== 2) return;
   const isCancelClick=G.dragging && !G.dragMoved;
   G.dragging=false; G.dragMoved=false;
-  if (isCancelClick) cancelCurrentAction();
+  if (isCancelClick && !issueManualGuardCommand(e.clientX,e.clientY)) cancelCurrentAction();
 });
 contextMenu.addEventListener('click', e => e.stopPropagation());
 document.addEventListener('mousedown', e => {
@@ -4379,6 +4553,12 @@ document.addEventListener('keydown', event => {
   const configOpen=document.getElementById('config-overlay').style.display==='flex';
   if (settingsOpen || configOpen) {
     if (event.code==='Escape') { event.preventDefault(); closeAllOverlays(); }
+    return;
+  }
+  if (event.code==='KeyE' && G.selectedGuards.length) {
+    event.preventDefault();
+    const nextMode=G.selectedGuards.every(guard=>guard.controlMode==='manual')?'auto':'manual';
+    for (const guard of G.selectedGuards) setGuardControlMode(guard,nextMode);
     return;
   }
   const action=Object.keys(gameSettings.shortcuts).find(id => gameSettings.shortcuts[id]===event.code);

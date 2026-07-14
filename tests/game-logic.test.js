@@ -152,6 +152,22 @@ test('full wood storage pauses logging instead of leaving a resident chopping in
   assert.equal(result.selectable, null);
 });
 
+test('a completed wood storage increases total wood capacity immediately', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',30,30); hall.stored.wood=10;
+    BLD_DEFS.town_hall.storageCaps={food:10,wood:10,stone:0,iron:0,ingot:0};
+    const store=new Building('wood_storage',20,20); store.blueprint=false; store.constructionTimer=0;
+    G.townHall=hall; G.buildings=[hall]; G.resources={food:0,wood:10,stone:0,iron:0,ingot:0};
+    const before=resourceStorageCapacity('wood');
+    G.buildings.push(store);
+    const after=resourceStorageCapacity('wood');
+    globalThis.__result={before,after,storeCapacity:storageCapacity(store,'wood'),full:resourceStorageStatus('wood').full};
+  `);
+  assert.equal(result.before, 10);
+  assert.equal(result.after, 10+result.storeCapacity);
+  assert.equal(result.full, false);
+});
+
 test('a full-resource notice is throttled until that resource has storage space again', () => {
   const result = runGameScenario(`
     G.resourceFullNotices=new Set();
@@ -813,6 +829,85 @@ test('building panel unlock rules preview one town hall level and hide extra req
   assert.equal(result.levelOne.text, '需要2级大本营与？');
   assert.equal(result.levelTwo.text, '砍伐树木 1/10');
   assert.equal(result.complete.unlocked, true);
+});
+
+test('debug unlock all also satisfies extra building unlock requirements', () => {
+  const result = runGameScenario(`
+    globalThis.updateBuildingPanel=()=>{};
+    const hall=new Building('town_hall',30,30);
+    G.townHall=hall; G.buildings=[hall]; G.treesChopped=0;
+    unlockAll();
+    globalThis.__result={
+      treesChopped:G.treesChopped,
+      required:BLD_DEFS.wood_storage.unlockTreesChopped,
+      woodStorage:buildingUnlockStatus(BLD_DEFS.wood_storage, G.townHall.level).unlocked,
+    };
+  `);
+  assert.ok(result.treesChopped >= result.required);
+  assert.equal(result.woodStorage, true);
+});
+
+test('debug population controls keep residents and guards separate', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',30,30);
+    G.townHall=hall; G.buildings=[hall]; G.residents=[]; G.phase='day';
+    addPop(1); addDebugGuard(1); addPop(-1);
+    globalThis.__result={workers:residentCount(false),guards:residentCount(true)};
+  `);
+  assert.equal(result.workers, 0);
+  assert.equal(result.guards, 1);
+});
+
+test('a guard can enter manual mode and receive a move target', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',30,30);
+    const tower=new Building('arrow_tower',34,30);
+    const guard=new Resident(100,100); guard.isGuard=true; guard.hidden=false; guard.state='GUARD_MANNING';
+    guard.assignedTower=tower; guard.manningTower=tower; tower.assignedGuard=guard;
+    G.townHall=hall; G.buildings=[hall,tower]; G.residents=[guard]; G.phase='night';
+    setGuardControlMode(guard,'manual');
+    guard.manualTarget={x:160,y:100};
+    updateManualGuard(guard,0.5);
+    globalThis.__result={mode:guard.controlMode,state:guard.state,towerReleased:tower.assignedGuard===null,moved:guard.x>100};
+  `);
+  assert.equal(result.mode, 'manual');
+  assert.equal(result.state, 'GUARD_MANUAL');
+  assert.equal(result.towerReleased, true);
+  assert.equal(result.moved, true);
+});
+
+test('selected guards switch control mode together and manual movement plans around obstacles', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',30,30);
+    const wall=new Building('wall',2,1);
+    const first=new Resident(20,60); first.isGuard=true; first.hidden=false;
+    const second=new Resident(30,60); second.isGuard=true; second.hidden=false;
+    G.townHall=hall; G.buildings=[hall,wall]; G.residents=[first,second]; G.phase='night';
+    setSelectedGuards([first,second]);
+    for (const guard of G.selectedGuards) setGuardControlMode(guard,'manual');
+    first.manualTarget={x:220,y:60};
+    updateManualGuard(first,0.1);
+    globalThis.__result={bothManual:first.controlMode==='manual'&&second.controlMode==='manual',hasWaypoint:!!first.navWaypoint};
+  `);
+  assert.equal(result.bothManual, true);
+  assert.equal(result.hasWaypoint, true);
+});
+
+test('an enemy chases an attacking guard then drops aggro beyond its leash', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',30,30);
+    const guard=new Resident(120,100); guard.isGuard=true; guard.hidden=false; guard.state='GUARD_MANUAL'; guard.controlMode='manual';
+    G.townHall=hall; G.buildings=[hall]; G.residents=[guard]; G.enemies=[]; G.phase='night';
+    const enemy=new Enemy(20,100); G.enemies=[enemy];
+    enemyAggroGuard(enemy,guard);
+    updateEnemies(0.5);
+    const chased=enemy.x>20 && enemy.guardTarget===guard;
+    guard.x=1000;
+    updateEnemies(0.1);
+    globalThis.__result={chased,dropped:enemy.guardTarget===null};
+  `);
+  assert.equal(result.chased, true);
+  assert.equal(result.dropped, true);
 });
 
 test('debug reveal removes fog across the whole map until restart state is cleared', () => {
