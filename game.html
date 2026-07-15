@@ -137,6 +137,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
   font-size:11px; font-family:inherit;
 }
 .dbg-btn:hover { background:#3b4a41; }
+.dbg-btn.active { background:#3f5948; border-color:#9bc68c; color:#efffcf; box-shadow:inset 3px 0 #b7e894; }
 .dbg-row { display:flex; align-items:center; gap:3px; }
 .dbg-row input {
   width:50px; background:#222; border:1px solid #555; color:#fff;
@@ -172,6 +173,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
       <button class="dbg-btn" onclick="skipToDay()">跳至白天</button><button class="dbg-btn" onclick="skipToNight()">跳至夜晚</button>
       <button class="dbg-btn" onclick="unlockAll()">全部解锁</button><button class="dbg-btn" onclick="upgradeTH()">升级大本营</button>
       <button class="dbg-btn full" onclick="debugRevealAllFog()">去除迷雾</button>
+      <button id="debug-navigation-btn" class="dbg-btn full active" onclick="toggleDebugNavigation()">隐藏寻路</button>
       <button class="dbg-btn full" onclick="restartGame()">重新开始</button>
     </div></div>
     <div class="panel-section"><div class="section-label">资源注入</div>
@@ -284,6 +286,10 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
       <button onclick="closeSettingsPanel()" style="background:#a44;color:#fff;border:none;padding:6px 14px;cursor:pointer;font:inherit;">关闭</button>
     </div>
     <div style="color:#9aa7b8;line-height:18px;margin-bottom:10px;">点击某项快捷键后，按下新的按键。修改会自动保存。</div>
+    <div style="display:grid;grid-template-columns:1fr 160px;align-items:center;gap:10px;padding:6px 0 10px;border-bottom:1px solid #344038;">
+      <span>右键拖动判定距离</span>
+      <label style="display:flex;align-items:center;gap:8px;"><input id="settings-camera-drag" type="range" min="4" max="32" step="1" oninput="setCameraDragThreshold(this.value)"><span id="settings-camera-drag-value" style="width:34px;color:#e5c66c;"></span></label>
+    </div>
     <div id="settings-shortcuts" style="display:flex;flex-direction:column;gap:6px;"></div>
     <div style="display:flex;justify-content:flex-end;margin-top:12px;">
       <button onclick="resetShortcuts()" style="background:#4c5960;color:#fff;border:none;padding:7px 12px;cursor:pointer;font:inherit;">恢复默认</button>
@@ -350,6 +356,9 @@ const CFG = {
   IRON_CLUSTER_AVERAGE: 1,
   IRON_CLUSTER_MAX: 4,
   IRON_RARE_CLUSTER_CHANCE: 0.04,
+  NAV_CELL: 20,
+  NAV_REQUESTS_PER_TICK: 2,
+  NAV_EXPANSION_LIMIT: 4000,
   NAV_RECHECK_INTERVAL: 0.25,
   NAV_STUCK_TIMEOUT: 0.5,
   SPATIAL_CELL_SIZE: 96,
@@ -482,7 +491,7 @@ const ENEMY_DEFS = {
 };
 
 const SETTINGS_STORAGE_KEY = 'colony-game-settings-v1';
-const SETTINGS_VERSION = 2;
+const SETTINGS_VERSION = 3;
 const SHORTCUT_ACTIONS = [
   { id:'pause', label:'暂停 / 继续', defaultCode:'Space' },
   { id:'speedNormal', label:'正常速度', defaultCode:'Digit1' },
@@ -495,7 +504,8 @@ const SHORTCUT_ACTIONS = [
   { id:'config', label:'打开数值编辑器', defaultCode:'F2' },
 ];
 const DEFAULT_SHORTCUTS = Object.fromEntries(SHORTCUT_ACTIONS.map(action => [action.id, action.defaultCode]));
-let gameSettings = { version:SETTINGS_VERSION, shortcuts:{...DEFAULT_SHORTCUTS} };
+const DEFAULT_CAMERA_DRAG_THRESHOLD = 12;
+let gameSettings = { version:SETTINGS_VERSION, shortcuts:{...DEFAULT_SHORTCUTS}, cameraDragThreshold:DEFAULT_CAMERA_DRAG_THRESHOLD };
 let pendingShortcutAction = null;
 
 function loadGameSettings() {
@@ -510,12 +520,25 @@ function loadGameSettings() {
       if (saved.shortcuts.speed2==='Numpad2') { gameSettings.shortcuts.speed2='Digit2'; migrated=true; }
       if (saved.shortcuts.speed4==='Numpad3') { gameSettings.shortcuts.speed4='Digit3'; migrated=true; }
     }
+    if (saved && Number.isFinite(Number(saved.cameraDragThreshold))) {
+      gameSettings.cameraDragThreshold=clamp(Math.round(Number(saved.cameraDragThreshold)),4,32);
+    }
   } catch (error) { console.warn('Game settings could not be loaded.', error); }
   if (migrated) saveGameSettings();
 }
 function saveGameSettings() {
   try { localStorage.setItem(SETTINGS_STORAGE_KEY, JSON.stringify(gameSettings)); }
   catch (error) { console.warn('Game settings could not be saved.', error); }
+}
+function cameraDragThreshold() { return gameSettings.cameraDragThreshold||DEFAULT_CAMERA_DRAG_THRESHOLD; }
+function cameraDragExceeded(dx,dy) { return Math.hypot(dx,dy)>=cameraDragThreshold(); }
+function setCameraDragThreshold(value) {
+  gameSettings.cameraDragThreshold=clamp(Math.round(Number(value)||DEFAULT_CAMERA_DRAG_THRESHOLD),4,32);
+  const input=document.getElementById('settings-camera-drag');
+  const label=document.getElementById('settings-camera-drag-value');
+  if (input) input.value=String(gameSettings.cameraDragThreshold);
+  if (label) label.textContent=gameSettings.cameraDragThreshold+' px';
+  saveGameSettings();
 }
 function shortcutLabel(code) {
   const labels={Space:'空格',Escape:'Esc',Digit1:'1',Digit2:'2',Digit3:'3',KeyC:'C',KeyX:'X'};
@@ -567,7 +590,7 @@ loadSavedBalance();
 const G = {
   tick: 0, dt: 0, day: 1, dayTime: 0, phase: 'day', totalTime: 0,
   resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT },
-  buildings: [], residents: [], enemies: [], particles: [], projectiles: [],
+  buildings: [], residents: [], enemies: [], particles: [], projectiles: [], commandMarkers: [],
   selectedBldType: null, selectedBuilding: null, selectedGuard: null, selectedGuards: [], hoveredCell: null,
   mouseX: 0, mouseY: 0,
   placingMode: false, movingBuilding: null,
@@ -575,7 +598,7 @@ const G = {
   engineerCount: 0,
   enemySpawnQueue: [], enemySpawnTimer: 0,
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
-  dragging: false, dragMoved:false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
+  dragging: false, dragButton:null, dragMoved:false, dragStartX:0, dragStartY:0, dragCamStartX:0, dragCamStartY:0,
   guardSelectStart: null, guardSelectEnd: null, guardSelectMoved: false,
   floorMask: null, drawingFloor: false, lastFloorCell: '',
   resourceNodes: [],
@@ -590,11 +613,16 @@ const G = {
   navigationRevision: 0,
   obstacleIndexRevision: -1,
   obstacleSpatial: null,
+  navigationGridRevision: -1,
+  navigationGrid: null,
+  navigationQueue: [],
   residentSpatial: null,
   targetedTrees: new Set(),
   fogVisible: null,
   fogUpdateTimer: 0,
   debugRevealAllFog: false,
+  debugShowNavigation: true,
+  guardMoveCommandSequence: 0,
 };
 
 // ============================================================
@@ -1036,11 +1064,204 @@ function findAvoidanceWaypoint(r, tx, ty, blocker) {
   }
   return best;
 }
+
+const NAV_DIRECTIONS = [
+  [1,0,1],[-1,0,1],[0,1,1],[0,-1,1],
+  [1,1,Math.SQRT2],[1,-1,Math.SQRT2],[-1,1,Math.SQRT2],[-1,-1,Math.SQRT2]
+];
+function navigationCols() { return Math.ceil(CFG.WORLD_W/CFG.NAV_CELL); }
+function navigationRows() { return Math.ceil(CFG.WORLD_H/CFG.NAV_CELL); }
+function navigationIndex(col,row) { return col+row*navigationCols(); }
+function navigationCellCenter(col,row) {
+  return {
+    x:clamp((col+0.5)*CFG.NAV_CELL,RESIDENT_RADIUS,CFG.WORLD_W-RESIDENT_RADIUS),
+    y:clamp((row+0.5)*CFG.NAV_CELL,RESIDENT_RADIUS,CFG.WORLD_H-RESIDENT_RADIUS)
+  };
+}
+function blockNavigationCircle(grid, cx, cy, radius) {
+  const cols=navigationCols(), rows=navigationRows(), cell=CFG.NAV_CELL;
+  const minCol=clamp(Math.floor((cx-radius)/cell),0,cols-1), maxCol=clamp(Math.floor((cx+radius)/cell),0,cols-1);
+  const minRow=clamp(Math.floor((cy-radius)/cell),0,rows-1), maxRow=clamp(Math.floor((cy+radius)/cell),0,rows-1);
+  const radiusSq=radius*radius;
+  for(let row=minRow;row<=maxRow;row++) for(let col=minCol;col<=maxCol;col++) {
+    const point=navigationCellCenter(col,row), dx=point.x-cx, dy=point.y-cy;
+    if(dx*dx+dy*dy<radiusSq) grid[navigationIndex(col,row)]=1;
+  }
+}
+function ensureNavigationGrid() {
+  if(G.navigationGrid && G.navigationGridRevision===G.navigationRevision) return G.navigationGrid;
+  const grid=new Uint8Array(navigationCols()*navigationRows());
+  for(const b of G.buildings) {
+    if(!buildingBlocksMovement(b)) continue;
+    const c=b.center();
+    blockNavigationCircle(grid,c.x,c.y,b.collisionRadius()+RESIDENT_RADIUS+3);
+  }
+  for(const node of G.resourceNodes) {
+    if(!isResourceObstacleNode(node)) continue;
+    const obstacle=resourceObstacle(node), c=obstacle.center();
+    blockNavigationCircle(grid,c.x,c.y,obstacle.collisionRadius()+RESIDENT_RADIUS+3);
+  }
+  G.navigationGrid=grid;
+  G.navigationGridRevision=G.navigationRevision;
+  return grid;
+}
+function navigationCellOpen(col,row,grid=ensureNavigationGrid()) {
+  return col>=0&&row>=0&&col<navigationCols()&&row<navigationRows()&&grid[navigationIndex(col,row)]===0;
+}
+function nearestOpenNavigationCell(x,y,grid=ensureNavigationGrid()) {
+  const cols=navigationCols(), rows=navigationRows();
+  const originCol=clamp(Math.floor(x/CFG.NAV_CELL),0,cols-1), originRow=clamp(Math.floor(y/CFG.NAV_CELL),0,rows-1);
+  if(navigationCellOpen(originCol,originRow,grid)) return {col:originCol,row:originRow};
+  const maxRadius=Math.max(cols,rows);
+  for(let radius=1;radius<maxRadius;radius++) {
+    let best=null, bestDistance=Infinity;
+    for(let col=originCol-radius;col<=originCol+radius;col++) for(const row of [originRow-radius,originRow+radius]) {
+      if(!navigationCellOpen(col,row,grid)) continue;
+      const p=navigationCellCenter(col,row), distance=Math.hypot(p.x-x,p.y-y);
+      if(distance<bestDistance){bestDistance=distance;best={col,row};}
+    }
+    for(let row=originRow-radius+1;row<originRow+radius;row++) for(const col of [originCol-radius,originCol+radius]) {
+      if(!navigationCellOpen(col,row,grid)) continue;
+      const p=navigationCellCenter(col,row), distance=Math.hypot(p.x-x,p.y-y);
+      if(distance<bestDistance){bestDistance=distance;best={col,row};}
+    }
+    if(best) return best;
+  }
+  return null;
+}
+function navigationLineClear(a,b,grid=ensureNavigationGrid()) {
+  const distance=Math.hypot(b.x-a.x,b.y-a.y);
+  const steps=Math.max(1,Math.ceil(distance/(CFG.NAV_CELL*0.4)));
+  let previousCol=null, previousRow=null;
+  for(let i=0;i<=steps;i++) {
+    const t=i/steps, col=Math.floor((a.x+(b.x-a.x)*t)/CFG.NAV_CELL), row=Math.floor((a.y+(b.y-a.y)*t)/CFG.NAV_CELL);
+    if(!navigationCellOpen(col,row,grid)) return false;
+    if(previousCol!==null&&col!==previousCol&&row!==previousRow&&
+        (!navigationCellOpen(col,previousRow,grid)||!navigationCellOpen(previousCol,row,grid))) return false;
+    previousCol=col; previousRow=row;
+  }
+  return true;
+}
+function navigationHeuristic(col,row,goalCol,goalRow) {
+  const dx=Math.abs(goalCol-col), dy=Math.abs(goalRow-row);
+  return Math.max(dx,dy)+(Math.SQRT2-1)*Math.min(dx,dy);
+}
+function heapPush(heap,node) {
+  heap.push(node);
+  let index=heap.length-1;
+  while(index>0) {
+    const parent=(index-1)>>1;
+    if(heap[parent].score<=node.score) break;
+    heap[index]=heap[parent]; index=parent;
+  }
+  heap[index]=node;
+}
+function heapPop(heap) {
+  if(!heap.length) return null;
+  const root=heap[0], tail=heap.pop();
+  if(heap.length) {
+    let index=0;
+    while(true) {
+      const left=index*2+1;
+      if(left>=heap.length) break;
+      const right=left+1;
+      const child=right<heap.length&&heap[right].score<heap[left].score?right:left;
+      if(heap[child].score>=tail.score) break;
+      heap[index]=heap[child]; index=child;
+    }
+    heap[index]=tail;
+  }
+  return root;
+}
+function simplifyNavigationPath(points,grid) {
+  if(points.length<3) return points;
+  const simplified=[points[0]];
+  let anchor=0;
+  while(anchor<points.length-1) {
+    let next=points.length-1;
+    while(next>anchor+1&&!navigationLineClear(points[anchor],points[next],grid)) next--;
+    simplified.push(points[next]); anchor=next;
+  }
+  return simplified;
+}
+function findNavigationPath(startX,startY,targetX,targetY) {
+  const grid=ensureNavigationGrid(), cols=navigationCols(), rows=navigationRows();
+  const start=nearestOpenNavigationCell(startX,startY,grid), goal=nearestOpenNavigationCell(targetX,targetY,grid);
+  if(!start||!goal) return null;
+  const startId=navigationIndex(start.col,start.row), goalId=navigationIndex(goal.col,goal.row);
+  if(startId===goalId) return {points:[navigationCellCenter(goal.col,goal.row)],reachedGoal:true,blockedGoal:!navigationLineClear(navigationCellCenter(goal.col,goal.row),{x:targetX,y:targetY},grid)};
+  const total=cols*rows, costs=new Float64Array(total), parents=new Int32Array(total), closed=new Uint8Array(total);
+  costs.fill(Infinity); parents.fill(-1); costs[startId]=0;
+  const heap=[];
+  heapPush(heap,{id:startId,col:start.col,row:start.row,score:navigationHeuristic(start.col,start.row,goal.col,goal.row)*1.05});
+  let bestId=startId, bestDistance=navigationHeuristic(start.col,start.row,goal.col,goal.row), reached=false, expanded=0;
+  const expansionLimit=Math.min(total,CFG.NAV_EXPANSION_LIMIT);
+  while(heap.length&&expanded<expansionLimit) {
+    const current=heapPop(heap);
+    if(closed[current.id]) continue;
+    closed[current.id]=1; expanded++;
+    const distance=navigationHeuristic(current.col,current.row,goal.col,goal.row);
+    if(distance<bestDistance){bestDistance=distance;bestId=current.id;}
+    if(current.id===goalId){bestId=goalId;reached=true;break;}
+    for(const [dc,dr,stepCost] of NAV_DIRECTIONS) {
+      const col=current.col+dc,row=current.row+dr;
+      if(!navigationCellOpen(col,row,grid)) continue;
+      if(dc&&dr&&(!navigationCellOpen(current.col+dc,current.row,grid)||!navigationCellOpen(current.col,current.row+dr,grid))) continue;
+      const id=col+row*cols;
+      if(closed[id]) continue;
+      const nextCost=costs[current.id]+stepCost;
+      if(nextCost>=costs[id]) continue;
+      costs[id]=nextCost; parents[id]=current.id;
+      heapPush(heap,{id,col,row,score:nextCost+navigationHeuristic(col,row,goal.col,goal.row)*1.05});
+    }
+  }
+  if(bestId===startId&&!reached) return null;
+  const ids=[];
+  for(let id=bestId;id>=0;id=parents[id]) { ids.push(id); if(id===startId) break; }
+  ids.reverse();
+  const points=ids.map(id=>navigationCellCenter(id%cols,Math.floor(id/cols)));
+  const simplified=simplifyNavigationPath(points,grid);
+  if(simplified.length&&Math.hypot(simplified[0].x-startX,simplified[0].y-startY)<CFG.NAV_CELL) simplified.shift();
+  const end=simplified[simplified.length-1]||navigationCellCenter(goal.col,goal.row);
+  return {points:simplified.length?simplified:[end],reachedGoal:reached,blockedGoal:!reached||!navigationLineClear(end,{x:targetX,y:targetY},grid)};
+}
 function clearNavigation(r) {
   r.navWaypoint = null;
   r.navBlock = null;
+  r.navPath = null;
+  r.navPathIndex = 0;
+  r.navBlockedGoal = false;
+  r.navResolvedPoint = null;
+  r.navPending = false;
   r.navCheckTimer = 0;
   r.navStuckTimer = 0;
+}
+function applyNavigationPlan(r,planned) {
+  r.navPending=false;
+  r.navWaypoint=null;
+  if(!planned||!planned.points.length) return false;
+  r.navPath=planned.points;
+  r.navPathIndex=0;
+  r.navBlockedGoal=planned.blockedGoal;
+  r.navResolvedPoint=planned.points[planned.points.length-1];
+  return true;
+}
+function queueNavigationRequest(r,targetX,targetY) {
+  if(r.navPending) return;
+  r.navPending=true;
+  G.navigationQueue.push({unit:r,targetX,targetY,revision:G.navigationRevision});
+}
+function processNavigationRequests(limit=CFG.NAV_REQUESTS_PER_TICK) {
+  let processed=0;
+  while(G.navigationQueue.length&&processed<limit) {
+    const request=G.navigationQueue.shift(),r=request.unit;
+    if(!r||!r.navPending||request.revision!==G.navigationRevision||r.navRevision!==G.navigationRevision||
+        Math.hypot(r.navTargetX-request.targetX,r.navTargetY-request.targetY)>1) continue;
+    const planned=findNavigationPath(r.x,r.y,request.targetX,request.targetY);
+    applyNavigationPlan(r,planned);
+    processed++;
+  }
+  return processed;
 }
 function navigationBlockIsActive(block) {
   return !!block && (block.resourceNode ? isResourceObstacleNode(block.resourceNode) : buildingBlocksMovement(block));
@@ -1048,6 +1269,11 @@ function navigationBlockIsActive(block) {
 function workplaceWorkRange(b) {
   const normalRange=b.collisionRadius()+RESIDENT_RADIUS+2;
   return b.type==='farm' ? normalRange*0.5 : normalRange;
+}
+function canPassArrivedFormationGuard(r,other) {
+  return !!(r.isGuard&&r.controlMode==='manual'&&r.manualTarget&&r.formationCommandId&&
+    other.isGuard&&other.controlMode==='manual'&&!other.manualTarget&&!other.manualTargetEnemy&&
+    other.formationCommandId===r.formationCommandId);
 }
 function steerAroundResidents(r, nx, ny, speed, dt) {
   const dx=nx-r.x, dy=ny-r.y, moveDistance=Math.hypot(dx,dy);
@@ -1062,6 +1288,7 @@ function steerAroundResidents(r, nx, ny, speed, dt) {
   let steer=0;
   for (const other of nearby) {
     if (other===r || other.hidden) continue;
+    if (canPassArrivedFormationGuard(r,other)) continue;
     const ox=other.x-r.x, oy=other.y-r.y;
     const along=ox*ux+oy*uy;
     if (along < -RESIDENT_RADIUS || along > lookAhead) continue;
@@ -1078,6 +1305,8 @@ function steerAroundResidents(r, nx, ny, speed, dt) {
   return {x:nx+px*steer,y:ny+py*steer};
 }
 function flowMove(r, tx, ty, speed, dt) {
+  r.navDebugTarget={x:tx,y:ty};
+  r.navDebugTick=G.tick;
   if (Math.hypot(tx - r.navTargetX, ty - r.navTargetY) > 18) {
     clearNavigation(r);
   }
@@ -1086,27 +1315,17 @@ function flowMove(r, tx, ty, speed, dt) {
     r.navRevision = G.navigationRevision;
     clearNavigation(r);
   }
-  if (r.navBlock && !navigationBlockIsActive(r.navBlock)) {
-    clearNavigation(r);
-  }
-  if (r.navWaypoint && Math.hypot(r.x - r.navWaypoint.x, r.y - r.navWaypoint.y) < 10) {
-    clearNavigation(r);
-  }
-  r.navCheckTimer -= dt;
-  if (r.navCheckTimer <= 0) {
-    r.navCheckTimer = CFG.NAV_RECHECK_INTERVAL;
-    const next = r.navWaypoint || {x:tx, y:ty};
-    const firstBlock = firstBlockingObstacle(r, next.x, next.y);
-    if (firstBlock) clearNavigation(r);
-  }
-  if (!r.navWaypoint) {
-    const blocker = firstBlockingObstacle(r, tx, ty);
-    if (blocker) {
-      const waypoint = findAvoidanceWaypoint(r, tx, ty, blocker);
-      if (waypoint) { r.navWaypoint = waypoint; r.navBlock = blocker; }
+  while(r.navPath&&r.navPathIndex<r.navPath.length&&Math.hypot(r.x-r.navPath[r.navPathIndex].x,r.y-r.navPath[r.navPathIndex].y)<10) r.navPathIndex++;
+  if(r.navPath&&r.navPathIndex>=r.navPath.length) r.navPath=null;
+  const blocker=firstBlockingObstacle(r,tx,ty);
+  if(!r.navPath&&blocker&&!(r.navBlockedGoal&&r.navResolvedPoint&&Math.hypot(r.x-r.navResolvedPoint.x,r.y-r.navResolvedPoint.y)<10)) {
+    queueNavigationRequest(r,tx,ty);
+    if(!r.navWaypoint||Math.hypot(r.x-r.navWaypoint.x,r.y-r.navWaypoint.y)<10||firstBlockingObstacle(r,r.navWaypoint.x,r.navWaypoint.y)) {
+      r.navWaypoint=findAvoidanceWaypoint(r,tx,ty,blocker);
     }
   }
-  const moveTarget = r.navWaypoint || {x:tx, y:ty};
+  const fallbackTarget=r.navWaypoint||(r.navBlockedGoal?r.navResolvedPoint:null);
+  const moveTarget=r.navPath&&r.navPathIndex<r.navPath.length?r.navPath[r.navPathIndex]:(fallbackTarget||{x:tx,y:ty});
   tx = moveTarget.x; ty = moveTarget.y;
   if (G.floorMask) {
     const gi = gridCol(r.x) + gridRow(r.y) * CFG.WORLD_COLS;
@@ -1123,10 +1342,31 @@ function moveViaFlow(r, tx, ty, speed, dt) {
   const rs = flowMove(r, tx, ty, speed, dt);
   r.x = rs.x; r.y = rs.y;
   const moved = Math.hypot(r.x - beforeX, r.y - beforeY);
-  const remaining = Math.hypot(tx - r.x, ty - r.y);
+  const remaining = r.navBlockedGoal&&!r.navPath ? 0 : Math.hypot(tx - r.x, ty - r.y);
   if (remaining > 48 && moved < Math.max(0.25, speed * dt * 0.12)) r.navStuckTimer += dt;
   else r.navStuckTimer = 0;
   if (r.navStuckTimer >= CFG.NAV_STUCK_TIMEOUT) clearNavigation(r);
+}
+function navigationDebugPoints(unit) {
+  const points=[];
+  if(unit.navWaypoint) points.push(unit.navWaypoint);
+  if(unit.navPath) for(let index=unit.navPathIndex||0;index<unit.navPath.length;index++) points.push(unit.navPath[index]);
+  const recentlyMoving=Number.isFinite(unit.navDebugTick)&&G.tick-unit.navDebugTick<=2;
+  const explicitTarget=unit.manualTargetEnemy?{x:unit.manualTargetEnemy.x,y:unit.manualTargetEnemy.y}:
+    unit.manualTarget?unit.manualTarget:
+    unit.guardTarget?{x:unit.guardTarget.x,y:unit.guardTarget.y}:
+    unit.attacking?.center?unit.attacking.center():null;
+  const target=explicitTarget||(recentlyMoving?unit.navDebugTarget:null)||(
+    Number.isFinite(unit.targetX)&&Number.isFinite(unit.targetY)?{x:unit.targetX,y:unit.targetY}:null
+  );
+  if(target&&(!points.length||Math.hypot(points[points.length-1].x-target.x,points[points.length-1].y-target.y)>2)) points.push(target);
+  if(!points.length) points.push({x:unit.x,y:unit.y});
+  return points;
+}
+function navigationDebugUnits() {
+  const combatPhase=G.phase==='night'||G.phase==='dusk';
+  const residents=G.residents.filter(resident=>combatPhase?resident.isGuard:!resident.isGuard);
+  return combatPhase?[...residents,...G.enemies.filter(enemy=>enemy.alive)]:residents;
 }
 function isCellBlocked(col, row, excludeBld) {
   if (col<0 || row<0 || col>=CFG.WORLD_COLS || row>=CFG.WORLD_ROWS) return true;
@@ -1239,6 +1479,7 @@ function resolveCollisions(r, nx, ny) {
     : G.residents;
   for (const other of nearbyResidents) {
     if (other === r || other.hidden) continue;
+    if (canPassArrivedFormationGuard(r,other)) continue;
     const minDist = RESIDENT_RADIUS * 2;
     const dx = nx - other.x, dy = ny - other.y;
     const dist = Math.hypot(dx, dy);
@@ -1535,9 +1776,10 @@ class Resident {
     this.carryingFrom = null;
     this.targetX = x; this.targetY = y;
     this.navWaypoint = null; this.navBlock = null; this.navTargetX = x; this.navTargetY = y;
+    this.navPath = null; this.navPathIndex = 0; this.navBlockedGoal = false; this.navResolvedPoint = null; this.navPending = false;
     this.navRevision = G.navigationRevision; this.navCheckTimer = 0; this.navStuckTimer = 0;
     this.patrolAngle = Math.random()*Math.PI*2;
-    this.patrolTimer = 0;
+    this.patrolTimer = 0; this.patrolTarget = null;
     this.eatTimer = 0; this.prodTimer = 0;
     this.hidden = false;
     this.buildTarget = null;
@@ -1556,6 +1798,7 @@ class Resident {
     this.controlMode = 'auto';
     this.manualTarget = null;
     this.manualTargetEnemy = null;
+    this.formationCommandId = 0;
   }
 }
 
@@ -1574,6 +1817,9 @@ class Enemy {
     const th = G.townHall;
     if (th) { this.targetX = th.x+th.size[0]*CFG.CELL/2; this.targetY = th.y+th.size[1]*CFG.CELL/2; }
     else { this.targetX = CFG.WORLD_W/2; this.targetY = CFG.WORLD_H/2; }
+    this.navWaypoint = null; this.navBlock = null; this.navTargetX = this.targetX; this.navTargetY = this.targetY;
+    this.navPath = null; this.navPathIndex = 0; this.navBlockedGoal = false; this.navResolvedPoint = null; this.navPending = false;
+    this.navRevision = G.navigationRevision; this.navCheckTimer = 0; this.navStuckTimer = 0;
     this.attacking = null; this.attackTimer = 0;
     this.fightingGuard = null;
     this.guardTarget = null;
@@ -1941,9 +2187,7 @@ function updateEnemyGuardCombat(e, dt) {
   const distance=Math.hypot(e.x-guard.x,e.y-guard.y);
   if (distance>e.attackRange+4) {
     e.fightingGuard=null;
-    const dx=guard.x-e.x, dy=guard.y-e.y, dd=distance||1;
-    e.x+=(dx/dd)*e.speed*dt;
-    e.y+=(dy/dd)*e.speed*dt;
+    moveViaFlow(e,guard.x,guard.y,e.speed,dt);
     return true;
   }
   e.fightingGuard=guard;
@@ -1989,10 +2233,7 @@ function updateEnemies(dt) {
       if (enemyCanAttackBuilding(e, blocker)) {
         e.attacking=blocker; e.attackTimer=0;
       } else {
-        const dx=e.targetX-e.x, dy=e.targetY-e.y;
-        const dd=Math.hypot(dx,dy)||1;
-        e.x+=(dx/dd)*e.speed*dt;
-        e.y+=(dy/dd)*e.speed*dt;
+        moveViaFlow(e,e.targetX,e.targetY,e.speed,dt);
       }
     }
   }
@@ -2036,6 +2277,31 @@ function getGuardPatrol() {
   return { x: cx, y: cy, r: maxR + 100 };
 }
 
+function isPatrolPointClear(x,y) {
+  const padding=RESIDENT_RADIUS+2;
+  for(const b of G.buildings) {
+    const width=b.size[0]*CFG.CELL,height=b.size[1]*CFG.CELL;
+    if(x>=b.x-padding&&x<=b.x+width+padding&&y>=b.y-padding&&y<=b.y+height+padding) return false;
+  }
+  return true;
+}
+
+function choosePatrolTarget(r,boundary=null) {
+  for(let attempt=0;attempt<24;attempt++) {
+    const angle=Math.random()*Math.PI*2,distance=45+Math.random()*85;
+    let x=r.x+Math.cos(angle)*distance,y=r.y+Math.sin(angle)*distance;
+    if(boundary) {
+      const dx=x-boundary.x,dy=y-boundary.y,fromCenter=Math.hypot(dx,dy);
+      const limit=Math.max(10,boundary.r-RESIDENT_RADIUS-4);
+      if(fromCenter>limit){x=boundary.x+dx/fromCenter*limit;y=boundary.y+dy/fromCenter*limit;}
+    }
+    x=clamp(x,RESIDENT_RADIUS,CFG.WORLD_W-RESIDENT_RADIUS);
+    y=clamp(y,RESIDENT_RADIUS,CFG.WORLD_H-RESIDENT_RADIUS);
+    if(isStaticPatrolVisible(x,y)&&isPatrolPointClear(x,y)) return {x,y};
+  }
+  return null;
+}
+
 function releaseGuardTower(r) {
   const tower=r.manningTower || r.assignedTower;
   if (tower && tower.assignedGuard===r) tower.assignedGuard=null;
@@ -2045,12 +2311,15 @@ function releaseGuardTower(r) {
 
 function setGuardControlMode(r, mode) {
   if (!r || !r.isGuard || r.guardHP<=0 || r.hidden) return false;
+  clearNavigation(r);r.patrolTarget=null;r.formationCommandId=0;
   if (mode==='manual') {
     releaseGuardTower(r);
     r.controlMode='manual'; r.manualTarget=null; r.manualTargetEnemy=null;
+    r.targetX=r.x;r.targetY=r.y;r.navDebugTarget={x:r.x,y:r.y};r.navDebugTick=G.tick;
     r.state='GUARD_MANUAL';
   } else {
     r.controlMode='auto'; r.manualTarget=null; r.manualTargetEnemy=null;
+    r.targetX=r.x;r.targetY=r.y;r.navDebugTarget={x:r.x,y:r.y};r.navDebugTick=G.tick;
     r.state=(G.phase==='night'||G.phase==='dusk') ? 'GUARD_FIGHTING' : 'GUARD_SLEEPING';
     r.hidden=G.phase!=='night'&&G.phase!=='dusk';
   }
@@ -2070,10 +2339,17 @@ function guardAttackEnemy(r, enemy, dt) {
   }
 }
 
+function finishManualGuardCommand(r,point={x:r.x,y:r.y}) {
+  r.manualTarget=null;r.manualTargetEnemy=null;
+  r.targetX=point.x;r.targetY=point.y;
+  r.navDebugTarget={x:point.x,y:point.y};r.navDebugTick=G.tick;
+  clearNavigation(r);
+}
+
 function updateManualGuard(r, dt) {
   let target=r.manualTargetEnemy;
   if (target && (!target.alive || target.hp<=0 || !isWorldVisible(target.x,target.y))) {
-    r.manualTargetEnemy=null; target=null;
+    finishManualGuardCommand(r);target=null;
   }
   if (target) {
     const distance=Math.hypot(target.x-r.x,target.y-r.y);
@@ -2082,9 +2358,92 @@ function updateManualGuard(r, dt) {
     return;
   }
   if (!r.manualTarget) return;
+  if(r.navBlockedGoal&&r.navResolvedPoint&&Math.hypot(r.navResolvedPoint.x-r.x,r.navResolvedPoint.y-r.y)<=4) {
+    finishManualGuardCommand(r,r.navResolvedPoint);return;
+  }
   const distance=Math.hypot(r.manualTarget.x-r.x,r.manualTarget.y-r.y);
-  if (distance<=3) { r.manualTarget=null; return; }
+  if (distance<=3) { finishManualGuardCommand(r,r.manualTarget);return; }
   moveViaFlow(r,r.manualTarget.x,r.manualTarget.y,CFG.GUARD_SPEED,dt);
+}
+
+function guardFormationAssignments(guards,target) {
+  if(!guards.length) return [];
+  const center=guards.reduce((sum,guard)=>({x:sum.x+guard.x,y:sum.y+guard.y}),{x:0,y:0});
+  center.x/=guards.length; center.y/=guards.length;
+  const dx=target.x-center.x,dy=target.y-center.y,length=Math.hypot(dx,dy)||1;
+  const forward={x:dx/length,y:dy/length}, right={x:-forward.y,y:forward.x};
+  const columns=Math.ceil(Math.sqrt(guards.length)), rows=Math.ceil(guards.length/columns), spacing=RESIDENT_RADIUS*3;
+  const slots=[];
+  for(let index=0;index<guards.length;index++) {
+    const col=index%columns,row=Math.floor(index/columns);
+    const lateral=(col-(columns-1)/2)*spacing,depth=(row-(rows-1)/2)*spacing;
+    slots.push({
+      x:clamp(target.x+right.x*lateral+forward.x*depth,RESIDENT_RADIUS,CFG.WORLD_W-RESIDENT_RADIUS),
+      y:clamp(target.y+right.y*lateral+forward.y*depth,RESIDENT_RADIUS,CFG.WORLD_H-RESIDENT_RADIUS),
+      lateral,depth
+    });
+  }
+  const orderedGuards=guards.map((guard,index)=>({
+    guard,index,
+    depth:(guard.x-center.x)*forward.x+(guard.y-center.y)*forward.y,
+    lateral:(guard.x-center.x)*right.x+(guard.y-center.y)*right.y
+  })).sort((a,b)=>a.depth-b.depth||a.lateral-b.lateral||a.index-b.index);
+  const orderedSlots=[...slots].sort((a,b)=>a.depth-b.depth||a.lateral-b.lateral);
+  return orderedGuards.map((entry,index)=>({guard:entry.guard,target:orderedSlots[index]}));
+}
+function guardMovementClusters(guards,maxSize=25,joinDistance=320) {
+  const remaining=new Set(guards),clusters=[];
+  while(remaining.size) {
+    const seed=remaining.values().next().value,cluster=[seed];
+    remaining.delete(seed);
+    while(cluster.length<maxSize&&remaining.size) {
+      const center=cluster.reduce((sum,guard)=>({x:sum.x+guard.x/cluster.length,y:sum.y+guard.y/cluster.length}),{x:0,y:0});
+      let nearest=null,nearestDistance=Infinity;
+      for(const guard of remaining) {
+        const distance=Math.hypot(guard.x-center.x,guard.y-center.y);
+        if(distance<nearestDistance){nearestDistance=distance;nearest=guard;}
+      }
+      if(!nearest||nearestDistance>joinDistance) break;
+      cluster.push(nearest);remaining.delete(nearest);
+    }
+    clusters.push(cluster);
+  }
+  return clusters;
+}
+function assignGuardGroupMove(guards,target) {
+  const assignments=guardFormationAssignments(guards,target);
+  if(!assignments.length) return assignments;
+  const commandId=++G.guardMoveCommandSequence;
+  const assignmentByGuard=new Map(assignments.map(assignment=>[assignment.guard,assignment]));
+  const grid=ensureNavigationGrid();
+  for(const cluster of guardMovementClusters(guards)) {
+    const center=cluster.reduce((sum,guard)=>({x:sum.x+guard.x/cluster.length,y:sum.y+guard.y/cluster.length}),{x:0,y:0});
+    const clusterTarget=cluster.reduce((sum,guard)=>{
+      const slot=assignmentByGuard.get(guard).target;
+      return {x:sum.x+slot.x/cluster.length,y:sum.y+slot.y/cluster.length};
+    },{x:0,y:0});
+    const leader={x:center.x,y:center.y,workplace:null,home:null,buildTarget:null};
+    const blocker=firstBlockingObstacle(leader,clusterTarget.x,clusterTarget.y);
+    const sharedPlan=blocker?findNavigationPath(center.x,center.y,clusterTarget.x,clusterTarget.y):null;
+    for(const guard of cluster) {
+      const slot=assignmentByGuard.get(guard).target;
+      clearNavigation(guard);
+      guard.manualTargetEnemy=null; guard.manualTarget=slot;
+      guard.formationCommandId=commandId;
+      guard.targetX=slot.x;guard.targetY=slot.y;guard.navDebugTarget={x:slot.x,y:slot.y};guard.navDebugTick=G.tick;
+      guard.navTargetX=slot.x;guard.navTargetY=slot.y;guard.navRevision=G.navigationRevision;
+      let route=[];
+      if(sharedPlan&&sharedPlan.points.length&&navigationLineClear(guard,sharedPlan.points[0],grid)) route=sharedPlan.points.map(point=>({x:point.x,y:point.y}));
+      const routeEnd=route.length?route[route.length-1]:guard;
+      if(navigationLineClear(routeEnd,slot,grid)) route.push({x:slot.x,y:slot.y});
+      if(route.length) {
+        guard.navPath=route;guard.navPathIndex=0;
+        guard.navResolvedPoint=route[route.length-1];
+        guard.navBlockedGoal=!navigationLineClear(guard.navResolvedPoint,slot,grid);
+      }
+    }
+  }
+  return assignments;
 }
 
 function guardUpdateAI(r, dt) {
@@ -2158,30 +2517,16 @@ function guardUpdateAI(r, dt) {
       } else {
         // Patrol within building boundary
         const pb = getGuardPatrol();
-        if ((r.patrolTimer -= dt) <= 0) {
-          r.patrolTimer = 2 + Math.random() * 3;
-          const toC = Math.atan2(pb.y - r.y, pb.x - r.x);
-          r.patrolAngle = toC + (Math.random() - 0.5) * Math.PI;
+        r.patrolTimer-=dt;
+        const targetInvalid=!r.patrolTarget||Math.hypot(r.x-r.patrolTarget.x,r.y-r.patrolTarget.y)<6||
+          Math.hypot(r.patrolTarget.x-pb.x,r.patrolTarget.y-pb.y)>pb.r||!isStaticPatrolVisible(r.patrolTarget.x,r.patrolTarget.y);
+        if(r.patrolTimer<=0||targetInvalid) {
+          r.patrolTarget=choosePatrolTarget(r,pb);
+          r.patrolTimer=2+Math.random()*3;
         }
-        // Stay within patrol circle
-        const dxc = r.x - pb.x, dyc = r.y - pb.y;
-        const dc = Math.hypot(dxc, dyc);
-        if (dc > pb.r) {
-          r.patrolAngle = Math.atan2(-dyc, -dxc);
-        }
-        const pnx = r.x + Math.cos(r.patrolAngle) * CFG.GUARD_SPEED * dt;
-        const pny = r.y + Math.sin(r.patrolAngle) * CFG.GUARD_SPEED * dt;
-        // Clamp to boundary
-        const ndc = Math.hypot(pnx - pb.x, pny - pb.y);
-        const fx = Math.max(0, ndc - pb.r);
-        if (fx > 0) {
-          const fnx = pnx - (pnx - pb.x) / ndc * fx;
-          const fny = pny - (pny - pb.y) / ndc * fx;
-          const prs = resolveCollisions(r, fnx, fny);
-          r.x = prs.x; r.y = prs.y;
-        } else {
-          const prs = resolveCollisions(r, pnx, pny);
-          r.x = prs.x; r.y = prs.y;
+        if(r.patrolTarget) {
+          r.targetX=r.patrolTarget.x;r.targetY=r.patrolTarget.y;
+          moveViaFlow(r,r.targetX,r.targetY,CFG.GUARD_SPEED,dt);
         }
       }
       break;
@@ -2525,26 +2870,16 @@ function updateResidents(dt) {
             G.targetedTrees.add(treeTarget); break;
           }
         }
-        r.state='PATROL';
-        if ((r.patrolTimer-=dt)<=0) {
+        r.state='PATROL';r.patrolTimer-=dt;
+        const targetInvalid=!r.patrolTarget||Math.hypot(r.x-r.patrolTarget.x,r.y-r.patrolTarget.y)<5||!isStaticPatrolVisible(r.patrolTarget.x,r.patrolTarget.y);
+        if(r.patrolTimer<=0||targetInvalid) {
+          r.patrolTarget=choosePatrolTarget(r);
           r.patrolTimer=2+Math.random()*4;
-          r.patrolAngle=Math.random()*Math.PI*2;
         }
-        const step=30*dt;
-        let pnx=r.x+Math.cos(r.patrolAngle)*step;
-        let pny=r.y+Math.sin(r.patrolAngle)*step;
-        if (!isStaticPatrolVisible(pnx,pny)) {
-          let found=false;
-          for(let attempt=0;attempt<12;attempt++) {
-            const angle=Math.random()*Math.PI*2;
-            const tx=r.x+Math.cos(angle)*step, ty=r.y+Math.sin(angle)*step;
-            if (!isStaticPatrolVisible(tx,ty)) continue;
-            r.patrolAngle=angle; pnx=tx; pny=ty; found=true; break;
-          }
-          if (!found) break;
+        if(r.patrolTarget) {
+          r.targetX=r.patrolTarget.x;r.targetY=r.patrolTarget.y;
+          moveViaFlow(r,r.targetX,r.targetY,30,dt);
         }
-        const prs=resolveCollisions(r,pnx,pny);
-        if (isStaticPatrolVisible(prs.x,prs.y)) { r.x=prs.x; r.y=prs.y; }
         break;
       }
     }
@@ -2756,6 +3091,24 @@ function debugRevealAllFog() {
   G.debugRevealAllFog=true;
   refreshFogVisibility();
   showTimeIndicator('迷雾已移除');
+}
+function toggleDebugNavigation() {
+  G.debugShowNavigation=!G.debugShowNavigation;
+  const button=document.getElementById('debug-navigation-btn');
+  if(button) {
+    button.classList.toggle('active',G.debugShowNavigation);
+    button.textContent=G.debugShowNavigation?'隐藏寻路':'显示寻路';
+  }
+  showTimeIndicator(G.debugShowNavigation?'寻路显示已开启':'寻路显示已关闭');
+  return G.debugShowNavigation;
+}
+function addGuardCommandMarker(x,y,type='move') {
+  G.commandMarkers.push({x,y,type,life:0.9,maxLife:0.9});
+  if(G.commandMarkers.length>12) G.commandMarkers.splice(0,G.commandMarkers.length-12);
+}
+function updateCommandMarkers(dt) {
+  for(const marker of G.commandMarkers) marker.life-=dt;
+  G.commandMarkers=G.commandMarkers.filter(marker=>marker.life>0);
 }
 function skipToNight() {
   G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.projectiles = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
@@ -2979,6 +3332,7 @@ function renderShortcutSettings() {
 function openSettingsPanel() {
   pendingShortcutAction=null;
   document.getElementById('settings-overlay').style.display='flex';
+  setCameraDragThreshold(gameSettings.cameraDragThreshold);
   renderShortcutSettings();
   settingsSetStatus('修改会自动保存。');
 }
@@ -3378,19 +3732,24 @@ function gameOver(msg) {
   document.getElementById('gameover-overlay').style.display = 'flex';
 }
 function restartGame() {
-  G.buildings = []; G.residents = []; G.enemies = []; G.particles = []; G.projectiles = [];
+  G.buildings = []; G.residents = []; G.enemies = []; G.particles = []; G.projectiles = []; G.commandMarkers = [];
   G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT };
   G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
   G.selectedBldType = null; G.selectedBuilding = null; clearSelectedGuards(); G.placingMode = false; G.movingBuilding = null;
   G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false;
   G.maxPop = CFG.MAX_POP_BASE; G.maxGuards = CFG.MAX_GUARD_BASE; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   G.resourceCleanupTimer = 0; G.farmLinks = []; G.navigationRevision = 0; G.obstacleIndexRevision = -1;
+  G.navigationGridRevision = -1; G.navigationGrid = null;
+  G.navigationQueue = [];
   G.resourceFullNotices = new Set();
   G.treesChopped = 0;
   G.buildingPanelDirty = true;
   G.debugRevealAllFog = false;
+  G.debugShowNavigation = true;
+  const debugNavigationButton=document.getElementById('debug-navigation-btn');
+  if(debugNavigationButton){debugNavigationButton.classList.add('active');debugNavigationButton.textContent='隐藏寻路';}
   G.targetedTrees = new Set();
-  G.dragging = false; G.dragMoved=false; gameRunning = true;
+  G.dragging = false; G.dragButton=null; G.dragMoved=false; gameRunning = true;
   setSpeed(1);
   G.infiniteResources = false;
   document.getElementById('gameover-overlay').style.display = 'none';
@@ -3401,6 +3760,7 @@ function update(dt) {
   G.dt = dt;
   updateDayNight(dt);
   updateBuildings(dt);
+  processNavigationRequests();
   updateResidents(dt);
   updateFogVisibility(dt);
   if (G.phase==='night') {
@@ -3532,6 +3892,49 @@ function drawBuildingCoverage(type,cx,cy,valid=true,level=1) {
   ctx.setLineDash([]); ctx.restore();
 }
 
+function drawNavigationDebug() {
+  if(!G.debugShowNavigation) return;
+  const units=navigationDebugUnits();
+  ctx.save();ctx.lineWidth=1.35/G.cam.zoom;ctx.lineJoin='round';ctx.lineCap='round';
+  for(const unit of units) {
+    const points=navigationDebugPoints(unit);
+    if(!points.length) continue;
+    const color=unit.isGuard?'#75e69a':unit.type&&ENEMY_DEFS[unit.type]?'#ff7168':'#65c8f2';
+    ctx.strokeStyle=color;ctx.fillStyle=color;ctx.globalAlpha=0.78;
+    ctx.beginPath();ctx.arc(unit.x,unit.y,4.5/G.cam.zoom,0,Math.PI*2);ctx.stroke();
+    ctx.setLineDash(unit.navPending?[5/G.cam.zoom,4/G.cam.zoom]:[]);
+    ctx.beginPath();ctx.moveTo(unit.x,unit.y);
+    for(const point of points) ctx.lineTo(point.x,point.y);
+    ctx.stroke();ctx.setLineDash([]);
+    for(let index=0;index<points.length-1;index++) {
+      ctx.beginPath();ctx.arc(points[index].x,points[index].y,2.6/G.cam.zoom,0,Math.PI*2);ctx.fill();
+    }
+    const target=points[points.length-1],radius=5/G.cam.zoom;
+    ctx.beginPath();ctx.arc(target.x,target.y,radius,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(target.x-radius*1.45,target.y);ctx.lineTo(target.x+radius*1.45,target.y);
+    ctx.moveTo(target.x,target.y-radius*1.45);ctx.lineTo(target.x,target.y+radius*1.45);ctx.stroke();
+  }
+  ctx.restore();
+}
+function drawGuardCommandMarkers() {
+  for(const marker of G.commandMarkers) {
+    const progress=1-marker.life/marker.maxLife,alpha=clamp(marker.life/marker.maxLife,0,1);
+    const radius=(9+progress*14)/G.cam.zoom;
+    ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=marker.type==='attack'?'#ef6d62':'#9ee68f';ctx.lineWidth=2/G.cam.zoom;
+    ctx.beginPath();ctx.arc(marker.x,marker.y,radius,0,Math.PI*2);ctx.stroke();
+    const arm=5/G.cam.zoom;
+    ctx.beginPath();
+    if(marker.type==='attack') {
+      ctx.moveTo(marker.x-arm,marker.y-arm);ctx.lineTo(marker.x+arm,marker.y+arm);
+      ctx.moveTo(marker.x+arm,marker.y-arm);ctx.lineTo(marker.x-arm,marker.y+arm);
+    } else {
+      ctx.moveTo(marker.x-arm,marker.y);ctx.lineTo(marker.x+arm,marker.y);
+      ctx.moveTo(marker.x,marker.y-arm);ctx.lineTo(marker.x,marker.y+arm);
+    }
+    ctx.stroke();ctx.restore();
+  }
+}
+
 function render() {
   const alpha=getAlpha();
   ctx.clearRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H);
@@ -3660,6 +4063,8 @@ function render() {
   }
 
   drawFogOverlay(vpL,vpT,vpR,vpB);
+  drawNavigationDebug();
+  drawGuardCommandMarkers();
   ctx.restore();
 
   drawCommandCursor();
@@ -4352,18 +4757,19 @@ function issueManualGuardCommand(clientX, clientY) {
   if (clientX<rect.left || clientX>rect.right || clientY<rect.top || clientY>rect.bottom) return false;
   const wp=screenToWorld(clientX-rect.left,clientY-rect.top);
   const enemy=G.enemies.find(e=>e.alive && isWorldVisible(e.x,e.y) && Math.hypot(e.x-wp.x,e.y-wp.y)<=e.size+8);
-  const columns=Math.ceil(Math.sqrt(guards.length));
-  for (let index=0;index<guards.length;index++) {
-    const guard=guards[index];
-    clearNavigation(guard);
-    guard.manualTargetEnemy=enemy||null;
-    if (enemy) guard.manualTarget=null;
-    else {
-      const offsetX=(index%columns-(columns-1)/2)*(RESIDENT_RADIUS*2.5);
-      const offsetY=(Math.floor(index/columns)-(Math.ceil(guards.length/columns)-1)/2)*(RESIDENT_RADIUS*2.5);
-      guard.manualTarget={x:clamp(wp.x+offsetX,0,CFG.WORLD_W),y:clamp(wp.y+offsetY,0,CFG.WORLD_H)};
-    }
+  if(!enemy) {
+    assignGuardGroupMove(guards,wp);
+    addGuardCommandMarker(wp.x,wp.y,'move');
+    return true;
   }
+  for (const guard of guards) {
+    clearNavigation(guard);
+    guard.manualTargetEnemy=enemy;
+    guard.manualTarget=null;
+    guard.formationCommandId=0;
+    guard.targetX=enemy.x;guard.targetY=enemy.y;guard.navDebugTarget={x:enemy.x,y:enemy.y};guard.navDebugTick=G.tick;
+  }
+  addGuardCommandMarker(enemy.x,enemy.y,'attack');
   return true;
 }
 
@@ -4379,10 +4785,17 @@ canvas.addEventListener('mousemove', e => {
 
   // Camera drag
   if (G.dragging) {
-    if (Math.abs(mx-G.dragStartX)>3 || Math.abs(my-G.dragStartY)>3) G.dragMoved=true;
-    G.cam.x = G.dragCamStartX - (mx - G.dragStartX) / G.cam.zoom;
-    G.cam.y = G.dragCamStartY - (my - G.dragStartY) / G.cam.zoom;
-    clampCamera();
+    const dx=mx-G.dragStartX, dy=my-G.dragStartY;
+    if (!G.dragMoved && (G.dragButton===1 ? Math.hypot(dx,dy)>0 : cameraDragExceeded(dx,dy))) {
+      G.dragMoved=true;
+      G.dragStartX=mx; G.dragStartY=my;
+      G.dragCamStartX=G.cam.x; G.dragCamStartY=G.cam.y;
+    }
+    if (G.dragMoved) {
+      G.cam.x = G.dragCamStartX - (mx - G.dragStartX) / G.cam.zoom;
+      G.cam.y = G.dragCamStartY - (my - G.dragStartY) / G.cam.zoom;
+      clampCamera();
+    }
   }
   if (G.guardSelectStart) {
     G.guardSelectEnd={x:wp.x,y:wp.y};
@@ -4390,11 +4803,11 @@ canvas.addEventListener('mousemove', e => {
   }
 });
 canvas.addEventListener('mousedown', e => {
-  if (e.button === 2) {
+  if (e.button === 2 || e.button === 1) {
     e.preventDefault();
     const r=canvas.getBoundingClientRect();
     const mx=e.clientX-r.left, my=e.clientY-r.top;
-    G.dragging=true; G.dragMoved=false;
+    G.dragging=true; G.dragButton=e.button; G.dragMoved=false;
     G.dragStartX=mx; G.dragStartY=my;
     G.dragCamStartX=G.cam.x; G.dragCamStartY=G.cam.y;
     hideContextMenu();
@@ -4456,8 +4869,7 @@ canvas.addEventListener('click', e => {
 
   if (G.dragging) {
     G.dragging = false;
-    const dx = mx - G.dragStartX, dy = my - G.dragStartY;
-    if (Math.abs(dx) > 3 || Math.abs(dy) > 3) {
+    if (G.dragMoved) {
       hideContextMenu(); // close menu on drag
       return;
     }
@@ -4519,12 +4931,12 @@ canvas.addEventListener('wheel', e => {
 canvas.addEventListener('contextmenu', e => {
   e.preventDefault();
 });
-canvas.addEventListener('mouseleave', () => { G.dragging = false; G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false; });
+canvas.addEventListener('mouseleave', () => { G.dragging = false; G.dragButton=null; G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false; });
 window.addEventListener('mouseup', e => {
-  if (e.button !== 2) return;
+  if (e.button !== 2 && e.button !== 1) return;
   const isCancelClick=G.dragging && !G.dragMoved;
-  G.dragging=false; G.dragMoved=false;
-  if (isCancelClick && !issueManualGuardCommand(e.clientX,e.clientY)) cancelCurrentAction();
+  G.dragging=false; G.dragButton=null; G.dragMoved=false;
+  if (e.button===2 && isCancelClick && !issueManualGuardCommand(e.clientX,e.clientY)) cancelCurrentAction();
 });
 contextMenu.addEventListener('click', e => e.stopPropagation());
 document.addEventListener('mousedown', e => {
@@ -4575,6 +4987,7 @@ let hudUpdateTimer=0;
 function gameLoop(ts) {
   const rawDt=Math.min((ts-lastTime)/1000,0.1); lastTime=ts;
   const dt = rawDt * gameSpeed;
+  updateCommandMarkers(rawDt);
   if (gameSpeed > 0) update(dt);
   render();
   hudUpdateTimer += rawDt;

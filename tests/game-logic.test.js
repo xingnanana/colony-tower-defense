@@ -118,6 +118,18 @@ test('shortcut settings save immediately and restore the default on a conflict',
   assert.equal(result.savedSpeed2, 'KeyC');
 });
 
+test('camera drag threshold is clamped and persisted with game settings', () => {
+  const result = runGameScenario(`
+    setCameraDragThreshold(99);
+    const saved=JSON.parse(localStorage.getItem(SETTINGS_STORAGE_KEY));
+    globalThis.__result={value:gameSettings.cameraDragThreshold,saved:saved.cameraDragThreshold,below:cameraDragExceeded(20,20),above:cameraDragExceeded(23,23)};
+  `);
+  assert.equal(result.value, 32);
+  assert.equal(result.saved, 32);
+  assert.equal(result.below, false);
+  assert.equal(result.above, true);
+});
+
 test('a worker can finish chopping after its forester workplace is removed', () => {
   const result = runGameScenario(`
     const store = new Building('wood_storage', 20, 20);
@@ -263,12 +275,15 @@ test('a mature forester sapling becomes a marked harvestable tree', () => {
   assert.equal(result.owner, true);
 });
 
-test('local navigation chains detours around multiple buildings', () => {
+test('global navigation moves continuously around multiple blocking buildings', () => {
   const result = runGameScenario(`
-    const a = new Building('farm', 2, 2), b = new Building('farm', 5, 2);
+    const a = new Building('town_hall', 2, 2), b = new Building('town_hall', 5, 2);
     const worker = new Resident(30, 140);
     G.buildings = [a, b]; G.resourceNodes = []; G.residents = [worker]; G.floorMask = null;
-    for (let i=0; i<260; i++) moveViaFlow(worker, 360, 140, CFG.RESIDENT_SPEED, 0.05);
+    for (let i=0; i<260; i++) {
+      processNavigationRequests();
+      moveViaFlow(worker, 360, 140, CFG.RESIDENT_SPEED, 0.05);
+    }
     globalThis.__result = Math.hypot(360-worker.x, 140-worker.y);
   `);
   assert.ok(result < 8, `remaining distance was ${result}`);
@@ -887,10 +902,148 @@ test('selected guards switch control mode together and manual movement plans aro
     for (const guard of G.selectedGuards) setGuardControlMode(guard,'manual');
     first.manualTarget={x:220,y:60};
     updateManualGuard(first,0.1);
-    globalThis.__result={bothManual:first.controlMode==='manual'&&second.controlMode==='manual',hasWaypoint:!!first.navWaypoint};
+    processNavigationRequests();
+    globalThis.__result={
+      bothManual:first.controlMode==='manual'&&second.controlMode==='manual',
+      hasPath:Array.isArray(first.navPath)&&first.navPath.length>0,
+      leavesDirectLine:first.navPath&&first.navPath.some(point=>Math.abs(point.y-60)>10)
+    };
   `);
   assert.equal(result.bothManual, true);
-  assert.equal(result.hasWaypoint, true);
+  assert.equal(result.hasPath, true);
+  assert.equal(result.leavesDirectLine, true);
+});
+
+test('guard groups receive unique oriented formation slots and share a route around obstacles', () => {
+  const result = runGameScenario(`
+    const wall=new Building('town_hall',4,1);
+    const guards=[];
+    for(let index=0;index<9;index++) {
+      const guard=new Resident(40+(index%3)*18,80+Math.floor(index/3)*18);
+      guard.isGuard=true;guard.hidden=false;guard.controlMode='manual';guards.push(guard);
+    }
+    G.buildings=[wall];G.resourceNodes=[];G.residents=guards;invalidateNavigation();
+    const assignments=assignGuardGroupMove(guards,{x:360,y:100});
+    const slots=new Set(assignments.map(item=>item.target.x.toFixed(2)+','+item.target.y.toFixed(2)));
+    globalThis.__result={
+      count:assignments.length,unique:slots.size,
+      allTargeted:guards.every(guard=>!!guard.manualTarget),
+      routed:guards.filter(guard=>guard.navPath&&guard.navPath.length>1).length,
+      verticalSpread:Math.max(...assignments.map(item=>item.target.y))-Math.min(...assignments.map(item=>item.target.y))
+    };
+  `);
+  assert.equal(result.count, 9);
+  assert.equal(result.unique, 9);
+  assert.equal(result.allTargeted, true);
+  assert.ok(result.routed >= 7);
+  assert.ok(result.verticalSpread > 30);
+});
+
+test('formation assignment preserves each guards front-back and lateral order', () => {
+  const result = runGameScenario(`
+    const backLeft=new Resident(100,100),frontLeft=new Resident(100,121);
+    const backRight=new Resident(121,100),frontRight=new Resident(121,121);
+    const guards=[backLeft,frontLeft,backRight,frontRight];
+    const assignments=guardFormationAssignments(guards,{x:110.5,y:300});
+    const targetOf=guard=>assignments.find(item=>item.guard===guard).target;
+    const bl=targetOf(backLeft),fl=targetOf(frontLeft),br=targetOf(backRight),fr=targetOf(frontRight);
+    globalThis.__result={
+      leftLane:Math.abs(bl.x-fl.x)<0.001,
+      rightLane:Math.abs(br.x-fr.x)<0.001,
+      lanesPreserved:bl.x<br.x&&fl.x<fr.x,
+      leftOrder:bl.y<fl.y,
+      rightOrder:br.y<fr.y
+    };
+  `);
+  assert.equal(result.leftLane, true);
+  assert.equal(result.rightLane, true);
+  assert.equal(result.lanesPreserved, true);
+  assert.equal(result.leftOrder, true);
+  assert.equal(result.rightOrder, true);
+});
+
+test('moving guards can pass teammates already settled from the same formation command', () => {
+  const result = runGameScenario(`
+    const mover=new Resident(80,100),settled=new Resident(100,100);
+    for(const guard of [mover,settled]) {guard.isGuard=true;guard.hidden=false;guard.controlMode='manual';guard.formationCommandId=7;}
+    mover.manualTarget={x:160,y:100};settled.manualTarget=null;
+    G.residents=[mover,settled];G.buildings=[];rebuildResidentSpatialHash();
+    const sameCommand=resolveCollisions(mover,102,100);
+    settled.formationCommandId=8;rebuildResidentSpatialHash();
+    const otherCommand=resolveCollisions(mover,102,100);
+    globalThis.__result={
+      passesSame:Math.abs(sameCommand.x-102)<0.001&&Math.abs(sameCommand.y-100)<0.001,
+      avoidsOther:Math.hypot(otherCommand.x-102,otherCommand.y-100)>0.001
+    };
+  `);
+  assert.equal(result.passesSame, true);
+  assert.equal(result.avoidsOther, true);
+});
+
+test('navigation requests are limited per tick and stale targets are discarded', () => {
+  const result = runGameScenario(`
+    const obstacle=new Building('town_hall',3,1),units=[];
+    G.buildings=[obstacle];G.resourceNodes=[];G.residents=[];
+    for(let index=0;index<8;index++) {
+      const unit=new Resident(30,55+index*6);units.push(unit);
+      flowMove(unit,320,80,CFG.RESIDENT_SPEED,0.05);
+    }
+    const queued=G.navigationQueue.length;
+    const firstBatch=processNavigationRequests();
+    const plannedAfterFirst=units.filter(unit=>unit.navPath).length;
+    const stale=units[7];clearNavigation(stale);stale.navTargetX=20;stale.navTargetY=20;
+    while(G.navigationQueue.length) processNavigationRequests();
+    globalThis.__result={queued,firstBatch,plannedAfterFirst,stalePlanned:!!stale.navPath,pending:units.filter(unit=>unit.navPending).length};
+  `);
+  assert.equal(result.queued, 8);
+  assert.equal(result.firstBatch, 2);
+  assert.equal(result.plannedAfterFirst, 2);
+  assert.equal(result.stalePlanned, false);
+  assert.equal(result.pending, 0);
+});
+
+test('large guard selections split into proximity clusters capped at twenty five units', () => {
+  const result = runGameScenario(`
+    const guards=[];
+    for(let index=0;index<60;index++) {
+      const guard=new Resident(100+(index%10)*8,100+Math.floor(index/10)*8);guard.isGuard=true;guards.push(guard);
+    }
+    const clusters=guardMovementClusters(guards);
+    globalThis.__result={sizes:clusters.map(cluster=>cluster.length),total:clusters.reduce((sum,cluster)=>sum+cluster.length,0)};
+  `);
+  assert.equal(result.total, 60);
+  assert.equal(result.sizes.join(','), '25,25,10');
+});
+
+test('global navigation keeps direct routes straight and prevents diagonal corner cutting', () => {
+  const result = runGameScenario(`
+    G.buildings=[]; G.resourceNodes=[]; invalidateNavigation();
+    const straight=findNavigationPath(30,30,230,230);
+    const grid=new Uint8Array(navigationCols()*navigationRows());
+    grid[navigationIndex(2,1)]=1; grid[navigationIndex(1,2)]=1;
+    G.navigationGrid=grid; G.navigationGridRevision=G.navigationRevision;
+    const aroundCorner=findNavigationPath(30,30,50,50);
+    globalThis.__result={straightPoints:straight.points.length,cornerPoints:aroundCorner&&aroundCorner.points.length,cornerReached:aroundCorner&&aroundCorner.reachedGoal};
+  `);
+  assert.equal(result.straightPoints, 1);
+  assert.ok(result.cornerPoints >= 2);
+  assert.equal(result.cornerReached, true);
+});
+
+test('global navigation falls back to the nearest reachable point for a sealed target', () => {
+  const result = runGameScenario(`
+    G.buildings=[]; G.resourceNodes=[];
+    for(let col=4;col<=6;col++) for(let row=4;row<=6;row++) {
+      if(col===5&&row===5) continue;
+      const wall=new Building('wall',col,row); G.buildings.push(wall);
+    }
+    invalidateNavigation();
+    const path=findNavigationPath(30,30,gridX(5)+20,gridY(5)+20);
+    globalThis.__result={exists:!!path,blocked:path&&path.blockedGoal,last:path&&path.points[path.points.length-1]};
+  `);
+  assert.equal(result.exists, true);
+  assert.equal(result.blocked, true);
+  assert.ok(result.last.x < 200 || result.last.y < 200 || result.last.x > 240 || result.last.y > 240);
 });
 
 test('an enemy chases an attacking guard then drops aggro beyond its leash', () => {
@@ -919,6 +1072,157 @@ test('debug reveal removes fog across the whole map until restart state is clear
   `);
   assert.equal(result.first, 1);
   assert.equal(result.last, 1);
+});
+
+test('debug navigation toggle updates state and command markers fade independently', () => {
+  const result = runGameScenario(`
+    G.debugShowNavigation=false;G.commandMarkers=[];
+    const enabled=toggleDebugNavigation();
+    for(let index=0;index<14;index++) addGuardCommandMarker(index,index,index%2?'attack':'move');
+    const capped=G.commandMarkers.length;
+    updateCommandMarkers(0.5);const midway=G.commandMarkers.length;
+    updateCommandMarkers(0.5);
+    globalThis.__result={enabled,state:G.debugShowNavigation,capped,midway,expired:G.commandMarkers.length};
+  `);
+  assert.equal(result.enabled, true);
+  assert.equal(result.state, true);
+  assert.equal(result.capped, 12);
+  assert.equal(result.midway, 12);
+  assert.equal(result.expired, 0);
+});
+
+test('navigation debug display is enabled by default', () => {
+  const result = runGameScenario(`
+    globalThis.__result={enabled:G.debugShowNavigation};
+  `);
+  assert.equal(result.enabled, true);
+});
+
+test('navigation debug points show the remaining route and keep idle units visible', () => {
+  const result = runGameScenario(`
+    const moving=new Resident(20,20);G.tick=12;
+    moving.navPath=[{x:40,y:20},{x:80,y:40},{x:120,y:60}];moving.navPathIndex=1;
+    moving.navDebugTarget={x:140,y:80};moving.navDebugTick=12;
+    const active=navigationDebugPoints(moving);
+    const idle=new Resident(50,50);idle.navDebugTarget={x:50,y:50};idle.navDebugTick=1;
+    globalThis.__result={active:active.map(point=>[point.x,point.y]),idle:navigationDebugPoints(idle).length};
+  `);
+  assert.equal(result.active.length, 3);
+  assert.equal(result.active[0].join(','), '80,40');
+  assert.equal(result.active[2].join(','), '140,80');
+  assert.equal(result.idle, 1);
+});
+
+test('manual guard navigation target stays at the issued position after arrival', () => {
+  const result = runGameScenario(`
+    const guard=new Resident(80,20);guard.isGuard=true;guard.hidden=false;guard.controlMode='manual';guard.state='GUARD_MANUAL';
+    guard.targetX=900;guard.targetY=700;guard.manualTarget={x:80,y:20};G.tick=24;
+    updateManualGuard(guard,0.1);
+    const debugTarget=navigationDebugPoints(guard).at(-1);
+    globalThis.__result={
+      commandFinished:guard.manualTarget===null,
+      target:[guard.targetX,guard.targetY],
+      debugTarget:[debugTarget.x,debugTarget.y]
+    };
+  `);
+  assert.equal(result.commandFinished, true);
+  assert.equal(result.target.join(','), '80,20');
+  assert.equal(result.debugTarget.join(','), '80,20');
+});
+
+test('manual guard blocked destination settles on the nearest reachable point', () => {
+  const result = runGameScenario(`
+    const guard=new Resident(60,40);guard.isGuard=true;guard.hidden=false;guard.controlMode='manual';guard.state='GUARD_MANUAL';
+    guard.targetX=600;guard.targetY=400;guard.manualTarget={x:100,y:40};
+    guard.navBlockedGoal=true;guard.navResolvedPoint={x:60,y:40};G.tick=30;
+    updateManualGuard(guard,0.1);
+    const debugTarget=navigationDebugPoints(guard).at(-1);
+    globalThis.__result={
+      commandFinished:guard.manualTarget===null,
+      target:[guard.targetX,guard.targetY],
+      debugTarget:[debugTarget.x,debugTarget.y]
+    };
+  `);
+  assert.equal(result.commandFinished, true);
+  assert.equal(result.target.join(','), '60,40');
+  assert.equal(result.debugTarget.join(','), '60,40');
+});
+
+test('idle residents patrol toward a stable visible target reported by navigation debug', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();
+    const resident=new Resident(center.x,center.y);resident.state='IDLE';
+    G.townHall=hall;G.buildings=[hall];G.residents=[resident];G.resourceNodes=[];G.phase='day';
+    updateResidents(0.1);
+    const first={...resident.patrolTarget},afterFirst={x:resident.x,y:resident.y};
+    const debugTarget=navigationDebugPoints(resident).at(-1);
+    updateResidents(0.1);
+    globalThis.__result={
+      hasTarget:!!first,stable:resident.patrolTarget.x===first.x&&resident.patrolTarget.y===first.y,
+      moved:Math.hypot(resident.x-center.x,resident.y-center.y)>Math.hypot(afterFirst.x-center.x,afterFirst.y-center.y),
+      debugMatches:debugTarget.x===first.x&&debugTarget.y===first.y,
+      visible:isStaticPatrolVisible(first.x,first.y)
+    };
+  `);
+  assert.equal(result.hasTarget, true);
+  assert.equal(result.stable, true);
+  assert.equal(result.moved, true);
+  assert.equal(result.debugMatches, true);
+  assert.equal(result.visible, true);
+});
+
+test('resident patrol destinations stay outside every building footprint', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();
+    const farm=new Building('farm',14,8);
+    G.townHall=hall;G.buildings=[hall,farm];
+    const resident=new Resident(center.x,center.y);
+    const values=[0,0,0,1],originalRandom=Math.random;
+    Math.random=()=>values.length?values.shift():1;
+    const target=choosePatrolTarget(resident);
+    Math.random=originalRandom;
+    globalThis.__result={
+      hasTarget:!!target,
+      targetClear:target?isPatrolPointClear(target.x,target.y):false,
+      hallCenterClear:isPatrolPointClear(center.x,center.y),
+      farmCenterClear:isPatrolPointClear(farm.center().x,farm.center().y)
+    };
+  `);
+  assert.equal(result.hasTarget, true);
+  assert.equal(result.targetClear, true);
+  assert.equal(result.hallCenterClear, false);
+  assert.equal(result.farmCenterClear, false);
+});
+
+test('automatic guards use a stable patrol target when no enemy is available', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();
+    const guard=new Resident(center.x+30,center.y);guard.isGuard=true;guard.hidden=false;guard.state='GUARD_FIGHTING';
+    G.townHall=hall;G.buildings=[hall];G.residents=[guard];G.enemies=[];G.phase='night';
+    guardUpdateAI(guard,0.1);
+    const first={...guard.patrolTarget},debugTarget=navigationDebugPoints(guard).at(-1);
+    guardUpdateAI(guard,0.1);
+    globalThis.__result={hasTarget:!!first,stable:guard.patrolTarget.x===first.x&&guard.patrolTarget.y===first.y,debugMatches:debugTarget.x===first.x&&debugTarget.y===first.y};
+  `);
+  assert.equal(result.hasTarget, true);
+  assert.equal(result.stable, true);
+  assert.equal(result.debugMatches, true);
+});
+
+test('navigation debug shows workers by day and guards with enemies by night', () => {
+  const result = runGameScenario(`
+    const worker=new Resident(20,20),guard=new Resident(30,30);guard.isGuard=true;
+    const enemy=new Enemy(40,40);G.residents=[worker,guard];G.enemies=[enemy];
+    G.phase='day';const day=navigationDebugUnits();
+    G.phase='night';const night=navigationDebugUnits();
+    globalThis.__result={dayWorkers:day.includes(worker),dayGuards:day.includes(guard),dayEnemies:day.includes(enemy),nightWorkers:night.includes(worker),nightGuards:night.includes(guard),nightEnemies:night.includes(enemy)};
+  `);
+  assert.equal(result.dayWorkers, true);
+  assert.equal(result.dayGuards, false);
+  assert.equal(result.dayEnemies, false);
+  assert.equal(result.nightWorkers, false);
+  assert.equal(result.nightGuards, true);
+  assert.equal(result.nightEnemies, true);
 });
 
 test('wild trees regrow as slow random saplings only below their configured range', () => {
