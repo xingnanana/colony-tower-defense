@@ -84,6 +84,20 @@ test('dusk does not interrupt a resident carrying resources', () => {
   assert.equal(result, 'HAULING');
 });
 
+test('sleeping residents become visible as soon as dawn begins', () => {
+  const result = runGameScenario(`
+    const resident=new Resident(100,100);
+    resident.state='SLEEPING';resident.hidden=true;
+    G.residents=[resident];G.buildings=[];G.phase='night';G.dayTime=CFG.NIGHT_DURATION;
+    updateDayNight(0.1);
+    updateResidents(0.1);
+    globalThis.__result={phase:G.phase,state:resident.state,visible:!resident.hidden};
+  `);
+  assert.equal(result.phase, 'dawn');
+  assert.equal(result.state, 'IDLE');
+  assert.equal(result.visible, true);
+});
+
 test('saved balance overrides global and building defaults before game state is created', () => {
   const result = runGameScenario(`
     applyBalanceData({version:1, globals:{START_FOOD:77, RESIDENT_SPEED:85, ENEMY_WAVE_DURATION:11}, buildings:{farm:{baseTime:6,cost:{wood:8}}}});
@@ -145,6 +159,26 @@ test('a worker can finish chopping after its forester workplace is removed', () 
   assert.equal(result.carrying, 1);
   assert.equal(result.treeAlive, false);
   assert.equal(result.shook, true);
+});
+
+test('an unemployed lumberjack finishes one tree and delivers it before starting an assigned job', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',8,8),farm=new Building('farm',14,8);
+    const storage=new Building('wood_storage',11,8),worker=new Resident(100,100);
+    const tree={type:'tree',x:100,y:100,alive:true,marked:true,ownerForester:null};
+    worker.state='CHOPPING';worker.chopTarget=tree;worker.chopTimer=3;
+    G.townHall=hall;G.buildings=[hall,storage,farm];G.resourceNodes=[tree];G.residents=[worker];G.phase='day';
+    assignResidentToWorkplace(worker,farm);
+    const assignedWithoutInterrupt=worker.workplace===farm&&worker.state==='CHOPPING'&&worker.finishCurrentChopForWork&&farm.assignedWorkers===1;
+    updateResidents(1);
+    const haulingAfterTree=!tree.alive&&worker.state==='HAULING'&&worker.carrying?.type==='wood';
+    const sc=storage.center();worker.x=sc.x;worker.y=sc.y;
+    updateResidents(0.1);
+    globalThis.__result={assignedWithoutInterrupt,haulingAfterTree,startedJob:worker.state==='GOING_TO_WORK'&&!worker.carrying&&!worker.finishCurrentChopForWork};
+  `);
+  assert.equal(result.assignedWithoutInterrupt, true);
+  assert.equal(result.haulingAfterTree, true);
+  assert.equal(result.startedJob, true);
 });
 
 test('full wood storage pauses logging instead of leaving a resident chopping in place', () => {
@@ -441,13 +475,14 @@ test('tower does not fire arrows at enemies in fog', () => {
   assert.equal(result.hp, 40);
 });
 
-test('coverage metadata exposes lamp, forester, mine, and tower ranges', () => {
+test('coverage metadata exposes lamp, forester, mine, tower, and restoration ranges', () => {
   const result = runGameScenario(`
     globalThis.__result = {
       lamp:buildingCoverage('lamp').radius,
       forester:buildingCoverage('forester').radius,
       quarry:buildingCoverage('quarry').radius,
       tower:buildingCoverage('arrow_tower').radius,
+      restoration:buildingCoverage('restoration_tower').radius,
       floor:buildingCoverage('floor')
     };
   `);
@@ -455,7 +490,41 @@ test('coverage metadata exposes lamp, forester, mine, and tower ranges', () => {
   assert.equal(result.forester, 160);
   assert.equal(result.quarry, 120);
   assert.equal(result.tower, 150);
+  assert.equal(result.restoration, 160);
   assert.equal(result.floor, null);
+});
+
+test('restoration tower repairs one lowest-health target and excludes itself and distant targets', () => {
+  const result = runGameScenario(`
+    const tower=new Building('restoration_tower',10,10);tower.level=2;tower.hp=40;
+    const wall=new Building('wall',12,10);wall.hp=100;
+    const distant=new Building('wall',30,30);distant.hp=20;
+    const guard=new Resident(tower.center().x+30,tower.center().y);guard.isGuard=true;guard.hidden=false;guard.guardHP=20;guard.guardMaxHP=80;
+    G.buildings=[tower,wall,distant];G.residents=[guard];
+    updateRestorationTower(tower,1);
+    const guardAfter=guard.guardHP,wallBefore=wall.hp;
+    guard.guardHP=guard.guardMaxHP;
+    updateRestorationTower(tower,1);
+    globalThis.__result={guardAfter,wallGain:wall.hp-wallBefore,distantHp:distant.hp,towerHp:tower.hp,targetKind:tower.repairTarget?.kind||null};
+  `);
+  assert.equal(result.guardAfter, 34.4);
+  assert.ok(Math.abs(result.wallGain-9.6)<0.001);
+  assert.equal(result.distantHp, 20);
+  assert.equal(result.towerHp, 40);
+  assert.equal(result.targetKind, 'building');
+});
+
+test('town hall automatically fires entity arrows at visible enemies', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',20,20),center=hall.center();G.townHall=hall;
+    const enemy=new Enemy(center.x+80,center.y);
+    G.buildings=[hall];G.enemies=[enemy];G.projectiles=[];initFog();G.fogVisible.fill(1);
+    const hpBefore=enemy.hp;updateTowers(1);const arrows=G.projectiles.length;
+    for(let index=0;index<10;index++) updateProjectiles(0.05);
+    globalThis.__result={arrows,hpBefore,hpAfter:enemy.hp};
+  `);
+  assert.equal(result.arrows, 1);
+  assert.ok(result.hpAfter<result.hpBefore);
 });
 
 test('idle patrol uses completed building vision instead of its own dynamic vision', () => {
@@ -683,12 +752,15 @@ test('building editor fields are tailored by building type and lamp vision uses 
       storageFields:buildingEditFields('food_storage').map(field=>field.k).join(','),
       townHallFields:buildingEditFields('town_hall').map(field=>field.k).join(','),
       townHallLevelTwoFields:buildingEditFields('town_hall',2).map(field=>field.k).join(','),
+      restorationFields:buildingEditFields('restoration_tower').map(field=>field.k).join(','),
       lampVision:buildingVisionRadius(lamp)/CFG.CELL,
     };
   `);
   assert.match(result.lampFields, /vision/);
   assert.doesNotMatch(result.lampFields, /maxWorkers/);
   assert.match(result.townHallFields, /startResources/);
+  assert.match(result.townHallFields, /range/);
+  assert.match(result.townHallFields, /damage/);
   assert.doesNotMatch(result.townHallLevelTwoFields, /startResources/);
   assert.match(result.farmFields, /maxWorkers/);
   assert.match(result.farmFields, /baseTime/);
@@ -696,6 +768,9 @@ test('building editor fields are tailored by building type and lamp vision uses 
   assert.doesNotMatch(result.storageFields, /maxWorkers/);
   assert.match(result.storageFields, /capacity/);
   assert.match(result.lampFields, /unlock/);
+  assert.match(result.restorationFields, /repairRange/);
+  assert.match(result.restorationFields, /buildingRepairRate/);
+  assert.match(result.restorationFields, /unitRepairRate/);
   assert.doesNotMatch(result.townHallFields, /unlock/);
   assert.equal(result.lampVision, 8);
 });
@@ -1061,6 +1136,27 @@ test('an enemy chases an attacking guard then drops aggro beyond its leash', () 
   `);
   assert.equal(result.chased, true);
   assert.equal(result.dropped, true);
+});
+
+test('enemy facing follows its current building or guard combat target', () => {
+  const result = runGameScenario(`
+    const hall=new Building('town_hall',8,8),wall=new Building('wall',12,8);
+    G.townHall=hall;G.buildings=[hall,wall];
+    const enemy=new Enemy(300,300),guard=new Resident(220,300);
+    guard.isGuard=true;guard.hidden=false;guard.guardHP=10;
+    enemy.attacking=wall;
+    const buildingFacing=enemyFacingPoint(enemy),wallCenter=wall.center();
+    enemyAggroGuard(enemy,guard);
+    const guardFacing=enemyFacingPoint(enemy);
+    globalThis.__result={
+      facesBuilding:buildingFacing.x===wallCenter.x&&buildingFacing.y===wallCenter.y,
+      facesGuard:guardFacing.x===guard.x&&guardFacing.y===guard.y,
+      stoppedFacingBuilding:enemy.attacking===null
+    };
+  `);
+  assert.equal(result.facesBuilding, true);
+  assert.equal(result.facesGuard, true);
+  assert.equal(result.stoppedFacingBuilding, true);
 });
 
 test('debug reveal removes fog across the whole map until restart state is cleared', () => {

@@ -411,7 +411,9 @@ const BLD_DEFS = {
 
   auto_arrow_tower:{ name:'自动箭塔',icon:'自', cat:'defense', sz:[1,1], cost:{wood:30,stone:20},hp:150, maxWorkers:0, range:160, damage:18, cooldown:0.7, levelRangeBonus:20, unlock:5 , buildTime:14 },
 
-  town_hall:   { name:'大本营',icon:'', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, capacity:200, vision:8, startResources:{food:5,wood:5,stone:0,iron:0,ingot:0}, storageCaps:{food:200,wood:200,stone:200,iron:200,ingot:200}, unlock:1 , buildTime:2 },
+  restoration_tower:{ name:'恢复塔',icon:'复', cat:'defense', sz:[1,1], cost:{wood:20,stone:15},hp:140, maxWorkers:0, repairRange:160, buildingRepairRate:8, unitRepairRate:12, levelRepairBonus:0.2, unlock:4, buildTime:10 },
+
+  town_hall:   { name:'大本营',icon:'', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, capacity:200, vision:8, range:180, damage:12, cooldown:1, startResources:{food:5,wood:5,stone:0,iron:0,ingot:0}, storageCaps:{food:200,wood:200,stone:200,iron:200,ingot:200}, unlock:1 , buildTime:2 },
 
   lamp:        { name:'灯', icon:'灯', cat:'facility',  sz:[1,1], cost:{wood:5}, hp:50, maxWorkers:0, unlock:1, buildTime:2, vision:5, levelVisionBonus:1 },
 
@@ -462,7 +464,7 @@ function buildingLevelValue(type, level, key) {
 function buildingRuntimeDef(b) {
   const def=BLD_DEFS[b.type];
   const runtime={...def,...buildingLevelOverrides(b.type,b.level)};
-  for (const key of ['hp','maxWorkers','baseTime','capacity','range','damage','cooldown','vision','foresterRadius','sourceRadius','popBonus','guardBonus','recruitTime','buildTime','startResources','storageCaps','batchSize','levelSpeedBonus','levelBufferBonus','levelCapacityBonus','levelDamageBonus','levelRangeBonus','levelVisionBonus','levelDamageReduction','chopTime','saplingGrowTime','growJitter']) runtime[key]=buildingLevelValue(b.type,b.level,key);
+  for (const key of ['hp','maxWorkers','baseTime','capacity','range','damage','cooldown','vision','foresterRadius','sourceRadius','repairRange','buildingRepairRate','unitRepairRate','levelRepairBonus','popBonus','guardBonus','recruitTime','buildTime','startResources','storageCaps','batchSize','levelSpeedBonus','levelBufferBonus','levelCapacityBonus','levelDamageBonus','levelRangeBonus','levelVisionBonus','levelDamageReduction','chopTime','saplingGrowTime','growJitter']) runtime[key]=buildingLevelValue(b.type,b.level,key);
   return runtime;
 }
 function townHallResourceCapacity(type, level=1) { return buildingLevelValue('town_hall',level,'storageCaps')?.[type]||0; }
@@ -667,6 +669,7 @@ function buildingCoverage(type, level=1) {
   if (type==='town_hall') return {radius:value('vision')*CFG.CELL, fill:'rgba(255,226,142,0.07)', stroke:'rgba(255,226,142,0.62)', dash:[7,5]};
   if (value('foresterRadius')) return {radius:value('foresterRadius')*CFG.CELL, fill:'rgba(100,255,100,0.06)', stroke:'rgba(100,255,100,0.42)', dash:[3,6]};
   if (value('sourceRadius')) return {radius:value('sourceRadius')*CFG.CELL, fill:'rgba(225,190,105,0.05)', stroke:'rgba(225,190,105,0.58)', dash:[5,5]};
+  if (value('repairRange')) return {radius:value('repairRange'), fill:'rgba(89,224,211,0.07)', stroke:'rgba(112,235,221,0.68)', dash:[5,4]};
   if (value('range')) return {radius:value('range'), fill:'rgba(255,255,255,0.08)', stroke:'rgba(255,255,255,0.38)', dash:null};
   return null;
 }
@@ -766,6 +769,7 @@ function buildingUpgradeSummary(b, next=false) {
   if (b.type==='arrow_tower') return levelLabel+' 伤害 '+Math.round(buildingLevelValue(b.type,level,'damage'));
   if (b.type==='auto_arrow_tower') return levelLabel+' 射程 '+buildingLevelValue(b.type,level,'range');
   if (b.type==='lamp') return levelLabel+' 视野 '+buildingLevelValue(b.type,level,'vision')+' 格';
+  if (b.type==='restoration_tower') return levelLabel+' 修复效率 '+Math.round((1+(level-1)*(def.levelRepairBonus||0))*100)+'%';
   if (b.type==='wall') return levelLabel+' 减伤 '+Math.round(clamp((level-1)*(def.levelDamageReduction||0),0,0.75)*100)+'%';
   return null;
 }
@@ -1651,7 +1655,24 @@ function refreshFarmAdjacency() {
   }
 }
 function getIdleResidents() {
-  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.isEngineer);
+  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer && !r.isGuard);
+}
+function isIndependentWoodTask(r) {
+  if(!r||r.workplace||r.isEngineer||r.isGuard) return false;
+  if((r.state==='GOING_TO_CHOP'||r.state==='CHOPPING')&&r.chopTarget&&!r.chopTarget.ownerForester) return true;
+  return r.state==='HAULING'&&r.carrying?.type==='wood'&&!r.carryingFrom;
+}
+function getAssignableResidents() {
+  return [...getIdleResidents(),...G.residents.filter(isIndependentWoodTask)];
+}
+function assignResidentToWorkplace(worker,b) {
+  if(!worker||!b||worker.workplace||b.assignedWorkers>=buildingRuntimeDef(b).maxWorkers) return false;
+  const finishingWoodTask=isIndependentWoodTask(worker);
+  worker.workplace=b;
+  worker.finishCurrentChopForWork=finishingWoodTask;
+  if(!finishingWoodTask) worker.state='GOING_TO_WORK';
+  b.assignedWorkers++;
+  return true;
 }
 function residentCount(isGuard) {
   return G.residents.filter(r=>r.isGuard===isGuard).length;
@@ -1741,6 +1762,7 @@ class Building {
     this.assignedEngineer = null;
     this.constructionTimer = 0;
     this.foresterPlantCooldown = 0;
+    this.repairTarget = null;
     this.ruin = false;
     this.ruinCost = null;
   }
@@ -1785,6 +1807,7 @@ class Resident {
     this.buildTarget = null;
     this.isEngineer = false;
     this.chopTarget = null; this.chopTimer = 0; this.chopShakeBeat = -1;
+    this.finishCurrentChopForWork = false;
     this.finishBeforeEating = false;
     this.mealPending = false;
     // Guard properties
@@ -2163,6 +2186,13 @@ function enemyCanAttackBuilding(e,b) {
   if (!b || b.hp<=0) return false;
   const c=b.center();
   return Math.hypot(e.x-c.x,e.y-c.y) <= b.collisionRadius()+e.attackRange+5;
+}
+
+function enemyFacingPoint(e) {
+  const guard=e.fightingGuard||e.guardTarget;
+  if(guard&&guard.guardHP>0&&!guard.hidden) return {x:guard.x,y:guard.y};
+  if(e.attacking&&e.attacking.hp>0) return e.attacking.center();
+  return {x:e.targetX,y:e.targetY};
 }
 
 function enemyAggroGuard(e, guard) {
@@ -2558,7 +2588,7 @@ function guardUpdateAI(r, dt) {
 function updateTowers(dt) {
   for (const b of G.buildings) {
     const def = buildingRuntimeDef(b);
-    if (!def.range || b.hp <= 0) continue;
+    if (!def.range || b.hp <= 0 || b.ruin || b.blueprint || b.constructionTimer>0) continue;
     // Arrow tower: needs manning by a guard
     if (def.needsManning) {
       const guard=b.assignedGuard;
@@ -2596,7 +2626,7 @@ function updateResidents(dt) {
 
   for (const r of G.residents) {
     if (r.state==='SLEEPING') {
-      if (G.phase==='day'||G.phase==='dawn') { r.state='IDLE'; r.tired=0; }
+      if (G.phase==='day'||G.phase==='dawn') { r.state='IDLE'; r.tired=0; r.hidden=false; }
       continue;
     }
     if (r.state==='GUARD_SLEEPING') {
@@ -2710,6 +2740,7 @@ function updateResidents(dt) {
           if (source && source.outputHauler === r) source.outputHauler = null;
           r.carrying=null;
           r.carryingFrom=null;
+          r.finishCurrentChopForWork=false;
           if (!eatAfterFinishingTask(r)) {
             r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
               : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
@@ -2718,28 +2749,35 @@ function updateResidents(dt) {
         break;
       }
       case 'GOING_TO_CHOP': {
-        if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) { r.chopTarget = null; r.state = 'IDLE'; break; }
+        if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) {
+          r.chopTarget=null;r.finishCurrentChopForWork=false;
+          r.state=r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';break;
+        }
         const ctx = r.chopTarget.x, cty = r.chopTarget.y;
         if (Math.hypot(r.x - ctx, r.y - cty) < RESIDENT_RADIUS + 10) { r.state = 'CHOPPING'; r.chopTimer = 0; r.chopShakeBeat = -1; }
         else moveViaFlow(r, ctx, cty, CFG.RESIDENT_SPEED, dt);
         break;
       }
       case 'CHOPPING': {
-        if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) { r.chopTarget = null; r.state = 'IDLE'; break; }
+        if (!r.chopTarget || !r.chopTarget.alive || !r.chopTarget.marked) {
+          r.chopTarget=null;r.finishCurrentChopForWork=false;
+          r.state=r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';break;
+        }
         r.chopTimer += dt;
         const shakeBeat=Math.floor(r.chopTimer/0.55);
         if (shakeBeat !== r.chopShakeBeat) {
           r.chopShakeBeat=shakeBeat;
           r.chopTarget.shakeUntil=G.totalTime+0.12;
         }
-        const forester=r.workplace&&r.workplace.type==='forester' ? r.workplace : {type:'forester',level:1};
+        const forester=!r.finishCurrentChopForWork&&r.workplace&&r.workplace.type==='forester' ? r.workplace : {type:'forester',level:1};
         const chopTime=buildingRuntimeDef(forester).chopTime/productionSpeedMultiplier(forester);
         if (r.chopTimer >= chopTime) {
           const carried = r.carrying ? r.carrying.amount : 0;
-          const carryCapacity=productionBufferCapacity(r.workplace||{level:1});
+          const carryCapacity=productionBufferCapacity(r.finishCurrentChopForWork?{level:1}:(r.workplace||{level:1}));
           const s2 = findNearestStorage(r, 'wood', {requireSpace:Math.max(1, carryCapacity - carried)});
           if (!s2) {
             r.chopTarget=null; r.chopTimer=0;
+            r.finishCurrentChopForWork=false;
             r.state=r.workplace?'GOING_TO_WORK':'IDLE';
             break;
           }
@@ -2750,7 +2788,7 @@ function updateResidents(dt) {
           if (!r.carrying) r.carrying = { type: 'wood', amount: 1 };
           else r.carrying.amount++;
           r.chopTarget = null;
-          const nextTree = findForesterTree(r, r.workplace);
+          const nextTree = r.finishCurrentChopForWork ? null : findForesterTree(r, r.workplace);
           r.state = !r.finishBeforeEating && nextTree && r.carrying.amount < carryCapacity ? 'WORKING' : 'HAULING';
           if (r.state === 'HAULING') { const sc = s2.center(); r.targetX = sc.x; r.targetY = sc.y; }
         }
@@ -2888,6 +2926,67 @@ function updateResidents(dt) {
   // Population growth is manual via town hall recruitment
 }
 
+function restorationUnitHealth(unit) {
+  if(unit.isGuard) return {current:unit.guardHP,max:unit.guardMaxHP};
+  if(Number.isFinite(unit.hp)&&Number.isFinite(unit.maxHp)) return {current:unit.hp,max:unit.maxHp};
+  return null;
+}
+function restorationTargetPoint(entry) {
+  if(!entry?.entity) return null;
+  return entry.kind==='building' ? entry.entity.center() : {x:entry.entity.x,y:entry.entity.y};
+}
+function restorationTargetHealth(entry) {
+  if(!entry?.entity) return null;
+  return entry.kind==='building'
+    ? {current:entry.entity.hp,max:entry.entity.maxHp}
+    : restorationUnitHealth(entry.entity);
+}
+function restorationTargetValid(tower,entry) {
+  if(!entry?.entity) return false;
+  const entity=entry.entity;
+  if(entry.kind==='building') {
+    if(entity===tower||!G.buildings.includes(entity)||entity.ruin||entity.blueprint||entity.constructionTimer>0) return false;
+  } else if(!G.residents.includes(entity)||entity.hidden) return false;
+  const health=restorationTargetHealth(entry),point=restorationTargetPoint(entry);
+  return !!health&&health.max>0&&health.current>0&&health.current<health.max&&
+    Math.hypot(point.x-tower.center().x,point.y-tower.center().y)<=buildingRuntimeDef(tower).repairRange;
+}
+function findRestorationTarget(tower) {
+  const center=tower.center(),range=buildingRuntimeDef(tower).repairRange;
+  let best=null,bestRatio=Infinity,bestDistance=Infinity;
+  const consider=(kind,entity,point,health)=>{
+    if(!health||health.max<=0||health.current<=0||health.current>=health.max) return;
+    const distance=Math.hypot(point.x-center.x,point.y-center.y);
+    if(distance>range) return;
+    const ratio=health.current/health.max;
+    if(ratio<bestRatio-0.0001||(Math.abs(ratio-bestRatio)<=0.0001&&distance<bestDistance)) {
+      best={kind,entity};bestRatio=ratio;bestDistance=distance;
+    }
+  };
+  for(const building of G.buildings) {
+    if(building===tower||building.ruin||building.blueprint||building.constructionTimer>0) continue;
+    consider('building',building,building.center(),{current:building.hp,max:building.maxHp});
+  }
+  for(const unit of G.residents) {
+    if(unit.hidden) continue;
+    consider('unit',unit,{x:unit.x,y:unit.y},restorationUnitHealth(unit));
+  }
+  return best;
+}
+function updateRestorationTower(tower,dt) {
+  if(tower.type!=='restoration_tower'||tower.ruin||tower.blueprint||tower.constructionTimer>0||tower.hp<=0) {
+    tower.repairTarget=null;return;
+  }
+  if(!restorationTargetValid(tower,tower.repairTarget)) tower.repairTarget=findRestorationTarget(tower);
+  const entry=tower.repairTarget;
+  if(!entry) return;
+  const def=buildingRuntimeDef(tower),multiplier=1+(tower.level-1)*(def.levelRepairBonus||0);
+  if(entry.kind==='building') entry.entity.hp=Math.min(entry.entity.maxHp,entry.entity.hp+def.buildingRepairRate*multiplier*dt);
+  else if(entry.entity.isGuard) entry.entity.guardHP=Math.min(entry.entity.guardMaxHP,entry.entity.guardHP+def.unitRepairRate*multiplier*dt);
+  else entry.entity.hp=Math.min(entry.entity.maxHp,entry.entity.hp+def.unitRepairRate*multiplier*dt);
+  if(!restorationTargetValid(tower,entry)) tower.repairTarget=null;
+}
+
 function updateBuildings(dt) {
   const activeWorkersByBuilding = new Map();
   const growingSaplingCount = new Map();
@@ -2988,6 +3087,7 @@ function updateBuildings(dt) {
         }
       }
     }
+    if(b.type==='restoration_tower') updateRestorationTower(b,dt);
   }
   // Grow saplings
   updateWildTreeRegrowth(dt);
@@ -3166,6 +3266,9 @@ const BLD_TYPE_EDIT_FIELDS = {
   floor: [{ k:'moveSpeedMultiplier', label:'移动速度倍率', type:'num', min:0, step:0.1, unit:'倍' }],
   town_hall: [
     { k:'vision', label:'迷雾驱散范围', type:'num', min:1, step:1, unit:'格' },
+    { k:'range', label:'攻击射程', type:'num', min:1, step:1, unit:'像素' },
+    { k:'damage', label:'箭矢伤害', type:'num', min:0, step:1 },
+    { k:'cooldown', label:'攻击间隔', type:'num', min:0.05, step:0.05, unit:'秒' },
     { k:'startResources', label:'初始拥有资源', type:'resources' },
     { k:'storageCaps', label:'各资源仓储上限', type:'resources' },
   ],
@@ -3238,6 +3341,12 @@ const BLD_TYPE_EDIT_FIELDS = {
     { k:'damage', label:'箭矢伤害', type:'num', min:0, step:1 },
     { k:'cooldown', label:'攻击间隔', type:'num', min:0.05, step:0.05, unit:'秒' },
     { k:'levelRangeBonus', label:'每级射程加成', type:'num', min:0, step:1, unit:'像素' },
+  ],
+  restoration_tower: [
+    { k:'repairRange', label:'修复范围', type:'num', min:1, step:1, unit:'像素' },
+    { k:'buildingRepairRate', label:'建筑修复速度', type:'num', min:0, step:0.5, unit:'生命/秒' },
+    { k:'unitRepairRate', label:'友军修复速度', type:'num', min:0, step:0.5, unit:'生命/秒' },
+    { k:'levelRepairBonus', label:'每级修复效率', type:'num', min:0, max:2, step:0.05, unit:'倍率' },
   ],
   lamp: [{ k:'vision', label:'迷雾驱散范围', type:'num', min:1, step:1, unit:'格' }, { k:'levelVisionBonus', label:'每级视野加成', type:'num', min:0, step:1, unit:'格' }],
   wall: [{ k:'levelDamageReduction', label:'每级减伤', type:'num', min:0, max:0.75, step:0.05, unit:'比例' }],
@@ -4004,6 +4113,9 @@ function render() {
   // Residents
   for (const r of G.residents) if (!r.hidden && inView(r.x,r.y)) drawResident(r);
 
+  // Restoration beams stay visible above repaired buildings and friendly units.
+  for(const b of G.buildings) if(b.type==='restoration_tower'&&inView(b.center().x,b.center().y,200)) drawRestorationBeam(b);
+
   // Enemies
   for (const e of G.enemies) if(e.alive && isWorldVisible(e.x,e.y) && inView(e.x,e.y)) drawEnemy(e);
 
@@ -4276,6 +4388,19 @@ function drawArrowProjectile(arrow) {
   ctx.restore();
 }
 
+function drawRestorationBeam(tower) {
+  if(!tower.repairTarget||!restorationTargetValid(tower,tower.repairTarget)) return;
+  const start=tower.center(),end=restorationTargetPoint(tower.repairTarget);
+  const pulse=(Math.sin(G.totalTime*8)+1)*0.5;
+  ctx.save();ctx.lineCap='round';
+  ctx.strokeStyle=`rgba(92,229,216,${0.25+pulse*0.12})`;ctx.lineWidth=5/G.cam.zoom;
+  ctx.beginPath();ctx.moveTo(start.x,start.y);ctx.lineTo(end.x,end.y);ctx.stroke();
+  ctx.strokeStyle='rgba(210,255,248,0.9)';ctx.lineWidth=1.2/G.cam.zoom;ctx.setLineDash([5/G.cam.zoom,4/G.cam.zoom]);ctx.lineDashOffset=-G.totalTime*18/G.cam.zoom;
+  ctx.beginPath();ctx.moveTo(start.x,start.y);ctx.lineTo(end.x,end.y);ctx.stroke();ctx.setLineDash([]);
+  ctx.fillStyle='rgba(205,255,246,0.9)';ctx.beginPath();ctx.arc(end.x,end.y,(2.5+pulse*1.5)/G.cam.zoom,0,Math.PI*2);ctx.fill();
+  ctx.restore();
+}
+
 function drawBuildingDetails(b,cx,cy,cr,w,h) {
   const t=b.type;
   ctx.save(); ctx.lineWidth=1.2/G.cam.zoom;
@@ -4293,6 +4418,8 @@ function drawBuildingDetails(b,cx,cy,cr,w,h) {
     ctx.fillStyle='#d2b969'; ctx.beginPath(); ctx.moveTo(cx-22,cy-10); ctx.lineTo(cx,cy-24); ctx.lineTo(cx+22,cy-10); ctx.closePath(); ctx.fill();
     ctx.strokeStyle='#eadb9b'; ctx.beginPath(); ctx.moveTo(cx,cy-24); ctx.lineTo(cx,cy-34); ctx.stroke();
     ctx.fillStyle='#a94c3d'; ctx.fillRect(cx,cy-34,10,6);
+    ctx.strokeStyle='#d8e0d5';ctx.lineWidth=2/G.cam.zoom;ctx.beginPath();ctx.arc(cx+12,cy-13,4,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx+12,cy-13);ctx.lineTo(cx+25,cy-13);ctx.stroke();
   } else if (t==='house') {
     ctx.fillStyle='rgba(43,35,28,0.55)'; ctx.fillRect(cx-15,cy-8,30,20);
     ctx.fillStyle='#b96c4b'; ctx.beginPath(); ctx.moveTo(cx-19,cy-8); ctx.lineTo(cx,cy-21); ctx.lineTo(cx+19,cy-8); ctx.closePath(); ctx.fill();
@@ -4327,6 +4454,11 @@ function drawBuildingDetails(b,cx,cy,cr,w,h) {
   } else if (t==='arrow_tower'||t==='auto_arrow_tower') {
     ctx.strokeStyle='rgba(240,226,185,0.65)'; ctx.beginPath(); ctx.arc(cx,cy,cr*0.55,0,Math.PI*2); ctx.stroke();
     ctx.beginPath(); ctx.moveTo(cx-cr*0.65,cy); ctx.lineTo(cx+cr*0.65,cy); ctx.moveTo(cx,cy-cr*0.65); ctx.lineTo(cx,cy+cr*0.65); ctx.stroke();
+  } else if (t==='restoration_tower') {
+    ctx.strokeStyle='rgba(139,244,228,0.82)';ctx.lineWidth=2/G.cam.zoom;
+    ctx.beginPath();ctx.arc(cx,cy,cr*0.58,0,Math.PI*2);ctx.stroke();
+    ctx.beginPath();ctx.moveTo(cx-cr*0.38,cy);ctx.lineTo(cx+cr*0.38,cy);ctx.moveTo(cx,cy-cr*0.38);ctx.lineTo(cx,cy+cr*0.38);ctx.stroke();
+    ctx.fillStyle='rgba(118,226,214,0.28)';ctx.beginPath();ctx.arc(cx,cy,cr*0.4,0,Math.PI*2);ctx.fill();
   } else if (t==='wall') {
     ctx.strokeStyle='rgba(238,238,225,0.38)';
     for (let yy=-6;yy<=6;yy+=6) { ctx.beginPath(); ctx.moveTo(cx-cr*0.65,cy+yy); ctx.lineTo(cx+cr*0.65,cy+yy); ctx.stroke(); }
@@ -4336,7 +4468,7 @@ function drawBuildingDetails(b,cx,cy,cr,w,h) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',nursery:'#8b5961',barracks:'#58697b',training_ground:'#765a4b',lamp:'#806d42',farm:'#8b9a4b',forester:'#3d7a3d',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',wall:'#7a7a6a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',nursery:'#8b5961',barracks:'#58697b',training_ground:'#765a4b',lamp:'#806d42',farm:'#8b9a4b',forester:'#3d7a3d',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',restoration_tower:'#387c78',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResidentAxeIcon(x, y) {
@@ -4409,7 +4541,8 @@ function drawResident(r) {
 }
 
 function drawEnemy(e) {
-  const a=Math.atan2(e.targetY-e.y,e.targetX-e.x), s=e.size;
+  const facing=enemyFacingPoint(e);
+  const a=Math.atan2(facing.y-e.y,facing.x-e.x), s=e.size;
   ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(a);
   const def=ENEMY_DEFS[e.type] || ENEMY_DEFS.normal;
   ctx.fillStyle=e.attacking?'#ff4444':def.color;
@@ -4616,8 +4749,8 @@ function actionUpgrade() {
 function actionAddWorker() {
   const b=G.selectedBuilding; if(!b) return;
   if(b.assignedWorkers>=buildingRuntimeDef(b).maxWorkers) return;
-  const idles=getIdleResidents(); if(idles.length===0) return;
-  idles[0].workplace=b; idles[0].state='GOING_TO_WORK'; b.assignedWorkers++;
+  const candidates=getAssignableResidents(); if(candidates.length===0) return;
+  if(!assignResidentToWorkplace(candidates[0],b)) return;
   // Refresh menu to show updated count
   const menu=document.getElementById('context-menu');
   showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));
@@ -4625,7 +4758,7 @@ function actionAddWorker() {
 function actionRemoveWorker() {
   const b=G.selectedBuilding; if(!b||b.assignedWorkers<=0) return;
   const w=G.residents.find(r=>r.workplace===b&&!r.isGuard);
-  if(w){if (b.outputHauler===w) b.outputHauler=null; w.workplace=null;w.chopTarget=null;w.state=w.carrying?'HAULING':'IDLE';}
+  if(w){if (b.outputHauler===w) b.outputHauler=null; w.workplace=null;w.finishCurrentChopForWork=false;w.chopTarget=null;w.state=w.carrying?'HAULING':'IDLE';}
   b.assignedWorkers=Math.max(0,b.assignedWorkers-1);
   const menu=document.getElementById('context-menu');
   showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));

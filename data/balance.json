@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-07-14T01:12:23.835Z",
+  "savedAt": "2026-07-16T13:59:58.099Z",
   "globals": {
     "DAY_DURATION": 160,
     "NIGHT_DURATION": 80,
@@ -15,7 +15,7 @@
     "GUARD_ATTACK_COOLDOWN": 0.6,
     "GUARD_VISION": 3,
     "ENGINEER_REPAIR_RATE": 12,
-    "ENEMY_WAVE_BASE_COUNT": 3,
+    "ENEMY_WAVE_BASE_COUNT": 1,
     "ENEMY_WAVE_PER_DAY": 2,
     "ENEMY_WAVE_MAX": 4,
     "ENEMY_WAVE_DAY_STEP": 2,
@@ -452,6 +452,28 @@
       "buildTime": 14,
       "maxLevel": 5
     },
+    "restoration_tower": {
+      "name": "恢复塔",
+      "icon": "复",
+      "cat": "defense",
+      "sz": [
+        1,
+        1
+      ],
+      "cost": {
+        "wood": 20,
+        "stone": 15
+      },
+      "hp": 140,
+      "maxWorkers": 0,
+      "repairRange": 160,
+      "buildingRepairRate": 8,
+      "unitRepairRate": 12,
+      "levelRepairBonus": 0.2,
+      "unlock": 4,
+      "buildTime": 10,
+      "maxLevel": 5
+    },
     "town_hall": {
       "name": "大本营",
       "icon": "",
@@ -465,6 +487,9 @@
       "maxWorkers": 0,
       "capacity": 200,
       "vision": 13,
+      "range": 180,
+      "damage": 12,
+      "cooldown": 1,
       "startResources": {
         "food": 5,
         "wood": 5,
@@ -495,13 +520,13 @@
           },
           "storageCaps": {
             "food": 20,
-            "wood": 20,
+            "wood": 25,
             "stone": 0,
             "iron": 0,
             "ingot": 0
           },
           "upgradeCost": {
-            "wood": 30
+            "wood": 20
           }
         },
         "3": {
