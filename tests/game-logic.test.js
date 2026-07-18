@@ -724,22 +724,49 @@ test('houses and barracks provide separate homes while nursery and training grou
     const training=new Building('training_ground', 50, 10);
     G.townHall=hall; G.buildings=[hall,house,barracks,nursery,training]; G.residents=[];
     G.maxPop=5; G.maxGuards=6; G.phase='day';
-    const worker=new Resident(0,0); const guard=new Resident(0,0); guard.isGuard=true;
-    assignHome(worker, house); assignHome(guard, barracks); G.residents.push(worker,guard);
+    const worker=new Resident(0,0),helper=new Resident(0,0); const guard=new Resident(0,0); guard.isGuard=true;
+    assignHome(worker, house); assignHome(helper,house);assignHome(guard, barracks); G.residents.push(worker,helper,guard);
+    assignResidentToWorkplace(worker,nursery);assignResidentToWorkplace(helper,nursery);
+    worker.state='WORKING';helper.state='WORKING';
     nursery.recruitQueue=1; training.recruitQueue=1;
     updateBuildings(20);
     globalThis.__result={
       workerHome:worker.home.type, guardHome:guard.home.type, workers:residentCount(false), guards:residentCount(true),
-      nurseryQueue:nursery.recruitQueue, trainingQueue:training.recruitQueue, hallCanRecruit:!!BLD_DEFS.town_hall.recruits
+      nurseryQueue:nursery.recruitQueue, trainingQueue:training.recruitQueue, hallCanRecruit:!!BLD_DEFS.town_hall.recruits,
+      nurseryWorkers:nursery.assignedWorkers,workerState:worker.state,helperState:helper.state
     };
   `);
   assert.equal(result.workerHome, 'house');
   assert.equal(result.guardHome, 'barracks');
-  assert.equal(result.workers, 2);
+  assert.equal(result.workers, 3);
   assert.equal(result.guards, 2);
   assert.equal(result.nurseryQueue, 0);
   assert.equal(result.trainingQueue, 0);
   assert.equal(result.hallCanRecruit, false);
+  assert.equal(result.nurseryWorkers,0);
+  assert.equal(result.workerState,'IDLE');
+  assert.equal(result.helperState,'IDLE');
+});
+
+test('nursery recruitment waits until two assigned workers are simultaneously working', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',10,10),nursery=new Building('nursery',20,10);
+    const first=new Resident(0,0),second=new Resident(0,0);
+    G.townHall=hall;G.buildings=[hall,nursery];G.residents=[first,second];G.maxPop=5;G.phase='day';
+    nursery.recruitQueue=1;assignResidentToWorkplace(first,nursery);first.state='WORKING';
+    updateBuildings(BLD_DEFS.nursery.recruitTime);const oneWorkerProgress=nursery.recruitProgress;
+    assignResidentToWorkplace(second,nursery);second.state='GOING_TO_WORK';
+    updateBuildings(BLD_DEFS.nursery.recruitTime);const travellingProgress=nursery.recruitProgress;
+    second.state='WORKING';updateBuildings(BLD_DEFS.nursery.recruitTime);
+    globalThis.__result={oneWorkerProgress,travellingProgress,queue:nursery.recruitQueue,pop:residentCount(false),assigned:nursery.assignedWorkers,states:[first.state,second.state]};
+  `);
+  assert.equal(result.oneWorkerProgress,0);
+  assert.equal(result.travellingProgress,0);
+  assert.equal(result.queue,0);
+  assert.equal(result.pop,3);
+  assert.equal(result.assigned,0);
+  assert.equal(result.states[0],'IDLE');
+  assert.equal(result.states[1],'IDLE');
 });
 
 test('building editor fields are tailored by building type and lamp vision uses its definition', () => {
@@ -1362,25 +1389,66 @@ test('an engineer patrols instead of reserving a blueprint with no materials', (
   assert.equal(result.assigned, null);
 });
 
-test('engineer reduction keeps active construction staffed and idle engineers can reclaim unfinished construction', () => {
+test('engineer reduction keeps active construction staffed and another engineer can join it', () => {
   const result = runGameScenario(`
     const farm=new Building('farm',20,20); farm.blueprint=false; farm.constructionTimer=3;
     const builder=new Resident(farm.center().x,farm.center().y); builder.isEngineer=true; builder.state='CONSTRUCTING'; builder.buildTarget=farm;
     const idle=new Resident(0,0); idle.isEngineer=true; idle.state='PATROL';
-    farm.assignedEngineer=builder;
     G.buildings=[farm]; G.residents=[builder,idle]; G.phase='day';
     unassignEngineer();
-    const afterReduction={builderStillEngineer:builder.isEngineer, targetStillAssigned:farm.assignedEngineer===builder, idleEngineer:idle.isEngineer};
-    farm.assignedEngineer=null; builder.isEngineer=false; builder.buildTarget=null; builder.state='IDLE';
+    const afterReduction={builderStillEngineer:builder.isEngineer,builderTarget:builder.buildTarget===farm,idleEngineer:idle.isEngineer};
     idle.isEngineer=true; idle.state='IDLE'; idle.buildTarget=null;
     updateResidents(0.01);
-    globalThis.__result={...afterReduction, reclaimed:farm.assignedEngineer===idle, state:idle.state};
+    globalThis.__result={...afterReduction,joined:idle.buildTarget===farm,state:idle.state,assigned:assignedEngineerCount(farm)};
   `);
   assert.equal(result.builderStillEngineer, true);
-  assert.equal(result.targetStillAssigned, true);
+  assert.equal(result.builderTarget, true);
   assert.equal(result.idleEngineer, false);
-  assert.equal(result.reclaimed, true);
+  assert.equal(result.joined, true);
   assert.equal(result.state, 'CONSTRUCTING');
+  assert.equal(result.assigned,2);
+});
+
+test('engineers reserve blueprint materials so concurrent gathering never exceeds the cost', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',10,10),farm=new Building('farm',20,20),center=hall.center();
+    farm.blueprint=true;farm.constructCost={wood:8};farm.constructDelivered={wood:0};
+    hall.stored.wood=20;G.townHall=hall;G.buildings=[hall,farm];G.resources={food:0,wood:20,stone:0,iron:0,ingot:0};G.phase='day';
+    const first=new Resident(center.x,center.y),second=new Resident(center.x,center.y),third=new Resident(center.x,center.y);
+    for(const engineer of [first,second,third]) { engineer.isEngineer=true;engineer.state='GATHERING';engineer.buildTarget=farm; }
+    G.residents=[first,second,third];updateResidents(0.01);
+    globalThis.__result={amounts:[first.carrying?.amount||0,second.carrying?.amount||0,third.carrying?.amount||0],withdrawn:20-hall.stored.wood,remaining:neededMaterials(farm)};
+  `);
+  assert.equal(result.amounts[0],5);
+  assert.equal(result.amounts[1],3);
+  assert.equal(result.amounts[2],0);
+  assert.equal(result.withdrawn,8);
+  assert.equal(result.remaining,null);
+});
+
+test('construction speed scales linearly with engineers present at the building', () => {
+  const result=runGameScenario(`
+    const farm=new Building('farm',20,20),center=farm.center();farm.blueprint=false;farm.constructionTimer=10;
+    const engineers=[];
+    for(let i=0;i<3;i++) { const engineer=new Resident(center.x+i,center.y);engineer.isEngineer=true;engineer.state='CONSTRUCTING';engineer.buildTarget=farm;engineers.push(engineer); }
+    G.buildings=[farm];G.residents=engineers;updateBuildings(1);
+    globalThis.__result={remaining:farm.constructionTimer};
+  `);
+  assert.equal(result.remaining,7);
+});
+
+test('engineer task assignment staffs every construction before adding helpers', () => {
+  const result=runGameScenario(`
+    const firstBuild=new Building('farm',20,20),secondBuild=new Building('farm',30,20);
+    firstBuild.blueprint=false;firstBuild.constructionTimer=10;secondBuild.blueprint=false;secondBuild.constructionTimer=10;
+    const engineers=[new Resident(0,0),new Resident(1,0),new Resident(2,0)];
+    for(const engineer of engineers) engineer.isEngineer=true;
+    G.buildings=[firstBuild,secondBuild];G.residents=engineers;G.phase='day';updateResidents(0.01);
+    globalThis.__result={first:assignedEngineerCount(firstBuild),second:assignedEngineerCount(secondBuild),states:engineers.map(engineer=>engineer.state)};
+  `);
+  assert.equal(result.first+result.second,3);
+  assert.equal(Math.min(result.first,result.second),1);
+  for(const state of result.states) assert.equal(state,'CONSTRUCTING');
 });
 
 test('a destroyed building remains as a blocking ruin with salvage and rebuild costs', () => {
@@ -1428,4 +1496,200 @@ test('resource costs render recognizable icon markup instead of resource text la
   assert.match(result.cost, /resource-mark wood/);
   assert.match(result.cost, /resource-mark stone/);
   assert.doesNotMatch(result.cost.replace(/<[^>]*>/g,''), /食物|木材|石材/);
+});
+
+test('restoration tower has a building catalogue button', () => {
+  assert.match(html, /data-type="restoration_tower"/);
+});
+
+test('fruit saplings consume wood and mature into harvestable fruit trees', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8);G.townHall=hall;G.buildings=[hall];
+    hall.stored.wood=10;hall.stored.food=0;updateAllResourceTotals();
+    G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);
+    const previewAllowed=canPlantFruitTree(20,20);
+    const planted=plantFruitTree(20,20),node=G.resourceNodes.at(-1),placedAsTask=node.type==='fruit_planting',occupiedRejected=!canPlantFruitTree(20,20);
+    const worker=new Resident(node.x,node.y);G.residents=[worker];G.phase='day';
+    updateResidents(0.1);const claimed=worker.state==='GOING_TO_PLANT'&&worker.plantTarget===node;
+    updateResidents(0.1);updateResidents(CFG.FRUIT_TREE_PLANT_TIME);
+    const plantedByWorker=node.type==='fruit_sapling';
+    node.growTimer=0.01;updateBuildings(0.02);
+    globalThis.__result={previewAllowed,planted,placedAsTask,claimed,plantedByWorker,occupiedRejected,wood:G.resources.wood,type:node.type,harvestable:canResidentHandHarvest(node),blocksMovement:isResourceObstacleNode(node)};
+  `);
+  assert.equal(result.previewAllowed,true);
+  assert.equal(result.planted,true);
+  assert.equal(result.placedAsTask,true);
+  assert.equal(result.claimed,true);
+  assert.equal(result.plantedByWorker,true);
+  assert.equal(result.occupiedRejected,true);
+  assert.equal(result.wood,8);
+  assert.equal(result.type,'fruit_tree');
+  assert.equal(result.harvestable,true);
+  assert.equal(result.blocksMovement,false);
+});
+
+test('fruit planting progress persists when another idle villager takes over', () => {
+  const result=runGameScenario(`
+    const node={type:'fruit_planting',col:12,row:12,x:500,y:500,hp:1,alive:true,marked:false,claimedBy:null,plantProgress:0,ownerForester:null};
+    const first=new Resident(500,500);first.state='PLANTING';first.plantTarget=node;node.claimedBy=first;
+    G.resourceNodes=[node];G.residents=[first];G.phase='day';G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);
+    updateResidents(0.75);const saved=node.plantProgress;releaseFruitPlanting(first);first.state='GOING_HOME';
+    const second=new Resident(500,500);G.residents.push(second);updateResidents(0.1);updateResidents(0.1);updateResidents(CFG.FRUIT_TREE_PLANT_TIME-saved);
+    globalThis.__result={saved,type:node.type,secondFinished:second.plantTarget===null};
+  `);
+  assert.equal(result.saved,0.75);
+  assert.equal(result.type,'fruit_sapling');
+  assert.equal(result.secondFinished,true);
+});
+
+test('a chopped fruit tree queues food after its wood delivery', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();G.townHall=hall;G.buildings=[hall];
+    hall.stored.wood=0;hall.stored.food=0;updateAllResourceTotals();
+    G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);G.phase='day';
+    const worker=new Resident(center.x+10,center.y),node={type:'fruit_tree',col:10,row:10,x:center.x+10,y:center.y,alive:true,marked:true};
+    worker.state='CHOPPING';worker.chopTarget=node;worker.chopTimer=10;G.residents=[worker];G.resourceNodes=[node];
+    const originalRandom=Math.random;Math.random=()=>0;updateResidents(0.1);Math.random=originalRandom;
+    const queued=worker.carryQueue[0];
+    globalThis.__result={alive:node.alive,carrying:worker.carrying,queued};
+  `);
+  assert.equal(result.alive,false);
+  assert.equal(result.carrying.type,'wood');
+  assert.equal(result.carrying.amount,1);
+  assert.equal(result.queued.type,'food');
+  assert.equal(result.queued.amount,1);
+});
+
+test('an idle villager claims a marked animal and turns it into food', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();G.townHall=hall;G.buildings=[hall];
+    hall.stored.food=0;G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);G.phase='day';
+    const worker=new Resident(center.x,center.y),animal=new Animal(center.x+8,center.y);animal.marked=true;animal.hp=1;
+    G.residents=[worker];G.animals=[animal];updateResidents(0.1);
+    const claimed=worker.state==='GOING_TO_HUNT'&&worker.huntTarget===animal;
+    updateResidents(0.1);updateResidents(0.1);
+    globalThis.__result={claimed,alive:animal.alive,state:worker.state,carrying:worker.carrying};
+  `);
+  assert.equal(result.claimed,true);
+  assert.equal(result.alive,false);
+  assert.equal(result.state,'HAULING');
+  assert.equal(result.carrying.type,'food');
+  assert.ok(result.carrying.amount>=2&&result.carrying.amount<=4);
+});
+
+test('hunters do not continue pursuing animals hidden by fog', () => {
+  const result=runGameScenario(`
+    const worker=new Resident(100,100),animal=new Animal(200,200);animal.marked=true;
+    worker.state='GOING_TO_HUNT';worker.huntTarget=animal;G.residents=[worker];G.animals=[animal];G.phase='day';
+    G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);
+    updateResidents(0.1);
+    globalThis.__result={state:worker.state,target:worker.huntTarget};
+  `);
+  assert.equal(result.state,'IDLE');
+  assert.equal(result.target,null);
+});
+
+test('hunted food is dropped on the ground when storage becomes full', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();G.townHall=hall;G.buildings=[hall];
+    hall.stored.food=storageCapacity(hall,'food');updateAllResourceTotals();G.phase='day';
+    const hunter=new Resident(center.x+20,center.y);hunter.state='HAULING';hunter.carrying={type:'food',amount:3};hunter.dropCarryingWhenBlocked=true;
+    G.residents=[hunter];updateResidents(0.1);
+    const item=G.groundItems[0];
+    globalThis.__result={state:hunter.state,carrying:hunter.carrying,item:item&&{type:item.type,amount:item.amount,x:item.x,y:item.y}};
+  `);
+  assert.equal(result.state,'IDLE');
+  assert.equal(result.carrying,null);
+  assert.equal(result.item.type,'food');
+  assert.equal(result.item.amount,3);
+});
+
+test('a hunter stores the available portion and drops only the remainder', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();G.townHall=hall;G.buildings=[hall];
+    hall.stored.food=storageCapacity(hall,'food')-1;updateAllResourceTotals();G.phase='day';
+    const hunter=new Resident(center.x+12,center.y);hunter.state='HAULING';hunter.carrying={type:'food',amount:4};hunter.dropCarryingWhenBlocked=true;
+    G.residents=[hunter];updateResidents(0.1);
+    globalThis.__result={stored:storedAmount(hall,'food'),capacity:storageCapacity(hall,'food'),state:hunter.state,carrying:hunter.carrying,dropped:G.groundItems[0]?.amount};
+  `);
+  assert.equal(result.stored,result.capacity);
+  assert.equal(result.state,'IDLE');
+  assert.equal(result.carrying,null);
+  assert.equal(result.dropped,3);
+});
+
+test('an idle villager retrieves dropped food after storage space is available', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();G.townHall=hall;G.buildings=[hall];hall.stored.food=0;updateAllResourceTotals();
+    G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);G.phase='day';
+    const worker=new Resident(center.x+12,center.y),item={type:'food',amount:3,x:center.x+12,y:center.y,alive:true,claimedBy:null};
+    G.residents=[worker];G.groundItems=[item];updateResidents(0.1);const claimed=worker.state==='GOING_TO_PICKUP'&&item.claimedBy===worker;
+    updateResidents(0.1);updateResidents(0.1);
+    globalThis.__result={claimed,state:worker.state,stored:storedAmount(hall,'food'),items:G.groundItems.length};
+  `);
+  assert.equal(result.claimed,true);
+  assert.equal(result.state,'IDLE');
+  assert.equal(result.stored,3);
+  assert.equal(result.items,0);
+});
+
+test('ground food pickup takes only the currently available storage amount', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8),center=hall.center();G.townHall=hall;G.buildings=[hall];
+    hall.stored.food=storageCapacity(hall,'food')-1;updateAllResourceTotals();G.phase='day';
+    G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);
+    const worker=new Resident(center.x+12,center.y),item={type:'food',amount:4,x:center.x+12,y:center.y,alive:true,claimedBy:null};
+    G.residents=[worker];G.groundItems=[item];updateResidents(0.1);updateResidents(0.1);updateResidents(0.1);
+    globalThis.__result={stored:storedAmount(hall,'food'),capacity:storageCapacity(hall,'food'),remaining:G.groundItems[0]?.amount||0,state:worker.state};
+  `);
+  assert.equal(result.stored,result.capacity);
+  assert.equal(result.remaining,3);
+  assert.equal(result.state,'IDLE');
+});
+
+test('animals stay upright and only flip horizontally from actual movement', () => {
+  const result=runGameScenario(`
+    const animal=new Animal(100,100);animal.facingRight=false;
+    updateAnimalFacing(animal,3);const right=animal.facingRight;
+    updateAnimalFacing(animal,0);const verticalKeepsRight=animal.facingRight;
+    updateAnimalFacing(animal,-2);const left=animal.facingRight;
+    globalThis.__result={right,verticalKeepsRight,left};
+  `);
+  assert.equal(result.right,true);
+  assert.equal(result.verticalKeepsRight,true);
+  assert.equal(result.left,false);
+});
+
+test('infinite resources fill the town hall actual storage for every resource', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8);G.townHall=hall;G.buildings=[hall];
+    for(const type of RESOURCE_TYPES) hall.stored[type]=0;
+    setAllRes();
+    globalThis.__result={
+      infinite:G.infiniteResources,
+      stored:Object.fromEntries(RESOURCE_TYPES.map(type=>[type,storedAmount(hall,type)])),
+      totals:{...G.resources},
+      stoneStorage:findNearestStorage(hall.center(),'stone',{requireAmount:1})===hall
+    };
+  `);
+  assert.equal(result.infinite,true);
+  assert.equal(result.stoneStorage,true);
+  for(const type of ['food','wood','stone','iron','ingot']) {
+    assert.equal(result.stored[type],9999);
+    assert.equal(result.totals[type],9999);
+  }
+});
+
+test('infinite resources refill withdrawn materials in the town hall', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8);G.townHall=hall;G.buildings=[hall];setAllRes();
+    const withdrawn=withdrawFromStorage(hall,'stone',5),afterWithdraw=storedAmount(hall,'stone');
+    refillInfiniteResources();
+    globalThis.__result={withdrawn,afterWithdraw,afterRefill:storedAmount(hall,'stone'),total:G.resources.stone,free:storageFreeSpace(hall,'stone')};
+  `);
+  assert.equal(result.withdrawn,5);
+  assert.equal(result.afterWithdraw,9994);
+  assert.equal(result.afterRefill,9999);
+  assert.equal(result.total,9999);
+  assert.equal(result.free,0);
 });

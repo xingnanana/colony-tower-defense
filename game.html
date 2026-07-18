@@ -148,7 +148,12 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 .tool-btn:first-child { border-left:0; }
 .tool-btn:hover { color:#e5c66c; }
 .tool-btn.active { color:#e5c66c; background:#35402e; }
-.engineer-bar { position:absolute; right:198px; bottom:53px; display:flex; gap:7px; z-index:10; align-items:center; background:rgba(15,22,18,0.92); border:1px solid #435248; padding:5px 8px; border-radius:5px; color:#edf0e5; font-size:11px; box-shadow:0 4px 18px rgba(0,0,0,0.3); }
+#chop-bar { min-width:176px; flex-direction:column; align-items:stretch; gap:3px; }
+#chop-bar>.section-label { margin:0 2px 2px; }
+.tool-command-row { display:grid; grid-template-columns:1fr 1fr; min-height:20px; border-top:1px solid rgba(72,86,75,0.45); }
+.tool-command-row.single { grid-template-columns:1fr; }
+.tool-command-row .tool-btn { min-width:0; white-space:nowrap; }
+.engineer-bar { position:absolute; right:198px; bottom:108px; display:flex; gap:7px; z-index:10; align-items:center; background:rgba(15,22,18,0.92); border:1px solid #435248; padding:5px 8px; border-radius:5px; color:#edf0e5; font-size:11px; box-shadow:0 4px 18px rgba(0,0,0,0.3); }
 .bar-action { color:#d6c477; cursor:pointer; font-weight:bold; padding:0 4px; }
 .bar-action:hover { color:#fff0a5; }
 .overlay-panel { background:#171d1a !important; border:1px solid #536158 !important; border-radius:6px !important; box-shadow:0 12px 36px rgba(0,0,0,0.5); }
@@ -208,6 +213,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     </div><div class="panel-section"><div class="section-label">防御设施</div>
       <button class="bld-btn" data-type="arrow_tower"><span class="bld-mark defense">塔</span><span class="bld-copy">箭塔<div class="cost">20 木 10 石</div></span></button>
       <button class="bld-btn" data-type="auto_arrow_tower"><span class="bld-mark defense">自</span><span class="bld-copy">自动箭塔<div class="cost">30 木 20 石</div></span></button>
+      <button class="bld-btn" data-type="restoration_tower"><span class="bld-mark defense">复</span><span class="bld-copy">恢复塔<div class="cost">20 木 15 石</div></span></button>
       <button class="bld-btn" data-type="wall"><span class="bld-mark defense">墙</span><span class="bld-copy">城墙<div class="cost">5 石</div></span></button>
     </div>
   </div>
@@ -235,9 +241,18 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
   <div id="time-indicator"></div>
   <div id="resource-full-notice" aria-live="polite"></div>
 
-  <div id="chop-bar" class="tool-bar"><span class="section-label">林务</span>
-    <button id="chop-btn" class="tool-btn" onclick="toggleChopMode()" title="框选砍伐">标记砍伐</button>
-    <button id="unchop-btn" class="tool-btn" onclick="toggleUnchopMode()" title="取消砍伐">取消标记</button>
+  <div id="chop-bar" class="tool-bar"><span class="section-label">野外指令</span>
+    <div class="tool-command-row">
+      <button id="chop-btn" class="tool-btn" onclick="toggleChopMode()" title="框选砍伐">标记砍伐</button>
+      <button id="unchop-btn" class="tool-btn" onclick="toggleUnchopMode()" title="取消砍伐">取消标记</button>
+    </div>
+    <div class="tool-command-row single">
+      <button id="fruit-btn" class="tool-btn" onclick="toggleFruitPlantMode()" title="消耗木材种植果树苗">种植果树</button>
+    </div>
+    <div class="tool-command-row">
+      <button id="hunt-btn" class="tool-btn" onclick="toggleHuntMode()" title="框选猎物">标记狩猎</button>
+      <button id="unhunt-btn" class="tool-btn" onclick="toggleUnhuntMode()" title="取消狩猎标记">取消狩猎</button>
+    </div>
   </div>
   <div id="eng-bar" class="engineer-bar">
     <span class="section-label">施工班组</span><span id="eng-minus" class="bar-action" onclick="unassignEngineer()" title="取消工程师">−</span>
@@ -371,6 +386,19 @@ const CFG = {
   GUARD_ATTACK_COOLDOWN: 0.6,
   ENEMY_GUARD_LEASH: 180,
   ENGINEER_REPAIR_RATE: 12,
+  FRUIT_TREE_WOOD_COST: 2,
+  FRUIT_TREE_PLANT_TIME: 2,
+  FRUIT_TREE_GROW_TIME_MIN: 20,
+  FRUIT_TREE_GROW_TIME_MAX: 35,
+  FRUIT_TREE_FOOD_MIN: 1,
+  FRUIT_TREE_FOOD_MAX: 3,
+  ANIMAL_INITIAL_COUNT: 14,
+  ANIMAL_MAX_COUNT: 20,
+  ANIMAL_RESPAWN_INTERVAL: 35,
+  ANIMAL_FOOD_MIN: 2,
+  ANIMAL_FOOD_MAX: 4,
+  ANIMAL_SPEED: 42,
+  ANIMAL_HP: 3,
 };
 
 // ============================================================
@@ -381,7 +409,7 @@ const BLD_DEFS = {
 
   house:       { name:'住房', icon:'', cat:'facility',  sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, popBonus:4, unlock:2 , buildTime:5 },
 
-  nursery:     { name:'产房', icon:'产', cat:'facility', sz:[2,2], cost:{wood:10}, hp:150, maxWorkers:0, recruits:'resident', recruitTime:10, recruitCost:{food:5}, unlock:1, buildTime:2 },
+  nursery:     { name:'产房', icon:'产', cat:'facility', sz:[2,2], cost:{wood:10}, hp:150, maxWorkers:2, recruits:'resident', recruitTime:10, recruitCost:{food:5}, unlock:1, buildTime:2 },
 
   barracks:    { name:'兵营', icon:'兵', cat:'facility', sz:[2,2], cost:{wood:10,stone:5}, hp:200, maxWorkers:0, guardBonus:4, unlock:2, buildTime:5 },
 
@@ -423,6 +451,7 @@ const BLD_DEFS = {
 
 for (const def of Object.values(BLD_DEFS)) if (!Number.isInteger(def.maxLevel) || def.maxLevel<1) def.maxLevel=5;
 const RESOURCE_TYPES=['food','wood','stone','iron','ingot'];
+const DEBUG_INFINITE_RESOURCE_AMOUNT=9999;
 const RESOURCE_NAMES={food:'食物',wood:'木材',stone:'石材',iron:'铁矿',ingot:'铁锭'};
 const RESOURCE_STORAGE_TYPES={food:'food_storage',wood:'wood_storage',stone:'stone_storage',iron:'iron_storage',ingot:'ingot_storage'};
 function resourceIcon(type) { return `<span class="resource-mark ${type}" title="${RESOURCE_NAMES[type]||type}" aria-label="${RESOURCE_NAMES[type]||type}"></span>`; }
@@ -469,7 +498,7 @@ function buildingRuntimeDef(b) {
 }
 function townHallResourceCapacity(type, level=1) { return buildingLevelValue('town_hall',level,'storageCaps')?.[type]||0; }
 function isResourceAvailable(type) {
-  return !G.townHall || townHallResourceCapacity(type,G.townHall.level)>0;
+  return G.infiniteResources || !G.townHall || townHallResourceCapacity(type,G.townHall.level)>0;
 }
 function townHallStartingResources() {
   const resources=cloneResourceMap(buildingLevelValue('town_hall',1,'startResources'));
@@ -502,6 +531,7 @@ const SHORTCUT_ACTIONS = [
   { id:'cancel', label:'取消当前操作', defaultCode:'Escape' },
   { id:'chop', label:'伐木标记', defaultCode:'KeyC' },
   { id:'unchop', label:'取消伐木标记', defaultCode:'KeyX' },
+  { id:'hunt', label:'狩猎标记', defaultCode:'KeyH' },
   { id:'settings', label:'打开游戏设置', defaultCode:'F1' },
   { id:'config', label:'打开数值编辑器', defaultCode:'F2' },
 ];
@@ -592,7 +622,7 @@ loadSavedBalance();
 const G = {
   tick: 0, dt: 0, day: 1, dayTime: 0, phase: 'day', totalTime: 0,
   resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT },
-  buildings: [], residents: [], enemies: [], particles: [], projectiles: [], commandMarkers: [],
+  buildings: [], residents: [], enemies: [], animals: [], groundItems: [], particles: [], projectiles: [], commandMarkers: [],
   selectedBldType: null, selectedBuilding: null, selectedGuard: null, selectedGuards: [], hoveredCell: null,
   mouseX: 0, mouseY: 0,
   placingMode: false, movingBuilding: null,
@@ -607,7 +637,8 @@ const G = {
   treesChopped: 0,
   buildingPanelDirty: true,
   resourceFullNotices: new Set(),
-  chopMode: false, unchopMode: false, chopStartX: -1, chopStartY: -1, chopEndX: -1, chopEndY: -1,
+  chopMode: false, unchopMode: false, huntMode:false, unhuntMode:false, fruitPlantMode:false,
+  chopStartX: -1, chopStartY: -1, chopEndX: -1, chopEndY: -1,
   infiniteResources: false,
   farmLinks: [],
   resourceCleanupTimer: 0,
@@ -620,6 +651,8 @@ const G = {
   navigationQueue: [],
   residentSpatial: null,
   targetedTrees: new Set(),
+  targetedAnimals: new Set(),
+  animalSpawnTimer: 0,
   fogVisible: null,
   fogUpdateTimer: 0,
   debugRevealAllFog: false,
@@ -745,7 +778,9 @@ function productionBufferCapacity(b) {
   return (def.batchSize||1)+(b.level-1)*(def.levelBufferBonus||0);
 }
 function storageCapacity(b, type) {
-  if (b.type==='town_hall'&&type) return townHallResourceCapacity(type,b.level);
+  if (b.type==='town_hall'&&type) return G.infiniteResources
+    ? Math.max(DEBUG_INFINITE_RESOURCE_AMOUNT,townHallResourceCapacity(type,b.level))
+    : townHallResourceCapacity(type,b.level);
   if (type&&!storageAcceptsResource(b,type)) return 0;
   return buildingLevelValue(b.type,b.level,'capacity')||0;
 }
@@ -778,7 +813,6 @@ function storageAcceptsResource(b, type) { return !!b&&isResourceAvailable(type)
 function storageUsedSpace(b) { return Object.values(b.stored || {}).reduce((sum, value) => sum + value, 0); }
 function storageFreeSpace(b, type) {
   if (!storageAcceptsResource(b,type)) return 0;
-  if (G.infiniteResources) return Infinity;
   if (b.type==='town_hall') return Math.max(0,storageCapacity(b,type)-storedAmount(b,type));
   return Math.max(0, storageCapacity(b,type) - storedAmount(b,type));
 }
@@ -792,6 +826,14 @@ function resourceStorageStatus(type) {
   return {capacity,stored,full:capacity>0&&stored>=capacity-0.001};
 }
 function resourceStorageCapacity(type) { return resourceStorageStatus(type).capacity; }
+function totalStorageFreeSpace(type) {
+  const status=resourceStorageStatus(type);
+  return Math.max(0,status.capacity-status.stored);
+}
+function availableGroundPickupSpace(type) {
+  const reserved=G.residents.reduce((total,resident)=>total+(resident.dropCarryingWhenBlocked&&resident.carrying?.type===type?resident.carrying.amount:0),0);
+  return Math.max(0,totalStorageFreeSpace(type)-reserved);
+}
 function updateResourceTotal(type) {
   G.resources[type] = G.buildings.reduce((total, b) => total + (storageAcceptsResource(b,type) ? storedAmount(b, type) : 0), 0);
 }
@@ -875,6 +917,72 @@ function generateResources() {
     spawnInitialResourceCluster('iron',townCenter,CFG.IRON_MIN_SPAWN_RADIUS,Infinity,CFG.IRON_CLUSTER_AVERAGE,CFG.IRON_CLUSTER_MAX);
   }
 }
+function findAnimalSpawnPoint(requireVisible=false) {
+  const center=G.townHall?.center()||{x:CFG.WORLD_W/2,y:CFG.WORLD_H/2};
+  for(let attempt=0;attempt<240;attempt++) {
+    const angle=Math.random()*Math.PI*2;
+    const radius=(2+Math.random()*10)*CFG.CELL;
+    const x=clamp(center.x+Math.cos(angle)*radius,CFG.CELL,CFG.WORLD_W-CFG.CELL);
+    const y=clamp(center.y+Math.sin(angle)*radius,CFG.CELL,CFG.WORLD_H-CFG.CELL);
+    const col=gridCol(x),row=gridRow(y);
+    if(isCellBlocked(col,row)||(requireVisible&&!isWorldVisible(x,y))) continue;
+    if(G.animals.some(animal=>animal.alive&&Math.hypot(animal.x-x,animal.y-y)<CFG.CELL)) continue;
+    return {x,y};
+  }
+  return null;
+}
+function spawnAnimal(requireVisible=false) {
+  const point=findAnimalSpawnPoint(requireVisible);
+  if(!point) return null;
+  const animal=new Animal(point.x,point.y);G.animals.push(animal);return animal;
+}
+function generateAnimals() {
+  G.animals=[];
+  for(let i=0;i<CFG.ANIMAL_INITIAL_COUNT;i++) spawnAnimal(true);
+  G.animalSpawnTimer=CFG.ANIMAL_RESPAWN_INTERVAL;
+}
+function randomVisibleAnimalDestination(animal,distance=100) {
+  for(let attempt=0;attempt<12;attempt++) {
+    const angle=Math.random()*Math.PI*2;
+    const x=clamp(animal.x+Math.cos(angle)*distance,RESIDENT_RADIUS,CFG.WORLD_W-RESIDENT_RADIUS);
+    const y=clamp(animal.y+Math.sin(angle)*distance,RESIDENT_RADIUS,CFG.WORLD_H-RESIDENT_RADIUS);
+    if(isWorldVisible(x,y)&&!isCellBlocked(gridCol(x),gridRow(y))) return {x,y};
+  }
+  return {x:animal.x,y:animal.y};
+}
+function updateAnimalFacing(animal,moveX) {
+  if(Math.abs(moveX)>0.05) animal.facingRight=moveX>0;
+}
+function updateAnimals(dt) {
+  for(const animal of G.animals) {
+    if(!animal.alive) continue;
+    const previousX=animal.x,previousY=animal.y;
+    const hunter=G.residents.find(resident=>resident.huntTarget===animal&&(resident.state==='GOING_TO_HUNT'||resident.state==='HUNTING'));
+    if(hunter&&isWorldVisible(animal.x,animal.y)) {
+      const dx=animal.x-hunter.x,dy=animal.y-hunter.y,distance=Math.hypot(dx,dy)||1;
+      if(distance<95) {
+        const fleeDistance=110;
+        const fx=clamp(animal.x+dx/distance*fleeDistance,RESIDENT_RADIUS,CFG.WORLD_W-RESIDENT_RADIUS);
+        const fy=clamp(animal.y+dy/distance*fleeDistance,RESIDENT_RADIUS,CFG.WORLD_H-RESIDENT_RADIUS);
+        if(isWorldVisible(fx,fy)&&!isCellBlocked(gridCol(fx),gridRow(fy))) { animal.targetX=fx;animal.targetY=fy; }
+      }
+    } else {
+      animal.wanderTimer-=dt;
+      if(animal.wanderTimer<=0||Math.hypot(animal.x-animal.targetX,animal.y-animal.targetY)<8) {
+        const target=randomVisibleAnimalDestination(animal,40+Math.random()*80);
+        animal.targetX=target.x;animal.targetY=target.y;animal.wanderTimer=3+Math.random()*5;
+      }
+    }
+    if(Math.hypot(animal.x-animal.targetX,animal.y-animal.targetY)>5) moveViaFlow(animal,animal.targetX,animal.targetY,CFG.ANIMAL_SPEED,dt);
+    updateAnimalFacing(animal,animal.x-previousX);
+  }
+  G.animals=G.animals.filter(animal=>animal.alive);
+  G.animalSpawnTimer-=dt;
+  if(G.animalSpawnTimer<=0) {
+    if(G.animals.length<CFG.ANIMAL_MAX_COUNT) spawnAnimal(false);
+    G.animalSpawnTimer=CFG.ANIMAL_RESPAWN_INTERVAL*(0.75+Math.random()*0.5);
+  }
+}
 function initialResourceDistance(col,row,townCenter) {
   const x=gridX(col)+CFG.CELL/2, y=gridY(row)+CFG.CELL/2;
   return Math.hypot(x-townCenter.x,y-townCenter.y)/CFG.CELL;
@@ -954,11 +1062,15 @@ function spawnInitialResourceCluster(type,townCenter,minRadius,maxRadius,average
   return added;
 }
 function clearChopCommand() {
-  G.chopMode=false; G.unchopMode=false; G.chopStartX=-1; G.chopStartY=-1; G.chopEndX=-1; G.chopEndY=-1;
+  G.chopMode=false; G.unchopMode=false; G.huntMode=false; G.unhuntMode=false; G.fruitPlantMode=false;
+  G.chopStartX=-1; G.chopStartY=-1; G.chopEndX=-1; G.chopEndY=-1;
   const chopButton=document.getElementById('chop-btn');
   const unchopButton=document.getElementById('unchop-btn');
-  chopButton.classList.remove('active'); unchopButton.classList.remove('active');
-  chopButton.style.background=''; unchopButton.style.background='';
+  const huntButton=document.getElementById('hunt-btn'),unhuntButton=document.getElementById('unhunt-btn'),fruitButton=document.getElementById('fruit-btn');
+  for(const button of [chopButton,unchopButton,huntButton,unhuntButton,fruitButton]) {
+    if(!button) continue;
+    button.classList.remove('active');button.style.background='';
+  }
 }
 function clearBlueprintCommand() {
   G.selectedBldType=null; G.selectedBuilding=null; G.placingMode=false; G.movingBuilding=null;
@@ -981,6 +1093,36 @@ function toggleUnchopMode() {
   clearChopCommand(); G.unchopMode=activate; G.drawingFloor=false;
   document.getElementById('unchop-btn').classList.toggle('active',activate);
 }
+function toggleFruitPlantMode() {
+  const activate=!G.fruitPlantMode;
+  if(activate) clearBlueprintCommand();
+  clearChopCommand();G.fruitPlantMode=activate;G.drawingFloor=false;
+  document.getElementById('fruit-btn').classList.toggle('active',activate);
+}
+function toggleHuntMode() {
+  const activate=!G.huntMode;
+  if(activate) clearBlueprintCommand();
+  clearChopCommand();G.huntMode=activate;G.drawingFloor=false;
+  document.getElementById('hunt-btn').classList.toggle('active',activate);
+}
+function toggleUnhuntMode() {
+  const activate=!G.unhuntMode;
+  if(activate) clearBlueprintCommand();
+  clearChopCommand();G.unhuntMode=activate;G.drawingFloor=false;
+  document.getElementById('unhunt-btn').classList.toggle('active',activate);
+}
+function canPlantFruitTree(col,row) {
+  if(!isFogCellVisible(col,row)||isCellBlocked(col,row)) return false;
+  const cost={wood:CFG.FRUIT_TREE_WOOD_COST};
+  return canAfford(cost);
+}
+function plantFruitTree(col,row) {
+  if(!canPlantFruitTree(col,row)) return false;
+  const cost={wood:CFG.FRUIT_TREE_WOOD_COST};
+  payCost(cost);
+  G.resourceNodes.push({type:'fruit_planting',col,row,x:gridX(col)+CFG.CELL/2,y:gridY(row)+CFG.CELL/2,hp:1,alive:true,marked:false,claimedBy:null,plantProgress:0,ownerForester:null});
+  return true;
+}
 function resourceObstacle(node) {
   return {
     resourceNode: node,
@@ -989,7 +1131,7 @@ function resourceObstacle(node) {
   };
 }
 function isResourceObstacleNode(node) {
-  return node && node.alive && node.type !== 'tree' && node.type !== 'sapling';
+  return node && node.alive && !['tree','sapling','fruit_tree','fruit_sapling','fruit_planting'].includes(node.type);
 }
 function buildingBlocksMovement(b) {
   return !!b && (b.ruin || (b.hp > 0 && b.type !== 'farm'));
@@ -1429,35 +1571,58 @@ function isStorage(type) { return BLD_DEFS[type] && (BLD_DEFS[type].cat==='stora
 const RESIDENT_RADIUS = 7;
 
 
-function neededMaterials(bp) {
+function reservedConstructionMaterial(bp, type, excludeResident=null) {
+  return G.residents.reduce((total,resident)=>{
+    if(resident===excludeResident||resident.buildTarget!==bp||resident.carrying?.type!==type) return total;
+    return total+Math.max(0,resident.carrying.amount||0);
+  },0);
+}
+function neededMaterials(bp, excludeResident=null) {
   if (!bp.constructCost) return null;
   for (const [k, v] of Object.entries(bp.constructCost)) {
     const delivered = bp.constructDelivered[k] || 0;
-    if (delivered < v) return { type: k, amount: v - delivered };
+    const reserved=reservedConstructionMaterial(bp,k,excludeResident);
+    if (delivered+reserved < v) return { type: k, amount: v-delivered-reserved };
   }
   return null;
 }
-function findNearestBlueprint(resident) {
+function assignedEngineerCount(building) {
+  return G.residents.reduce((count,resident)=>count+(resident.isEngineer&&resident.buildTarget===building?1:0),0);
+}
+function findNearestBlueprint(resident, onlyUnstaffed=false) {
   let best = null, bestD = Infinity;
   for (const b of G.buildings) {
-    if (!b.blueprint || b.hp <= 0 || b.assignedEngineer) continue;
+    if (!b.blueprint || b.hp <= 0 || (onlyUnstaffed&&assignedEngineerCount(b)>0)) continue;
     const need=neededMaterials(b);
     if (need && (G.resources[need.type]||0)<1) continue;
+    if(!need) continue;
     const bc = b.center();
     const d = Math.hypot(resident.x - bc.x, resident.y - bc.y);
     if (d < bestD) { bestD = d; best = b; }
   }
   return best;
 }
-function findNearestConstruction(resident) {
+function findNearestConstruction(resident, onlyUnstaffed=false) {
   let best = null, bestD = Infinity;
   for (const b of G.buildings) {
-    if (b.ruin || b.blueprint || b.hp <= 0 || b.constructionTimer <= 0 || b.assignedEngineer) continue;
+    if (b.ruin || b.blueprint || b.hp <= 0 || b.constructionTimer <= 0 || (onlyUnstaffed&&assignedEngineerCount(b)>0)) continue;
     const bc=b.center();
     const d=Math.hypot(resident.x-bc.x,resident.y-bc.y);
     if (d<bestD) { bestD=d; best=b; }
   }
   return best;
+}
+function assignEngineerBuildTask(engineer) {
+  if(!engineer?.isEngineer) return false;
+  const construction=findNearestConstruction(engineer,true);
+  if(construction) { engineer.buildTarget=construction;engineer.state='CONSTRUCTING';return true; }
+  const blueprint=findNearestBlueprint(engineer,true);
+  if(blueprint) { engineer.buildTarget=blueprint;engineer.state='GATHERING';return true; }
+  const sharedConstruction=findNearestConstruction(engineer);
+  if(sharedConstruction) { engineer.buildTarget=sharedConstruction;engineer.state='CONSTRUCTING';return true; }
+  const sharedBlueprint=findNearestBlueprint(engineer);
+  if(sharedBlueprint) { engineer.buildTarget=sharedBlueprint;engineer.state='GATHERING';return true; }
+  return false;
 }
 function resolveCollisions(r, nx, ny) {
   ensureObstacleSpatialHash();
@@ -1535,15 +1700,66 @@ function findResourceNode(b, type) {
 
 function canResidentHandHarvest(node) {
   // Trees are the only natural resource residents can harvest directly.
-  return !!node && node.alive && node.type === 'tree';
+  return !!node && node.alive && (node.type === 'tree'||node.type==='fruit_tree');
+}
+function harvestStorageAvailable(resident,node) {
+  if(!findNearestStorage(resident,'wood',{requireSpace:1})) return false;
+  return node?.type!=='fruit_tree'||!!findNearestStorage(resident,'food',{requireSpace:CFG.FRUIT_TREE_FOOD_MAX});
+}
+function nextQueuedCarry(resident) {
+  const next=resident.carryQueue?.shift();
+  if(!next) return false;
+  resident.carrying=next;resident.carryingFrom=null;resident.state='HAULING';return true;
+}
+function dropGroundItem(resident) {
+  if(!resident.carrying||resident.carrying.amount<=0) return null;
+  const item={type:resident.carrying.type,amount:resident.carrying.amount,x:resident.x,y:resident.y,alive:true,claimedBy:null};
+  G.groundItems.push(item);
+  resident.carrying=null;resident.carryingFrom=null;resident.dropCarryingWhenBlocked=false;
+  return item;
+}
+function releaseGroundPickup(resident) {
+  if(resident.pickupTarget?.claimedBy===resident) resident.pickupTarget.claimedBy=null;
+  resident.pickupTarget=null;
+}
+function releaseFruitPlanting(resident) {
+  if(resident.plantTarget?.claimedBy===resident) resident.plantTarget.claimedBy=null;
+  resident.plantTarget=null;resident.plantTimer=0;
+}
+function findNearestFruitPlanting(resident) {
+  let best=null,bestDistance=Infinity;
+  for(const node of G.resourceNodes) {
+    if(!node.alive||node.type!=='fruit_planting'||node.claimedBy||!isWorldVisible(node.x,node.y)) continue;
+    const distance=Math.hypot(resident.x-node.x,resident.y-node.y);
+    if(distance<bestDistance){bestDistance=distance;best=node;}
+  }
+  return best;
+}
+function completeFruitPlanting(node) {
+  if(!node||!node.alive||node.type!=='fruit_planting') return false;
+  const growDuration=CFG.FRUIT_TREE_GROW_TIME_MIN+Math.random()*(CFG.FRUIT_TREE_GROW_TIME_MAX-CFG.FRUIT_TREE_GROW_TIME_MIN);
+  node.type='fruit_sapling';node.claimedBy=null;node.plantProgress=undefined;node.growTimer=growDuration;node.growDuration=growDuration;
+  return true;
+}
+function findNearestGroundItem(resident) {
+  let best=null,bestDistance=Infinity;
+  for(const item of G.groundItems) {
+    if(!item.alive||item.claimedBy||!isWorldVisible(item.x,item.y)) continue;
+    if(availableGroundPickupSpace(item.type)<1) continue;
+    const distance=Math.hypot(resident.x-item.x,resident.y-item.y);
+    if(distance<bestDistance){bestDistance=distance;best=item;}
+  }
+  return best;
 }
 
 function isFinishableResidentTask(r) {
   return r.state==='CHOPPING' || r.state==='HAULING' || r.state==='GATHERING' ||
-    r.state==='BUILDING' || r.state==='CONSTRUCTING';
+    r.state==='BUILDING' || r.state==='CONSTRUCTING' || r.state==='HUNTING' || r.state==='PLANTING';
 }
 function beginEating(r) {
   if ((G.resources.food||0) <= 0) return false;
+  releaseGroundPickup(r);
+  releaseFruitPlanting(r);
   const storage=findNearestStorage(r, 'food', {requireAmount:1});
   if (storage) {
     r.state='GOING_TO_EAT';
@@ -1685,6 +1901,20 @@ function availableRecruitSlots(role) {
   const capacity=isGuard ? G.maxGuards : G.maxPop;
   return capacity-residentCount(isGuard)-queuedRecruitCount(role);
 }
+function releaseNurseryWorkers(nursery) {
+  if(!nursery||nursery.type!=='nursery') return 0;
+  let released=0;
+  for(const resident of G.residents) {
+    if(resident.isGuard||resident.workplace!==nursery) continue;
+    resident.workplace=null;
+    resident.finishCurrentChopForWork=false;
+    resident.chopTarget=null;
+    resident.state=resident.carrying?'HAULING':'IDLE';
+    released++;
+  }
+  nursery.assignedWorkers=0;
+  return released;
+}
 function assignHome(r, house) {
   if (r.home && r.home.hp>0) {
     if (r.isGuard) r.home.guardResidentCount=Math.max(0,(r.home.guardResidentCount||0)-1);
@@ -1713,7 +1943,9 @@ function returnCarriedOutput(r) {
   r.carryingFrom = null;
 }
 function removeResident(r) {
-  returnCarriedOutput(r);
+  releaseGroundPickup(r);
+  releaseFruitPlanting(r);
+  if(r.dropCarryingWhenBlocked) dropGroundItem(r); else returnCarriedOutput(r);
   if (r.workplace) {
     r.workplace.assignedWorkers = Math.max(0, r.workplace.assignedWorkers - 1);
     if (r.workplace.outputHauler === r) r.workplace.outputHauler = null;
@@ -1725,7 +1957,7 @@ function removeResident(r) {
     if (enemy.guardTarget === r) enemy.guardTarget = null;
   }
   if (G.selectedGuards.includes(r)) setSelectedGuards(G.selectedGuards.filter(guard=>guard!==r));
-  if (r.buildTarget) r.buildTarget.assignedEngineer = null;
+  if (r.buildTarget?.assignedEngineer===r) r.buildTarget.assignedEngineer = null;
   r.hidden = true;
   removeHome(r);
   G.residents = G.residents.filter(other => other !== r);
@@ -1795,7 +2027,10 @@ class Resident {
     this.workplace = null; this.home = null;
     this.tired = 0;
     this.carrying = null;
+    this.carryQueue = [];
     this.carryingFrom = null;
+    this.dropCarryingWhenBlocked = false;
+    this.pickupTarget = null;
     this.targetX = x; this.targetY = y;
     this.navWaypoint = null; this.navBlock = null; this.navTargetX = x; this.navTargetY = y;
     this.navPath = null; this.navPathIndex = 0; this.navBlockedGoal = false; this.navResolvedPoint = null; this.navPending = false;
@@ -1807,6 +2042,8 @@ class Resident {
     this.buildTarget = null;
     this.isEngineer = false;
     this.chopTarget = null; this.chopTimer = 0; this.chopShakeBeat = -1;
+    this.huntTarget = null; this.huntAttackTimer = 0;
+    this.plantTarget = null; this.plantTimer = 0;
     this.finishCurrentChopForWork = false;
     this.finishBeforeEating = false;
     this.mealPending = false;
@@ -1822,6 +2059,18 @@ class Resident {
     this.manualTarget = null;
     this.manualTargetEnemy = null;
     this.formationCommandId = 0;
+  }
+}
+
+class Animal {
+  constructor(x,y) {
+    this.x=x;this.y=y;this.hp=CFG.ANIMAL_HP;this.maxHp=CFG.ANIMAL_HP;
+    this.alive=true;this.marked=false;this.size=8;
+    this.targetX=x;this.targetY=y;this.wanderTimer=Math.random()*4;
+    this.facingRight=Math.random()>=0.5;
+    this.navWaypoint=null;this.navBlock=null;this.navTargetX=x;this.navTargetY=y;
+    this.navPath=null;this.navPathIndex=0;this.navBlockedGoal=false;this.navResolvedPoint=null;this.navPending=false;
+    this.navRevision=G.navigationRevision;this.navCheckTimer=0;this.navStuckTimer=0;
   }
 }
 
@@ -1892,6 +2141,7 @@ function initGame() {
   generateResources();
   initFog();
   refreshFogVisibility();
+  generateAnimals();
 }
 
 function addBuilding(type, col, row, skipBlueprint) {
@@ -2040,6 +2290,8 @@ function updateDayNight(dt) {
       for (const r of G.residents) {
         if (r.isGuard) continue; // guards handle their own sleep
         if (r.carrying) { r.state = 'HAULING'; continue; }
+        releaseGroundPickup(r);
+        releaseFruitPlanting(r);
         r.tired = CFG.TIRED_THRESHOLD;
         const home = r.home || findNearestHome(r, r.isGuard);
         if (home) {
@@ -2616,6 +2868,7 @@ function updateTowers(dt) {
 function updateResidents(dt) {
   rebuildResidentSpatialHash();
   G.targetedTrees = new Set(G.residents.map(r=>r.chopTarget).filter(Boolean));
+  G.targetedAnimals = new Set(G.residents.map(r=>r.huntTarget).filter(Boolean));
   for (const r of G.residents) {
     if (r.isGuard) continue;
     if (r.state!=='SLEEPING') {
@@ -2656,6 +2909,8 @@ function updateResidents(dt) {
         && r.state!=='GOING_TO_EAT' && r.state!=='EATING' && !r.finishBeforeEating) {
       const home = r.home || findNearestHome(r, r.isGuard);
       if (home) {
+        releaseGroundPickup(r);
+        releaseFruitPlanting(r);
         r.state = 'GOING_HOME';
         const hc = home.center();
         r.targetX = hc.x; r.targetY = hc.y;
@@ -2728,18 +2983,36 @@ function updateResidents(dt) {
         break;
       }
       case 'HAULING': {
-        if (!r.carrying) { r.carryingFrom=null; r.state='IDLE'; break; }
-        const storage = findNearestStorage(r, r.carrying.type, {requireSpace:r.carrying.amount});
-        if (!storage) break;
+        if (!r.carrying) {
+          r.carryingFrom=null;r.dropCarryingWhenBlocked=false;
+          if(nextQueuedCarry(r)) break;
+          r.state='IDLE';break;
+        }
+        const requiredSpace=r.dropCarryingWhenBlocked?1:r.carrying.amount;
+        const storage = findNearestStorage(r, r.carrying.type, {requireSpace:requiredSpace});
+        if (!storage) {
+          if(r.dropCarryingWhenBlocked) {
+            dropGroundItem(r);
+            r.state='IDLE';
+          }
+          break;
+        }
         const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
         if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) {
           const deposited = depositToStorage(storage, r.carrying.type, r.carrying.amount);
           r.carrying.amount -= deposited;
-          if (r.carrying.amount > 0) break;
+          if (r.carrying.amount > 0) {
+            if(r.dropCarryingWhenBlocked&&totalStorageFreeSpace(r.carrying.type)<1) {
+              dropGroundItem(r);r.state='IDLE';
+            }
+            break;
+          }
           const source = r.carryingFrom;
           if (source && source.outputHauler === r) source.outputHauler = null;
           r.carrying=null;
           r.carryingFrom=null;
+          r.dropCarryingWhenBlocked=false;
+          if(nextQueuedCarry(r)) break;
           r.finishCurrentChopForWork=false;
           if (!eatAfterFinishingTask(r)) {
             r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
@@ -2774,8 +3047,10 @@ function updateResidents(dt) {
         if (r.chopTimer >= chopTime) {
           const carried = r.carrying ? r.carrying.amount : 0;
           const carryCapacity=productionBufferCapacity(r.finishCurrentChopForWork?{level:1}:(r.workplace||{level:1}));
+          const harvestedNode=r.chopTarget;
           const s2 = findNearestStorage(r, 'wood', {requireSpace:Math.max(1, carryCapacity - carried)});
-          if (!s2) {
+          const foodStorage=harvestedNode.type==='fruit_tree'?findNearestStorage(r,'food',{requireSpace:CFG.FRUIT_TREE_FOOD_MAX}):null;
+          if (!s2||(harvestedNode.type==='fruit_tree'&&!foodStorage)) {
             r.chopTarget=null; r.chopTimer=0;
             r.finishCurrentChopForWork=false;
             r.state=r.workplace?'GOING_TO_WORK':'IDLE';
@@ -2787,6 +3062,10 @@ function updateResidents(dt) {
           spawnParticles(r.chopTarget.x, r.chopTarget.y, '#8B4513', 5);
           if (!r.carrying) r.carrying = { type: 'wood', amount: 1 };
           else r.carrying.amount++;
+          if(harvestedNode.type==='fruit_tree') {
+            const foodAmount=Math.floor(CFG.FRUIT_TREE_FOOD_MIN+Math.random()*(CFG.FRUIT_TREE_FOOD_MAX-CFG.FRUIT_TREE_FOOD_MIN+1));
+            r.carryQueue.push({type:'food',amount:foodAmount});
+          }
           r.chopTarget = null;
           const nextTree = r.finishCurrentChopForWork ? null : findForesterTree(r, r.workplace);
           r.state = !r.finishBeforeEating && nextTree && r.carrying.amount < carryCapacity ? 'WORKING' : 'HAULING';
@@ -2794,12 +3073,77 @@ function updateResidents(dt) {
         }
         break;
       }
+      case 'GOING_TO_HUNT': {
+        const animal=r.huntTarget;
+        if(!animal||!animal.alive||!animal.marked||!isWorldVisible(animal.x,animal.y)) {
+          r.huntTarget=null;r.state='IDLE';break;
+        }
+        r.targetX=animal.x;r.targetY=animal.y;
+        if(Math.hypot(r.x-animal.x,r.y-animal.y)<RESIDENT_RADIUS+animal.size+7) { r.state='HUNTING';r.huntAttackTimer=0; }
+        else moveViaFlow(r,animal.x,animal.y,CFG.RESIDENT_SPEED,dt);
+        break;
+      }
+      case 'GOING_TO_PICKUP': {
+        const item=r.pickupTarget;
+        if(!item||!item.alive||item.claimedBy!==r||!isWorldVisible(item.x,item.y)||availableGroundPickupSpace(item.type)<1) {
+          releaseGroundPickup(r);r.state='IDLE';break;
+        }
+        r.targetX=item.x;r.targetY=item.y;
+        if(Math.hypot(r.x-item.x,r.y-item.y)<RESIDENT_RADIUS+8) {
+          const takeAmount=Math.min(item.amount,availableGroundPickupSpace(item.type));
+          r.carrying={type:item.type,amount:takeAmount};r.dropCarryingWhenBlocked=true;
+          item.amount-=takeAmount;item.alive=item.amount>0;item.claimedBy=null;r.pickupTarget=null;r.state='HAULING';
+        } else moveViaFlow(r,item.x,item.y,CFG.RESIDENT_SPEED,dt);
+        break;
+      }
+      case 'GOING_TO_PLANT': {
+        const node=r.plantTarget;
+        if(!node||!node.alive||node.type!=='fruit_planting'||node.claimedBy!==r||!isWorldVisible(node.x,node.y)) {
+          releaseFruitPlanting(r);r.state='IDLE';break;
+        }
+        r.targetX=node.x;r.targetY=node.y;
+        if(Math.hypot(r.x-node.x,r.y-node.y)<RESIDENT_RADIUS+9) { r.state='PLANTING';r.plantTimer=0; }
+        else moveViaFlow(r,node.x,node.y,CFG.RESIDENT_SPEED,dt);
+        break;
+      }
+      case 'PLANTING': {
+        const node=r.plantTarget;
+        if(!node||!node.alive||node.type!=='fruit_planting'||node.claimedBy!==r) {
+          releaseFruitPlanting(r);r.state='IDLE';break;
+        }
+        node.plantProgress=(node.plantProgress||0)+dt;r.plantTimer=node.plantProgress;
+        if(node.plantProgress>=CFG.FRUIT_TREE_PLANT_TIME) {
+          completeFruitPlanting(node);r.plantTarget=null;r.plantTimer=0;
+          if(!eatAfterFinishingTask(r)) r.state='IDLE';
+        }
+        break;
+      }
+      case 'HUNTING': {
+        const animal=r.huntTarget;
+        if(!animal||!animal.alive||!animal.marked||!isWorldVisible(animal.x,animal.y)) {
+          r.huntTarget=null;r.state='IDLE';break;
+        }
+        r.targetX=animal.x;r.targetY=animal.y;
+        const distance=Math.hypot(r.x-animal.x,r.y-animal.y);
+        if(distance>RESIDENT_RADIUS+animal.size+9) { r.state='GOING_TO_HUNT';break; }
+        r.huntAttackTimer-=dt;
+        if(r.huntAttackTimer<=0) {
+          r.huntAttackTimer=0.7;animal.hp--;
+          spawnParticles(animal.x,animal.y,'#b98962',2);
+          if(animal.hp<=0) {
+            animal.alive=false;animal.marked=false;
+            const foodAmount=Math.floor(CFG.ANIMAL_FOOD_MIN+Math.random()*(CFG.ANIMAL_FOOD_MAX-CFG.ANIMAL_FOOD_MIN+1));
+            r.carrying={type:'food',amount:foodAmount};r.dropCarryingWhenBlocked=true;r.huntTarget=null;r.state='HAULING';
+          }
+        }
+        break;
+      }
       case 'GATHERING': {
-        if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
-        const need = neededMaterials(r.buildTarget);
-        if (!need) { if(r.buildTarget.constructionTimer>0){r.state='CONSTRUCTING';}else{r.buildTarget.assignedEngineer=null;r.buildTarget=null;if(!eatAfterFinishingTask(r))r.state=(r.workplace&&r.workplace.hp>0)?'GOING_TO_WORK':'IDLE';} break; }
+        if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget?.assignedEngineer===r)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='IDLE'; break; }
+        const need = neededMaterials(r.buildTarget,r);
+        if (!need) { if(r.buildTarget.constructionTimer>0){r.state='CONSTRUCTING';}else{if(r.buildTarget.assignedEngineer===r)r.buildTarget.assignedEngineer=null;r.buildTarget=null;if(!eatAfterFinishingTask(r))r.state=(r.workplace&&r.workplace.hp>0)?'GOING_TO_WORK':'IDLE';} break; }
         const gs = findNearestStorage(r, need.type, {requireAmount:1});
-        if (!gs) { r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='PATROL'; break; }
+        if (!gs) { if(r.buildTarget.assignedEngineer===r)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='PATROL'; break; }
         const gsc = gs.center(); r.targetX = gsc.x; r.targetY = gsc.y;
         if (Math.hypot(r.x-gsc.x, r.y-gsc.y) < gs.collisionRadius() + RESIDENT_RADIUS + 3) {
           const take = Math.min(5, need.amount, storedAmount(gs, need.type));
@@ -2813,7 +3157,7 @@ function updateResidents(dt) {
         break;
       }
       case 'BUILDING': {
-        if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state=r.carrying?'HAULING':'IDLE'; break; }
+        if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget?.assignedEngineer===r)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state=r.carrying?'HAULING':'IDLE'; break; }
         const bc = r.buildTarget.center(); r.targetX = bc.x; r.targetY = bc.y;
         if (Math.hypot(r.x-bc.x, r.y-bc.y) < r.buildTarget.collisionRadius() + RESIDENT_RADIUS + 3) {
           if (r.carrying && r.carrying.amount > 0) {
@@ -2839,15 +3183,14 @@ function updateResidents(dt) {
       }
       case 'CONSTRUCTING': {
         if (!r.buildTarget || r.buildTarget.hp <= 0 || r.buildTarget.constructionTimer <= 0) {
-          if (r.buildTarget && r.buildTarget.hp>0) r.buildTarget.assignedEngineer = null;
+          if (r.buildTarget?.assignedEngineer===r) r.buildTarget.assignedEngineer = null;
           r.buildTarget = null;
           if (eatAfterFinishingTask(r)) break;
-          const nbp = findNearestBlueprint(r);
-          if (nbp) { r.buildTarget = nbp; nbp.assignedEngineer = r; r.state = 'GATHERING'; }
-          else { r.state = 'IDLE'; }
+          if(!assignEngineerBuildTask(r)) r.state='IDLE';
           break;
         }
         const cc = r.buildTarget.center();
+        r.targetX=cc.x;r.targetY=cc.y;
         if (Math.hypot(r.x-cc.x, r.y-cc.y) < r.buildTarget.collisionRadius() + RESIDENT_RADIUS + 5) {
           // Stay near building while timer counts down
         } else {
@@ -2885,18 +3228,43 @@ function updateResidents(dt) {
         if (r.workplace && r.workplace.hp>0) { r.state='GOING_TO_WORK'; break; }
         if (r.isEngineer) {
           if (r.buildTarget && r.buildTarget.hp>0 && r.buildTarget.constructionTimer>0) { r.state='CONSTRUCTING'; break; }
-          const constructionTarget=findNearestConstruction(r);
-          if (constructionTarget) { r.buildTarget=constructionTarget; constructionTarget.assignedEngineer=r; r.state='CONSTRUCTING'; break; }
+          const unstaffedConstruction=findNearestConstruction(r,true);
+          if (unstaffedConstruction) { r.buildTarget=unstaffedConstruction;r.state='CONSTRUCTING';break; }
           const repairTarget=findNearestRepairTarget(r);
           if(repairTarget) { r.buildTarget=repairTarget; repairTarget.assignedEngineer=r; r.state='GOING_TO_REPAIR'; break; }
-          const ebp = findNearestBlueprint(r);
-          if (ebp) { r.buildTarget = ebp; ebp.assignedEngineer = r; r.state = 'GATHERING'; break; }
+          if(assignEngineerBuildTask(r)) break;
+        }
+        if(!r.isEngineer) {
+          const groundItem=findNearestGroundItem(r);
+          if(groundItem) {
+            groundItem.claimedBy=r;r.pickupTarget=groundItem;r.state='GOING_TO_PICKUP';r.targetX=groundItem.x;r.targetY=groundItem.y;
+            break;
+          }
+        }
+        if(!r.isEngineer) {
+          const planting=findNearestFruitPlanting(r);
+          if(planting) {
+            planting.claimedBy=r;r.plantTarget=planting;r.plantTimer=0;r.state='GOING_TO_PLANT';r.targetX=planting.x;r.targetY=planting.y;
+            break;
+          }
+        }
+        if(!r.isEngineer&&findNearestStorage(r,'food',{requireSpace:1})) {
+          let huntTarget=null,huntDistance=Infinity;
+          for(const animal of G.animals) {
+            if(!animal.alive||!animal.marked||!isWorldVisible(animal.x,animal.y)||G.targetedAnimals.has(animal)) continue;
+            const distance=Math.hypot(r.x-animal.x,r.y-animal.y);
+            if(distance<huntDistance){huntDistance=distance;huntTarget=animal;}
+          }
+          if(huntTarget) {
+            r.huntTarget=huntTarget;r.state='GOING_TO_HUNT';r.targetX=huntTarget.x;r.targetY=huntTarget.y;
+            G.targetedAnimals.add(huntTarget);break;
+          }
         }
         // Only idle non-engineers chop trees
         if (!r.isEngineer && findNearestStorage(r,'wood',{requireSpace:1})) {
           let treeTarget = null, treeDist = Infinity;
           for (const node of G.resourceNodes) {
-            if (canResidentHandHarvest(node) && node.marked && !node.ownerForester) {
+            if (canResidentHandHarvest(node) && node.marked && !node.ownerForester && harvestStorageAvailable(r,node)) {
               // Skip trees already targeted by another villager
               if (G.targetedTrees.has(node)) continue;
               const d = Math.hypot(r.x - node.x, r.y - node.y);
@@ -2922,6 +3290,8 @@ function updateResidents(dt) {
       }
     }
   }
+
+  G.groundItems=G.groundItems.filter(item=>item.alive);
 
   // Population growth is manual via town hall recruitment
 }
@@ -3001,9 +3371,11 @@ function updateBuildings(dt) {
   }
   for (const b of G.buildings) {
     if (b.constructionTimer > 0) {
-      const hasEng = G.residents.some(r => r.buildTarget === b && (r.state==='CONSTRUCTING'||r.state==='GATHERING'||r.state==='BUILDING'));
-      if (hasEng) {
-        b.constructionTimer -= dt;
+      const center=b.center();
+      const activeEngineers=G.residents.filter(r=>r.isEngineer&&r.buildTarget===b&&r.state==='CONSTRUCTING'&&
+        Math.hypot(r.x-center.x,r.y-center.y)<b.collisionRadius()+RESIDENT_RADIUS+5);
+      if (activeEngineers.length>0) {
+        b.constructionTimer -= dt*activeEngineers.length;
         if (b.constructionTimer <= 0) {
           b.constructionTimer = 0; b.hp = b.maxHp; b.assignedEngineer = null;
           if (b.type==='house') G.maxPop += houseCapacity(b);
@@ -3030,6 +3402,9 @@ function updateBuildings(dt) {
     // Recruitment belongs to its dedicated building, not the town hall.
     const recruitDef=buildingRuntimeDef(b);
     if (recruitDef.recruits && b.recruitQueue > 0 && !b.blueprint && b.constructionTimer<=0 && b.hp>0) {
+      const activeRecruitWorkers=activeWorkersByBuilding.get(b)||[];
+      const hasRecruitWorkers=b.type!=='nursery'||activeRecruitWorkers.length>=recruitDef.maxWorkers;
+      if(!hasRecruitWorkers) continue;
       b.recruitProgress += dt / recruitDef.recruitTime;
       if (b.recruitProgress >= 1) {
         b.recruitProgress = 0; b.recruitQueue--;
@@ -3045,6 +3420,7 @@ function updateBuildings(dt) {
           assignHome(nr, findNearestHome(nr, nr.isGuard));
           G.residents.push(nr);
         }
+        if(b.type==='nursery') releaseNurseryWorkers(b);
       }
     }
     // Production advances once per building, based on workers currently on site.
@@ -3092,10 +3468,10 @@ function updateBuildings(dt) {
   // Grow saplings
   updateWildTreeRegrowth(dt);
   for (const node of G.resourceNodes) {
-    if (node.type==='sapling' && node.alive) {
+    if ((node.type==='sapling'||node.type==='fruit_sapling') && node.alive) {
       node.growTimer -= dt;
       if (node.growTimer <= 0) {
-        node.type = 'tree'; node.marked = !!node.ownerForester;
+        node.type = node.type==='fruit_sapling'?'fruit_tree':'tree'; node.marked = !!node.ownerForester;
       }
     }
   }
@@ -3185,7 +3561,22 @@ function setRes(type) {
 }
 function setAllRes() {
   G.infiniteResources = true;
-  for (const type of ['food','wood','stone','iron','ingot']) setStartingResource(type, 9999);
+  refillInfiniteResources(true);
+  showTimeIndicator('大本营资源已填满');
+}
+function refillInfiniteResources(forceTotals=false) {
+  const hall=G.townHall;
+  if(!G.infiniteResources||!hall||hall.hp<=0) return false;
+  let changed=false;
+  for(const type of RESOURCE_TYPES) {
+    const target=storageCapacity(hall,type);
+    if(storedAmount(hall,type)!==target) {
+      hall.stored[type]=target;
+      changed=true;
+    }
+  }
+  if(changed||forceTotals) updateAllResourceTotals();
+  return changed;
 }
 function debugRevealAllFog() {
   G.debugRevealAllFog=true;
@@ -3214,6 +3605,8 @@ function skipToNight() {
   G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.projectiles = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   for (const r of G.residents) {
     if (r.isGuard) { r.state = 'GUARD_FIND_TOWER'; r.hidden = false; continue; }
+    releaseGroundPickup(r);
+    releaseFruitPlanting(r);
     r.tired = CFG.TIRED_THRESHOLD;
     const home = r.home || findNearestHome(r, r.isGuard);
     if (home) { r.state = 'GOING_HOME'; const hc = home.center(); r.targetX = hc.x; r.targetY = hc.y; if (!r.home) assignHome(r, home); }
@@ -3274,6 +3667,7 @@ const BLD_TYPE_EDIT_FIELDS = {
   ],
   house: [{ k:'popBonus', label:'村民床位', type:'num', min:0, step:1 }],
   nursery: [
+    { k:'maxWorkers', label:'生产所需工人', type:'num', min:2, max:2, step:1 },
     { k:'recruitTime', label:'招募村民时间', type:'num', min:0.5, step:0.5, unit:'秒' },
     { k:'recruitCost', label:'招募消耗', type:'resources' },
   ],
@@ -3364,6 +3758,19 @@ const GLOBAL_EDIT_FIELDS = [
   { k:'TIRED_RATE', label:'疲劳增长', min:0, step:0.05, unit:'/秒' },
   { k:'RESIDENT_SPEED', label:'居民速度', min:1, step:1, unit:'像素/秒' },
   { k:'RESIDENT_VISION', label:'居民视野', min:0, step:1, unit:'格' },
+  { k:'FRUIT_TREE_WOOD_COST', label:'果树苗木材消耗', min:0, step:1, unit:'木材' },
+  { k:'FRUIT_TREE_PLANT_TIME', label:'果树种植时间', min:0.1, step:0.1, unit:'秒' },
+  { k:'FRUIT_TREE_GROW_TIME_MIN', label:'果树成长时间下限', min:1, step:1, unit:'秒' },
+  { k:'FRUIT_TREE_GROW_TIME_MAX', label:'果树成长时间上限', min:1, step:1, unit:'秒' },
+  { k:'FRUIT_TREE_FOOD_MIN', label:'果树食物产量下限', min:0, step:1, unit:'食物' },
+  { k:'FRUIT_TREE_FOOD_MAX', label:'果树食物产量上限', min:0, step:1, unit:'食物' },
+  { k:'ANIMAL_INITIAL_COUNT', label:'初始猎物数量', min:0, step:1, unit:'只', restart:true },
+  { k:'ANIMAL_MAX_COUNT', label:'猎物数量上限', min:0, step:1, unit:'只' },
+  { k:'ANIMAL_RESPAWN_INTERVAL', label:'猎物补充间隔', min:1, step:1, unit:'秒' },
+  { k:'ANIMAL_FOOD_MIN', label:'狩猎食物产量下限', min:0, step:1, unit:'食物' },
+  { k:'ANIMAL_FOOD_MAX', label:'狩猎食物产量上限', min:0, step:1, unit:'食物' },
+  { k:'ANIMAL_SPEED', label:'猎物移动速度', min:1, step:1, unit:'像素/秒' },
+  { k:'ANIMAL_HP', label:'猎物生命', min:1, step:1, unit:'生命', restart:true },
 ];
 const PROFESSION_EDIT_FIELDS = {
   guard: [
@@ -3488,6 +3895,7 @@ function runShortcut(actionId) {
   else if (actionId==='cancel') cancelCurrentAction();
   else if (actionId==='chop') toggleChopMode();
   else if (actionId==='unchop') toggleUnchopMode();
+  else if (actionId==='hunt') toggleHuntMode();
   else if (actionId==='settings') openSettingsPanel();
   else if (actionId==='config') openConfigPanel();
 }
@@ -3633,6 +4041,8 @@ function cfgApply() {
       CFG[f.k]=value;
     }
     if(CFG.MEAL_TIME_LUNCH===CFG.MEAL_TIME_DINNER) { cfgSetStatus('两次用餐时间不能相同','error'); return false; }
+    if(CFG.FRUIT_TREE_GROW_TIME_MIN>CFG.FRUIT_TREE_GROW_TIME_MAX||CFG.FRUIT_TREE_FOOD_MIN>CFG.FRUIT_TREE_FOOD_MAX) { cfgSetStatus('果树的随机下限不能大于上限','error'); return false; }
+    if(CFG.ANIMAL_INITIAL_COUNT>CFG.ANIMAL_MAX_COUNT||CFG.ANIMAL_FOOD_MIN>CFG.ANIMAL_FOOD_MAX) { cfgSetStatus('猎物数量或产量下限不能大于上限','error'); return false; }
     cfgSetStatus('全局数值已应用；标记“重开生效”的项目需要重新开始。','ok');
     return true;
   } else if(cat==='professions') {
@@ -3770,15 +4180,7 @@ function assignEngineer() {
   const idle = G.residents.find(r => (r.state === 'IDLE' || r.state === 'PATROL') && !r.workplace && !r.isEngineer);
   if (idle) {
     idle.isEngineer = true;
-    const construction=findNearestConstruction(idle);
-    if (construction) {
-      idle.buildTarget=construction; construction.assignedEngineer=idle; idle.state='CONSTRUCTING';
-    } else {
-      const bp = findNearestBlueprint(idle);
-      if (bp) {
-        idle.buildTarget = bp; bp.assignedEngineer = idle; idle.state = 'GATHERING';
-      }
-    }
+    assignEngineerBuildTask(idle);
   }
 }
 function unassignEngineer() {
@@ -3787,15 +4189,8 @@ function unassignEngineer() {
   if (eng) {
     const target=eng.buildTarget;
     eng.isEngineer = false;
-    if (target && target.assignedEngineer===eng) target.assignedEngineer = null;
+    if (target?.assignedEngineer===eng) target.assignedEngineer = null;
     eng.buildTarget = null; eng.state = eng.carrying ? 'HAULING' : 'IDLE';
-    // Keep an in-progress build staffed immediately when another idle engineer exists.
-    if (target && target.constructionTimer>0 && target.hp>0 && !target.assignedEngineer) {
-      const replacement=G.residents.find(r=>r.isEngineer && !r.buildTarget && (r.state==='IDLE'||r.state==='PATROL'));
-      if (replacement) {
-        replacement.buildTarget=target; target.assignedEngineer=replacement; replacement.state='CONSTRUCTING';
-      }
-    }
   }
 }
 function addPop(n) {
@@ -3841,7 +4236,7 @@ function gameOver(msg) {
   document.getElementById('gameover-overlay').style.display = 'flex';
 }
 function restartGame() {
-  G.buildings = []; G.residents = []; G.enemies = []; G.particles = []; G.projectiles = []; G.commandMarkers = [];
+  G.buildings = []; G.residents = []; G.enemies = []; G.animals=[]; G.groundItems=[]; G.particles = []; G.projectiles = []; G.commandMarkers = [];
   G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT };
   G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
   G.selectedBldType = null; G.selectedBuilding = null; clearSelectedGuards(); G.placingMode = false; G.movingBuilding = null;
@@ -3858,6 +4253,7 @@ function restartGame() {
   const debugNavigationButton=document.getElementById('debug-navigation-btn');
   if(debugNavigationButton){debugNavigationButton.classList.add('active');debugNavigationButton.textContent='隐藏寻路';}
   G.targetedTrees = new Set();
+  G.targetedAnimals = new Set();G.animalSpawnTimer=0;
   G.dragging = false; G.dragButton=null; G.dragMoved=false; gameRunning = true;
   setSpeed(1);
   G.infiniteResources = false;
@@ -3867,8 +4263,10 @@ function restartGame() {
 function update(dt) {
   if (!gameRunning) return;
   G.dt = dt;
+  refillInfiniteResources();
   updateDayNight(dt);
   updateBuildings(dt);
+  updateAnimals(dt);
   processNavigationRequests();
   updateResidents(dt);
   updateFogVisibility(dt);
@@ -4111,6 +4509,8 @@ function render() {
   }
 
   // Residents
+  for(const item of G.groundItems) if(item.alive&&isWorldVisible(item.x,item.y)&&inView(item.x,item.y)) drawGroundItem(item);
+  for(const animal of G.animals) if(animal.alive&&isWorldVisible(animal.x,animal.y)&&inView(animal.x,animal.y)) drawAnimal(animal);
   for (const r of G.residents) if (!r.hidden && inView(r.x,r.y)) drawResident(r);
 
   // Restoration beams stay visible above repaired buildings and friendly units.
@@ -4126,7 +4526,7 @@ function render() {
   }
 
   // Chop selection box
-  if ((G.chopMode || G.unchopMode) && G.chopStartX >= 0 && G.chopEndX >= 0) {
+  if ((G.chopMode||G.unchopMode||G.huntMode||G.unhuntMode) && G.chopStartX >= 0 && G.chopEndX >= 0) {
     const sx = Math.min(G.chopStartX, G.chopEndX), sy = Math.min(G.chopStartY, G.chopEndY);
     const ex = Math.max(G.chopStartX, G.chopEndX), ey = Math.max(G.chopStartY, G.chopEndY);
     ctx.fillStyle = 'rgba(255,255,255,0.15)'; ctx.fillRect(gridX(sx), gridY(sy), (ex - sx + 1) * CFG.CELL, (ey - sy + 1) * CFG.CELL);
@@ -4173,6 +4573,16 @@ function render() {
     ctx.fillStyle=ok?'rgba(0,255,0,0.25)':'rgba(255,0,0,0.25)';
     ctx.fillRect(gridX(cp.col),gridY(cp.row),def.sz[0]*CFG.CELL,def.sz[1]*CFG.CELL);
   }
+  if(G.hoveredCell&&G.fruitPlantMode) {
+    const col=G.hoveredCell.col,row=G.hoveredCell.row,ok=canPlantFruitTree(col,row);
+    const x=gridX(col),y=gridY(row),cx=x+CFG.CELL/2,cy=y+CFG.CELL/2;
+    ctx.fillStyle=ok?'rgba(82,190,90,0.24)':'rgba(220,72,66,0.28)';ctx.fillRect(x,y,CFG.CELL,CFG.CELL);
+    ctx.strokeStyle=ok?'rgba(132,225,133,0.9)':'rgba(244,104,94,0.95)';ctx.lineWidth=1.5/G.cam.zoom;
+    ctx.setLineDash([4,3]);ctx.strokeRect(x+1,y+1,CFG.CELL-2,CFG.CELL-2);ctx.setLineDash([]);
+    ctx.save();ctx.globalAlpha=0.72;
+    drawResourceNode({type:'fruit_sapling',col,row,x:cx,y:cy,alive:true,marked:false,growTimer:1,growDuration:1});
+    ctx.restore();
+  }
 
   drawFogOverlay(vpL,vpT,vpR,vpB);
   drawNavigationDebug();
@@ -4189,7 +4599,7 @@ function render() {
 }
 
 function drawCommandCursor() {
-  if (!G.hoveredCell || (!G.chopMode && !G.unchopMode)) return;
+  if (!G.hoveredCell || (!G.chopMode&&!G.unchopMode&&!G.huntMode&&!G.unhuntMode&&!G.fruitPlantMode)) return;
   const x=G.mouseX+15, y=G.mouseY+15;
   ctx.save();
   ctx.fillStyle='rgba(13,19,15,0.82)'; ctx.beginPath(); ctx.arc(x,y,11,0,Math.PI*2); ctx.fill();
@@ -4197,6 +4607,10 @@ function drawCommandCursor() {
     ctx.strokeStyle='#bf8146'; ctx.lineWidth=2.4; ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(x-4,y+6); ctx.lineTo(x+5,y-5); ctx.stroke();
     ctx.fillStyle='#d6dfd8'; ctx.beginPath(); ctx.moveTo(x+1,y-7); ctx.quadraticCurveTo(x+9,y-8,x+8,y); ctx.lineTo(x+3,y+3); ctx.closePath(); ctx.fill();
+  } else if(G.huntMode) {
+    ctx.strokeStyle='#e5d19a';ctx.lineWidth=2;ctx.beginPath();ctx.arc(x,y,6,0,Math.PI*2);ctx.moveTo(x-9,y);ctx.lineTo(x+9,y);ctx.moveTo(x,y-9);ctx.lineTo(x,y+9);ctx.stroke();
+  } else if(G.fruitPlantMode) {
+    ctx.fillStyle='#6cab57';ctx.beginPath();ctx.arc(x-3,y,4,0,Math.PI*2);ctx.arc(x+3,y-2,4,0,Math.PI*2);ctx.fill();ctx.strokeStyle='#85603d';ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(x,y+7);ctx.lineTo(x,y-3);ctx.stroke();
   } else {
     ctx.strokeStyle='#e77869'; ctx.lineWidth=2.6; ctx.lineCap='round';
     ctx.beginPath(); ctx.moveTo(x-5,y-5); ctx.lineTo(x+5,y+5); ctx.moveTo(x+5,y-5); ctx.lineTo(x-5,y+5); ctx.stroke();
@@ -4205,16 +4619,27 @@ function drawCommandCursor() {
 }
 
 function drawResourceNode(node) {
-  if (node.type === 'sapling') {
+  if(node.type==='fruit_planting') {
+    ctx.fillStyle='rgba(0,0,0,0.2)';ctx.beginPath();ctx.ellipse(node.x,node.y+5,10,4,0,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='#705139';ctx.beginPath();ctx.ellipse(node.x,node.y+2,8,3.5,0,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#b88a55';ctx.lineWidth=1.5/G.cam.zoom;ctx.beginPath();ctx.moveTo(node.x+4,node.y+3);ctx.lineTo(node.x+4,node.y-9);ctx.stroke();
+    ctx.fillStyle='#d9c58d';ctx.beginPath();ctx.moveTo(node.x+4,node.y-9);ctx.lineTo(node.x+10,node.y-6);ctx.lineTo(node.x+4,node.y-3);ctx.closePath();ctx.fill();
+    ctx.strokeStyle=node.claimedBy?'#8fcf78':'rgba(225,205,142,0.72)';ctx.setLineDash([3,3]);ctx.strokeRect(node.x-13,node.y-14,26,24);ctx.setLineDash([]);
+    const progress=clamp((node.plantProgress||0)/Math.max(0.1,CFG.FRUIT_TREE_PLANT_TIME),0,1);
+    ctx.fillStyle='rgba(20,28,22,0.82)';ctx.fillRect(node.x-12,node.y+11,24,3);
+    ctx.fillStyle='#82bd68';ctx.fillRect(node.x-12,node.y+11,24*progress,3);
+    return;
+  }
+  if (node.type === 'sapling'||node.type==='fruit_sapling') {
     ctx.fillStyle='rgba(0,0,0,0.18)'; ctx.beginPath(); ctx.ellipse(node.x,node.y+2,5,2,0,0,Math.PI*2); ctx.fill();
     ctx.fillStyle='#725036'; ctx.fillRect(node.x-1,node.y-5,2,8);
-    ctx.fillStyle='#70a955'; ctx.beginPath(); ctx.arc(node.x-2,node.y-6,3,0,Math.PI*2); ctx.arc(node.x+2,node.y-7,3,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle=node.type==='fruit_sapling'?'#8db65b':'#70a955'; ctx.beginPath(); ctx.arc(node.x-2,node.y-6,3,0,Math.PI*2); ctx.arc(node.x+2,node.y-7,3,0,Math.PI*2); ctx.fill();
     const growProgress = clamp(1-(node.growTimer/(node.growDuration||BLD_DEFS.forester.saplingGrowTime)),0,1);
     ctx.strokeStyle='rgba(235,240,220,0.7)'; ctx.lineWidth=1/G.cam.zoom;
     ctx.beginPath(); ctx.arc(node.x,node.y-6,6,-Math.PI/2,-Math.PI/2+Math.PI*2*growProgress); ctx.stroke();
     return;
   }
-  if (node.type === 'tree') {
+  if (node.type === 'tree'||node.type==='fruit_tree') {
     ctx.fillStyle='rgba(0,0,0,0.2)'; ctx.beginPath(); ctx.ellipse(node.x,node.y+7,11,4,0,0,Math.PI*2); ctx.fill();
     ctx.save();
     ctx.translate(node.x,node.y+7);
@@ -4223,6 +4648,10 @@ function drawResourceNode(node) {
     ctx.fillStyle='#65442d'; ctx.fillRect(node.x-3,node.y-7,6,14);
     ctx.fillStyle='#285d3c'; ctx.beginPath(); ctx.arc(node.x-5,node.y-10,7,0,Math.PI*2); ctx.arc(node.x+5,node.y-11,8,0,Math.PI*2); ctx.arc(node.x,node.y-17,9,0,Math.PI*2); ctx.fill();
     ctx.fillStyle='#3f7b4d'; ctx.beginPath(); ctx.arc(node.x-2,node.y-17,5,0,Math.PI*2); ctx.fill();
+    if(node.type==='fruit_tree') {
+      ctx.fillStyle='#d9574d';
+      for(const [ox,oy] of [[-6,-13],[5,-15],[1,-22]]) { ctx.beginPath();ctx.arc(node.x+ox,node.y+oy,2.3,0,Math.PI*2);ctx.fill(); }
+    }
     if (node.marked) {
       ctx.strokeStyle='#f4d77b'; ctx.lineWidth=1.5/G.cam.zoom; ctx.setLineDash([3,3]);
       ctx.strokeRect(node.x-12,node.y-27,24,36); ctx.setLineDash([]);
@@ -4239,6 +4668,35 @@ function drawResourceNode(node) {
   ctx.strokeStyle=node.type==='stone'?'#aeb7b1':'#a87655'; ctx.lineWidth=1.5/G.cam.zoom; ctx.stroke();
   ctx.strokeStyle=node.type==='stone'?'rgba(225,235,228,0.45)':'rgba(224,133,73,0.75)';
   ctx.beginPath(); ctx.moveTo(cx-7,cy+4); ctx.lineTo(cx-1,cy-7); ctx.lineTo(cx+7,cy-2); ctx.stroke();
+}
+
+function drawAnimal(animal) {
+  ctx.save();ctx.translate(animal.x,animal.y);ctx.scale(animal.facingRight?-1:1,1);
+  ctx.fillStyle='#9f7657';ctx.beginPath();ctx.ellipse(0,1,9,6,0,0,Math.PI*2);ctx.fill();
+  ctx.beginPath();ctx.arc(-8,-2,4.5,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#806044';ctx.lineWidth=1.5;ctx.beginPath();ctx.moveTo(-5,5);ctx.lineTo(-6,10);ctx.moveTo(4,5);ctx.lineTo(5,10);ctx.stroke();
+  ctx.fillStyle='#d6b28d';ctx.beginPath();ctx.moveTo(-7,-6);ctx.lineTo(-5,-11);ctx.lineTo(-10,-7);ctx.fill();
+  ctx.restore();
+  if(animal.marked) {
+    ctx.strokeStyle='#e8c86c';ctx.lineWidth=1.5/G.cam.zoom;ctx.setLineDash([3,3]);ctx.beginPath();ctx.arc(animal.x,animal.y,14,0,Math.PI*2);ctx.stroke();ctx.setLineDash([]);
+  }
+}
+
+function drawGroundItem(item) {
+  ctx.save();ctx.translate(item.x,item.y);
+  ctx.fillStyle='rgba(0,0,0,0.24)';ctx.beginPath();ctx.ellipse(0,7,9,3,0,0,Math.PI*2);ctx.fill();
+  if(item.type==='food') {
+    ctx.fillStyle='#d9574d';ctx.beginPath();ctx.arc(0,0,6,0,Math.PI*2);ctx.fill();
+    ctx.strokeStyle='#805338';ctx.lineWidth=1.5/G.cam.zoom;ctx.beginPath();ctx.moveTo(0,-5);ctx.lineTo(1,-9);ctx.stroke();
+    ctx.fillStyle='#6eaa5d';ctx.beginPath();ctx.ellipse(4,-7,3,1.6,-0.45,0,Math.PI*2);ctx.fill();
+  } else {
+    ctx.fillStyle=rc(item.type);ctx.beginPath();ctx.arc(0,0,6,0,Math.PI*2);ctx.fill();
+  }
+  if(item.amount>1) {
+    ctx.font=`${Math.max(8,10/G.cam.zoom)}px sans-serif`;ctx.textAlign='center';ctx.textBaseline='middle';
+    ctx.fillStyle='#fff';ctx.strokeStyle='rgba(0,0,0,0.8)';ctx.lineWidth=2/G.cam.zoom;ctx.strokeText(String(item.amount),9,-7);ctx.fillText(String(item.amount),9,-7);
+  }
+  ctx.restore();
 }
 
 function drawBuilding(b, x, y) {
@@ -4496,6 +4954,15 @@ function drawResidentSleepIcon(x, y) {
   ctx.fillStyle='#d7e7ef'; ctx.beginPath(); ctx.arc(x+4,y+4,1,0,Math.PI*2); ctx.fill();
   ctx.restore();
 }
+function drawResidentHuntIcon(x,y) {
+  ctx.save();ctx.fillStyle='rgba(19,27,22,0.78)';ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#e5d19a';ctx.lineWidth=1.5;ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.moveTo(x-7,y);ctx.lineTo(x+7,y);ctx.moveTo(x,y-7);ctx.lineTo(x,y+7);ctx.stroke();ctx.restore();
+}
+function drawResidentPlantIcon(x,y) {
+  ctx.save();ctx.fillStyle='rgba(19,27,22,0.78)';ctx.beginPath();ctx.arc(x,y,9,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#9a7048';ctx.lineWidth=1.8;ctx.beginPath();ctx.moveTo(x+4,y+6);ctx.lineTo(x-3,y-4);ctx.stroke();
+  ctx.fillStyle='#77ad58';ctx.beginPath();ctx.ellipse(x-4,y-5,3.5,2,-0.5,0,Math.PI*2);ctx.fill();ctx.restore();
+}
 function drawResident(r) {
   const bodyColor = r.isGuard
     ? {GUARD_SLEEPING:'#6688aa',GUARD_FIND_TOWER:'#ff6644',GUARD_MANNING:'#4488ff',
@@ -4537,6 +5004,8 @@ function drawResident(r) {
   const iconY=r.y-31;
   if (r.state==='GOING_TO_EAT'||r.state==='EATING') drawResidentFoodIcon(r.x,iconY);
   else if (r.state==='GOING_HOME' || r.state==='SLEEPING') drawResidentSleepIcon(r.x,iconY);
+  else if(r.state==='GOING_TO_PLANT'||r.state==='PLANTING') drawResidentPlantIcon(r.x,iconY);
+  else if(r.state==='GOING_TO_HUNT'||r.state==='HUNTING') drawResidentHuntIcon(r.x,iconY);
   else if (!r.workplace && r.state==='GOING_TO_CHOP') drawResidentAxeIcon(r.x,iconY);
 }
 
@@ -4710,7 +5179,10 @@ function showContextMenu(building, mx, my) {
       const full=availableRecruitSlots(def.recruits)<=0;
       const isGuard=def.recruits==='guard';
       const label='招募';
-      h+=`<div class="info-line" style="font-size:10px">${label}队列: ${b.recruitQueue}</div>`;
+      const activeRecruitWorkers=b.type==='nursery'?G.residents.filter(r=>r.workplace===b&&r.state==='WORKING').length:0;
+      const recruitState=b.type==='nursery'&&b.recruitQueue>0
+        ? ` | ${activeRecruitWorkers>=def.maxWorkers?'生产中':`等待工人 ${activeRecruitWorkers}/${def.maxWorkers}`}`:'';
+      h+=`<div class="info-line" style="font-size:10px">${label}队列: ${b.recruitQueue}${recruitState}</div>`;
       h+=`<button onclick="${isGuard?'actionRecruitGuard()':'actionRecruit()'}"${full?' disabled':''}>${label} ${formatResourceCost(def.recruitCost)}${b.recruitQueue>0?` (${b.recruitQueue})`:''}${full?isGuard?' [守卫已满]':' [村民已满]':''}</button>`;
     }
     if (b.type==='arrow_tower' && !b.blueprint) {
@@ -4749,7 +5221,7 @@ function actionUpgrade() {
 function actionAddWorker() {
   const b=G.selectedBuilding; if(!b) return;
   if(b.assignedWorkers>=buildingRuntimeDef(b).maxWorkers) return;
-  const candidates=getAssignableResidents(); if(candidates.length===0) return;
+  const candidates=b.type==='nursery'?getIdleResidents():getAssignableResidents(); if(candidates.length===0) return;
   if(!assignResidentToWorkplace(candidates[0],b)) return;
   // Refresh menu to show updated count
   const menu=document.getElementById('context-menu');
@@ -4914,7 +5386,7 @@ canvas.addEventListener('mousemove', e => {
   G.hoveredCell={col:gridCol(wp.x),row:gridRow(wp.y)};
 
   // Chop/Unchop drag
-  if ((G.chopMode || G.unchopMode) && G.chopStartX >= 0) { G.chopEndX = gridCol(wp.x); G.chopEndY = gridRow(wp.y); return; }
+  if ((G.chopMode||G.unchopMode||G.huntMode||G.unhuntMode) && G.chopStartX >= 0) { G.chopEndX = gridCol(wp.x); G.chopEndY = gridRow(wp.y); return; }
 
   // Camera drag
   if (G.dragging) {
@@ -4954,10 +5426,10 @@ canvas.addEventListener('mousedown', e => {
   const col=gridCol(wp.x), row=gridRow(wp.y);
 
   // Chop/Unchop mode drag-select
-  if (G.chopMode || G.unchopMode) {
+  if (G.chopMode||G.unchopMode||G.huntMode||G.unhuntMode) {
     G.chopStartX = col; G.chopStartY = row; G.chopEndX = -1; G.chopEndY = -1;
     G.dragging = false;
-  } else if (!G.selectedBldType && !G.placingMode) {
+  } else if (!G.fruitPlantMode&&!G.selectedBldType && !G.placingMode) {
     G.guardSelectStart={x:wp.x,y:wp.y}; G.guardSelectEnd={x:wp.x,y:wp.y};
     G.guardSelectScreenX=mx; G.guardSelectScreenY=my; G.guardSelectMoved=false;
   }
@@ -4979,18 +5451,31 @@ canvas.addEventListener('click', e => {
   G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false;
 
   // Apply chop/unchop selection on mouse release
-  if ((G.chopMode || G.unchopMode) && G.chopStartX >= 0) {
+  if ((G.chopMode||G.unchopMode||G.huntMode||G.unhuntMode) && G.chopStartX >= 0) {
     const ex = G.chopEndX >= 0 ? G.chopEndX : G.chopStartX;
     const ey = G.chopEndY >= 0 ? G.chopEndY : G.chopStartY;
     const minC = Math.min(G.chopStartX, ex), maxC = Math.max(G.chopStartX, ex);
     const minR = Math.min(G.chopStartY, ey), maxR = Math.max(G.chopStartY, ey);
-    for (const node of G.resourceNodes) {
-            if (canResidentHandHarvest(node) && isWorldVisible(node.x,node.y) && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR) {
-        if (G.chopMode) node.marked = true;
-        else if (node.marked) node.marked = false;
+    if(G.huntMode||G.unhuntMode) {
+      for(const animal of G.animals) {
+        if(!animal.alive||!isWorldVisible(animal.x,animal.y)) continue;
+        const animalCol=gridCol(animal.x),animalRow=gridRow(animal.y);
+        if(animalCol>=minC&&animalCol<=maxC&&animalRow>=minR&&animalRow<=maxR) animal.marked=G.huntMode;
+      }
+    } else {
+      for (const node of G.resourceNodes) {
+        if (canResidentHandHarvest(node) && isWorldVisible(node.x,node.y) && node.col >= minC && node.col <= maxC && node.row >= minR && node.row <= maxR) {
+          if (G.chopMode) node.marked = true;
+          else if (node.marked) node.marked = false;
+        }
       }
     }
     G.chopStartX = -1; G.chopEndX = -1;
+    return;
+  }
+
+  if(G.fruitPlantMode) {
+    plantFruitTree(col,row);
     return;
   }
 
