@@ -36,6 +36,8 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 .resource-mark.stone { width:14px; height:13px; background:#99a39e; border:1px solid #d0d7d0; clip-path:polygon(50% 0,92% 28%,82% 86%,27% 100%,0 56%,16% 17%); box-shadow:inset 2px 2px rgba(255,255,255,0.4); }
 .resource-mark.iron { width:14px; height:13px; background:#75564c; border:1px solid #d78d62; clip-path:polygon(52% 0,100% 33%,79% 100%,20% 92%,0 43%); }
 .resource-mark.iron::after { content:''; position:absolute; width:4px; height:4px; left:4px; top:4px; background:#e8b178; border-radius:50%; box-shadow:4px -2px 0 -1px #c87852; }
+.resource-mark.charcoal { width:14px; height:12px; top:1px; background:#343938; border:1px solid #818b86; clip-path:polygon(18% 4%,82% 0,100% 35%,84% 96%,22% 100%,0 58%); box-shadow:inset 3px 2px rgba(255,255,255,0.12); }
+.resource-mark.charcoal::after { content:''; position:absolute; width:3px; height:3px; left:3px; top:5px; background:#69716d; border-radius:50%; box-shadow:5px -2px 0 -1px #959d98; }
 .resource-mark.ingot { width:15px; height:10px; top:2px; background:#779caf; border:1px solid #d4edf5; clip-path:polygon(18% 0,86% 0,100% 100%,0 100%); box-shadow:inset 0 2px rgba(255,255,255,0.45); }
 .resource-cost { display:inline-flex; align-items:center; gap:3px; white-space:nowrap; color:#d9ddd1; }
 .resource-cost + .resource-cost { margin-left:6px; }
@@ -153,12 +155,27 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
 .tool-command-row { display:grid; grid-template-columns:1fr 1fr; min-height:20px; border-top:1px solid rgba(72,86,75,0.45); }
 .tool-command-row.single { grid-template-columns:1fr; }
 .tool-command-row .tool-btn { min-width:0; white-space:nowrap; }
+.tool-command-row .tool-btn.command-with-cost { display:flex; align-items:center; justify-content:center; gap:7px; }
+.tool-command-cost { color:#aeb8aa; font-size:10px; }
 .engineer-bar { position:absolute; right:198px; bottom:108px; display:flex; gap:7px; z-index:10; align-items:center; background:rgba(15,22,18,0.92); border:1px solid #435248; padding:5px 8px; border-radius:5px; color:#edf0e5; font-size:11px; box-shadow:0 4px 18px rgba(0,0,0,0.3); }
 .bar-action { color:#d6c477; cursor:pointer; font-weight:bold; padding:0 4px; }
 .bar-action:hover { color:#fff0a5; }
 .overlay-panel { background:#171d1a !important; border:1px solid #536158 !important; border-radius:6px !important; box-shadow:0 12px 36px rgba(0,0,0,0.5); }
 #config-overlay select,#config-overlay input { background:#222b26 !important; border-color:#46544c !important; color:#edf0e5 !important; }
 #config-overlay button { border-radius:4px !important; }
+.cfg-building-filters { display:none; margin:-2px 0 10px; padding:7px 8px; border:1px solid #3d4942; background:#1c2521; }
+.cfg-filter-row { display:grid; grid-template-columns:58px 1fr; align-items:start; gap:7px; }
+.cfg-filter-row + .cfg-filter-row { margin-top:6px; }
+.cfg-filter-label { color:#8f9d93; line-height:24px; }
+.cfg-filter-options { display:flex; flex-wrap:wrap; gap:4px; }
+.cfg-filter-btn { min-height:24px; padding:2px 8px; border:1px solid #48564d; background:#27322c; color:#bdc7bf; cursor:pointer; font:11px 'Microsoft YaHei',sans-serif; }
+.cfg-filter-btn:hover { border-color:#74857a; color:#edf2ec; }
+.cfg-filter-btn.active { border-color:#d0b96e; background:#4a472f; color:#fff0ad; box-shadow:inset 0 -2px #d0b96e; }
+.cfg-building-results { display:flex; flex-wrap:wrap; gap:5px; margin-top:8px; padding-top:8px; border-top:1px solid #354139; }
+.cfg-building-result { min-height:27px; padding:3px 9px; border:1px solid #4b5950; background:#242f29; color:#d4dcd5; cursor:pointer; font:11px 'Microsoft YaHei',sans-serif; }
+.cfg-building-result:hover { background:#334139; border-color:#75867b; }
+.cfg-building-result.active { background:#3f4b32; border-color:#d0b96e; color:#fff2b2; box-shadow:inset 0 -2px #d0b96e; }
+.cfg-building-results-empty { width:100%; padding:8px 4px; color:#819087; text-align:center; }
 @media (max-width:900px) { #game-container { grid-template-columns:140px minmax(320px,1fr) 154px; gap:6px; } #debug-panel,#building-panel { padding:7px; } .bld-btn { min-height:32px; padding:5px 4px; } #topbar { gap:8px; left:calc(50% - 6px); } .tool-bar,.engineer-bar { right:164px; } }
 </style>
 </head>
@@ -186,6 +203,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
       <div class="dbg-row"><span class="resource-mark wood"></span><input id="dbg-wood" type="number" value="40" size="4"><button class="dbg-btn" onclick="setRes('wood')">设定</button></div>
       <div class="dbg-row"><span class="resource-mark stone"></span><input id="dbg-stone" type="number" value="20" size="4"><button class="dbg-btn" onclick="setRes('stone')">设定</button></div>
       <div class="dbg-row"><span class="resource-mark iron"></span><input id="dbg-iron" type="number" value="0" size="4"><button class="dbg-btn" onclick="setRes('iron')">设定</button></div>
+      <div class="dbg-row"><span class="resource-mark charcoal"></span><input id="dbg-charcoal" type="number" value="0" size="4"><button class="dbg-btn" onclick="setRes('charcoal')">设定</button></div>
     </div>
   </div>
   <canvas id="game"></canvas>
@@ -203,12 +221,14 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
       <button class="bld-btn" data-type="forester"><span class="bld-mark production">林</span><span class="bld-copy">护林员小屋<div class="cost">15 木 10 石</div></span></button>
       <button class="bld-btn" data-type="quarry"><span class="bld-mark production">石</span><span class="bld-copy">采石场<div class="cost">10 木 5 石</div></span></button>
       <button class="bld-btn" data-type="iron_mine"><span class="bld-mark production">矿</span><span class="bld-copy">铁矿<div class="cost">15 木 10 石</div></span></button>
+      <button class="bld-btn" data-type="charcoal_kiln"><span class="bld-mark production">炭</span><span class="bld-copy">炭窑<div class="cost">15 木 15 石</div></span></button>
       <button class="bld-btn" data-type="smelter"><span class="bld-mark production">炉</span><span class="bld-copy">炼铁机<div class="cost">20 木 15 石</div></span></button>
     </div><div class="panel-section"><div class="section-label">仓储设施</div>
       <button class="bld-btn" data-type="wood_storage"><span class="bld-mark storage">木</span><span class="bld-copy">木材仓库<div class="cost">10 木 5 石</div></span></button>
       <button class="bld-btn" data-type="food_storage"><span class="bld-mark storage">食</span><span class="bld-copy">食物仓库<div class="cost">10 木 5 石</div></span></button>
       <button class="bld-btn" data-type="stone_storage"><span class="bld-mark storage">石</span><span class="bld-copy">石材仓库<div class="cost">10 木 5 石</div></span></button>
       <button class="bld-btn" data-type="iron_storage"><span class="bld-mark storage">铁</span><span class="bld-copy">铁矿仓库<div class="cost">10 木 10 石</div></span></button>
+      <button class="bld-btn" data-type="charcoal_storage"><span class="bld-mark storage">炭</span><span class="bld-copy">木炭仓库<div class="cost">10 木 10 石</div></span></button>
       <button class="bld-btn" data-type="ingot_storage"><span class="bld-mark storage">锭</span><span class="bld-copy">铁锭仓库<div class="cost">10 木 10 石</div></span></button>
     </div><div class="panel-section"><div class="section-label">防御设施</div>
       <button class="bld-btn" data-type="arrow_tower"><span class="bld-mark defense">塔</span><span class="bld-copy">箭塔<div class="cost">20 木 10 石</div></span></button>
@@ -223,6 +243,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
     <div class="top-res" id="top-res-wood"><span class="resource-mark wood"></span><span class="val" id="r-wood">40</span></div>
     <div class="top-res" id="top-res-stone"><span class="resource-mark stone"></span><span class="val" id="r-stone">20</span></div>
     <div class="top-res" id="top-res-iron"><span class="resource-mark iron"></span><span class="val" id="r-iron">0</span></div>
+    <div class="top-res" id="top-res-charcoal"><span class="resource-mark charcoal"></span><span class="val" id="r-charcoal">0</span></div>
     <div class="top-res" id="top-res-ingot"><span class="resource-mark ingot"></span><span class="val" id="r-ingot">0</span></div>
     <div style="color:#aaa;">|</div>
     <div class="top-res"><span class="resource-mark population"></span><span class="val" id="r-pop">4/4</span></div>
@@ -247,7 +268,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
       <button id="unchop-btn" class="tool-btn" onclick="toggleUnchopMode()" title="取消砍伐">取消标记</button>
     </div>
     <div class="tool-command-row single">
-      <button id="fruit-btn" class="tool-btn" onclick="toggleFruitPlantMode()" title="消耗木材种植果树苗">种植果树</button>
+      <button id="fruit-btn" class="tool-btn command-with-cost" onclick="toggleFruitPlantMode()" title="种植果树"><span>种植果树</span><span id="fruit-command-cost" class="tool-command-cost"></span></button>
     </div>
     <div class="tool-command-row">
       <button id="hunt-btn" class="tool-btn" onclick="toggleHuntMode()" title="框选猎物">标记狩猎</button>
@@ -282,6 +303,11 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
       </select>
       <select id="cfg-item" onchange="cfgSelectItem()" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;flex:1;"></select>
     </div>
+    <div id="cfg-building-filters" class="cfg-building-filters">
+      <div class="cfg-filter-row"><span class="cfg-filter-label">大本营</span><div id="cfg-filter-levels" class="cfg-filter-options"></div></div>
+      <div class="cfg-filter-row"><span class="cfg-filter-label">建筑类型</span><div id="cfg-filter-types" class="cfg-filter-options"></div></div>
+      <div id="cfg-building-results" class="cfg-building-results"></div>
+    </div>
     <select id="cfg-building-level" onchange="cfgSelectItem()" style="display:none;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 8px;border-radius:4px;font-size:12px;font-family:inherit;margin:-2px 0 10px auto;"></select>
     <div id="cfg-fields" style="display:flex; flex-direction:column; gap:5px; margin-bottom:10px;"></div>
     <div style="display:flex; gap:8px;">
@@ -290,7 +316,7 @@ canvas { border:2px solid #39483e; border-radius:4px; cursor:crosshair; flex:1; 
       <button id="cfg-save-btn" onclick="cfgSaveProject()" style="flex:1; padding:8px; background:#28706a; color:#fff;
         border:none; border-radius:6px; cursor:pointer; font-size:13px; font-family:inherit;">保存到项目</button>
     </div>
-    <div id="cfg-status" style="margin-top:10px;min-height:18px;color:#9aa7b8;line-height:18px;">应用会立即预览；保存到项目后刷新仍会保留。</div>
+    <div id="cfg-status" style="margin-top:10px;min-height:18px;color:#9aa7b8;line-height:18px;">应用本次打开期间的全部修改；保存到项目会写入完整配置表。</div>
   </div>
 </div>
 <div id="settings-overlay" style="display:none; position:fixed; top:0;left:0;width:100%;height:100%;
@@ -338,7 +364,6 @@ const CFG = {
   START_FOOD: 50, START_WOOD: 40, START_STONE: 20, START_IRON: 0, START_INGOT: 0,
   START_POP: 4, START_ENGINEERS: 1, MAX_POP_BASE: 4, MAX_GUARD_BASE: 2,
   MEAL_TIME_LUNCH: 12, MEAL_TIME_DINNER: 18,
-  TIRED_RATE: 0.4, TIRED_THRESHOLD: 100,
   ENEMY_ATTACK_RANGE: 30,
   ENEMY_WAVE_BASE_COUNT: 3,
   ENEMY_WAVE_PER_DAY: 2,
@@ -375,11 +400,10 @@ const CFG = {
   NAV_REQUESTS_PER_TICK: 2,
   NAV_EXPANSION_LIMIT: 4000,
   NAV_RECHECK_INTERVAL: 0.25,
-  NAV_STUCK_TIMEOUT: 0.5,
+  NAV_STUCK_WINDOW: 2,
+  NAV_STUCK_MIN_DISTANCE: 10,
   SPATIAL_CELL_SIZE: 96,
   FOG_UPDATE_INTERVAL: 0.2,
-  RESIDENT_VISION: 2,
-  GUARD_VISION: 3,
   GUARD_MAX_HP: 80,
   GUARD_DAMAGE: 12,
   GUARD_SPEED: 60,
@@ -423,7 +447,9 @@ const BLD_DEFS = {
 
   iron_mine:   { name:'铁矿', icon:'矿', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:4, produces:'iron', sourceType:'iron', sourceRadius:3, baseTime:12, batchSize:5, levelSpeedBonus:0.2, levelBufferBonus:2, unlock:4 , buildTime:11 },
 
-  smelter:     { name:'炼铁机',icon:'炉', cat:'production',sz:[2,2], cost:{wood:20,stone:15},hp:120, maxWorkers:2, inputs:{iron:1}, produces:'ingot', baseTime:8, batchSize:5, levelSpeedBonus:0.2, levelBufferBonus:2, unlock:4 , buildTime:11 },
+  charcoal_kiln:{ name:'炭窑',icon:'炭', cat:'production',sz:[2,2], cost:{wood:15,stone:15},hp:120, maxWorkers:2, inputs:{wood:2}, produces:'charcoal', baseTime:8, batchSize:5, levelSpeedBonus:0.2, levelBufferBonus:2, unlock:6, buildTime:10 },
+
+  smelter:     { name:'炼铁机',icon:'炉', cat:'production',sz:[2,2], cost:{wood:20,stone:15},hp:120, maxWorkers:2, inputs:{iron:1,charcoal:1}, produces:'ingot', baseTime:8, batchSize:5, levelSpeedBonus:0.2, levelBufferBonus:2, unlock:7 , buildTime:11 },
 
   food_storage:{ name:'食物仓库',icon:'食', cat:'storage', sz:[2,2], cost:{wood:10,stone:5}, hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:2 , buildTime:5 },
 
@@ -433,7 +459,9 @@ const BLD_DEFS = {
 
   iron_storage:{ name:'铁矿仓库',icon:'铁', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:4 , buildTime:11 },
 
-  ingot_storage:{name:'铁锭仓库',icon:'锭', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:4 , buildTime:11 },
+  charcoal_storage:{name:'木炭仓库',icon:'炭', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:6, buildTime:10 },
+
+  ingot_storage:{name:'铁锭仓库',icon:'锭', cat:'storage', sz:[2,2], cost:{wood:10,stone:10},hp:150, maxWorkers:0, capacity:50, levelCapacityBonus:25, unlock:7 , buildTime:11 },
 
   arrow_tower: { name:'箭塔', icon:'塔', cat:'defense',   sz:[1,1], cost:{wood:20,stone:10},hp:120, maxWorkers:0, range:150, damage:15, cooldown:0.8, levelDamageBonus:0.25, unlock:1 , buildTime:2, needsManning:1 },
 
@@ -441,7 +469,7 @@ const BLD_DEFS = {
 
   restoration_tower:{ name:'恢复塔',icon:'复', cat:'defense', sz:[1,1], cost:{wood:20,stone:15},hp:140, maxWorkers:0, repairRange:160, buildingRepairRate:8, unitRepairRate:12, levelRepairBonus:0.2, unlock:4, buildTime:10 },
 
-  town_hall:   { name:'大本营',icon:'', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, capacity:200, vision:8, range:180, damage:12, cooldown:1, startResources:{food:5,wood:5,stone:0,iron:0,ingot:0}, storageCaps:{food:200,wood:200,stone:200,iron:200,ingot:200}, unlock:1 , buildTime:2 },
+  town_hall:   { name:'大本营',icon:'', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, capacity:200, vision:8, range:180, damage:12, cooldown:1, startResources:{food:5,wood:5,stone:0,iron:0,charcoal:0,ingot:0}, storageCaps:{food:200,wood:200,stone:200,iron:200,charcoal:200,ingot:200}, unlock:1 , buildTime:2 },
 
   lamp:        { name:'灯', icon:'灯', cat:'facility',  sz:[1,1], cost:{wood:5}, hp:50, maxWorkers:0, unlock:1, buildTime:2, vision:5, levelVisionBonus:1 },
 
@@ -450,13 +478,33 @@ const BLD_DEFS = {
 };
 
 for (const def of Object.values(BLD_DEFS)) if (!Number.isInteger(def.maxLevel) || def.maxLevel<1) def.maxLevel=5;
-const RESOURCE_TYPES=['food','wood','stone','iron','ingot'];
+const RESOURCE_TYPES=['food','wood','stone','iron','charcoal','ingot'];
 const DEBUG_INFINITE_RESOURCE_AMOUNT=9999;
-const RESOURCE_NAMES={food:'食物',wood:'木材',stone:'石材',iron:'铁矿',ingot:'铁锭'};
-const RESOURCE_STORAGE_TYPES={food:'food_storage',wood:'wood_storage',stone:'stone_storage',iron:'iron_storage',ingot:'ingot_storage'};
+const RESOURCE_NAMES={food:'食物',wood:'木材',stone:'石材',iron:'铁矿',charcoal:'木炭',ingot:'铁锭'};
+const RESOURCE_STORAGE_TYPES={food:'food_storage',wood:'wood_storage',stone:'stone_storage',iron:'iron_storage',charcoal:'charcoal_storage',ingot:'ingot_storage'};
 function resourceIcon(type) { return `<span class="resource-mark ${type}" title="${RESOURCE_NAMES[type]||type}" aria-label="${RESOURCE_NAMES[type]||type}"></span>`; }
 function formatResourceCost(cost) {
   return Object.entries(cost||{}).filter(([,amount])=>amount>0).map(([type,amount])=>`<span class="resource-cost" title="${amount} ${RESOURCE_NAMES[type]||type}">${amount}${resourceIcon(type)}</span>`).join('');
+}
+function parseResourceMapInput(raw) {
+  const value={};
+  if(!raw.trim()) return {value};
+  for(const part of raw.trim().split(/[,;\s]+/)) {
+    const [resource,amount,...extra]=part.split(':');
+    const key=resource?.trim(),number=Number(amount);
+    if(extra.length||!RESOURCE_TYPES.includes(key)) return {error:`未知资源键“${key||part}”`};
+    if(Object.prototype.hasOwnProperty.call(value,key)) return {error:`资源“${RESOURCE_NAMES[key]}”重复填写`};
+    if(amount===undefined||amount.trim()===''||!Number.isFinite(number)||number<0) return {error:`资源“${RESOURCE_NAMES[key]}”数量无效`};
+    value[key]=number;
+  }
+  return {value};
+}
+function updateFruitPlantCommandCost() {
+  const cost=Math.max(0,CFG.FRUIT_TREE_WOOD_COST||0);
+  const costElement=document.getElementById('fruit-command-cost');
+  if(costElement) costElement.innerHTML=formatResourceCost({wood:cost});
+  const button=document.getElementById('fruit-btn');
+  if(button) button.title=`种植果树，需要 ${cost} 木材`;
 }
 function cloneResourceMap(value) { return {...(value||{})}; }
 function buildingUnlockStatus(def, townHallLevel=1) {
@@ -621,7 +669,7 @@ loadSavedBalance();
 // ============================================================
 const G = {
   tick: 0, dt: 0, day: 1, dayTime: 0, phase: 'day', totalTime: 0,
-  resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT },
+  resources: { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, charcoal:0, ingot:CFG.START_INGOT },
   buildings: [], residents: [], enemies: [], animals: [], groundItems: [], particles: [], projectiles: [], commandMarkers: [],
   selectedBldType: null, selectedBuilding: null, selectedGuard: null, selectedGuards: [], hoveredCell: null,
   mouseX: 0, mouseY: 0,
@@ -691,6 +739,9 @@ function buildingVisionRadius(b) {
   if (b.type==='town_hall'||b.type==='lamp') return buildingLevelValue(b.type,b.level,'vision')*CFG.CELL;
   return Math.hypot(b.size[0],b.size[1])*CFG.CELL/2;
 }
+function buildingFogRadius(b) {
+  return (b.type==='town_hall'||b.type==='lamp') ? buildingVisionRadius(b) : 0;
+}
 function nightLightRadius(b) {
   return (b.type==='town_hall'||b.type==='lamp') ? buildingVisionRadius(b) : 0;
 }
@@ -712,18 +763,15 @@ function refreshFogVisibility() {
   G.fogVisible.fill(0);
   for(const b of G.buildings) {
     if (b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
-    const c=b.center(); revealFogCircle(c.x,c.y,buildingVisionRadius(b));
-  }
-  for(const r of G.residents) {
-    if (r.hidden) continue;
-    revealFogCircle(r.x,r.y,(r.isGuard?CFG.GUARD_VISION:CFG.RESIDENT_VISION)*CFG.CELL);
+    const radius=buildingFogRadius(b);
+    if(radius>0) { const c=b.center();revealFogCircle(c.x,c.y,radius); }
   }
 }
 function isStaticPatrolVisible(x,y) {
   for(const b of G.buildings) {
     if (b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
-    const c=b.center();
-    if (Math.hypot(x-c.x,y-c.y)<=buildingVisionRadius(b)) return true;
+    const radius=buildingFogRadius(b);
+    if(radius>0) { const c=b.center();if(Math.hypot(x-c.x,y-c.y)<=radius) return true; }
   }
   return false;
 }
@@ -838,7 +886,7 @@ function updateResourceTotal(type) {
   G.resources[type] = G.buildings.reduce((total, b) => total + (storageAcceptsResource(b,type) ? storedAmount(b, type) : 0), 0);
 }
 function updateAllResourceTotals() {
-  for (const type of ['food','wood','stone','iron','ingot']) updateResourceTotal(type);
+  for (const type of RESOURCE_TYPES) updateResourceTotal(type);
 }
 function depositToStorage(b, type, amount) {
   if (!storageAcceptsResource(b,type)) return 0;
@@ -1112,15 +1160,11 @@ function toggleUnhuntMode() {
   document.getElementById('unhunt-btn').classList.toggle('active',activate);
 }
 function canPlantFruitTree(col,row) {
-  if(!isFogCellVisible(col,row)||isCellBlocked(col,row)) return false;
-  const cost={wood:CFG.FRUIT_TREE_WOOD_COST};
-  return canAfford(cost);
+  return isFogCellVisible(col,row)&&!isCellBlocked(col,row);
 }
 function plantFruitTree(col,row) {
   if(!canPlantFruitTree(col,row)) return false;
-  const cost={wood:CFG.FRUIT_TREE_WOOD_COST};
-  payCost(cost);
-  G.resourceNodes.push({type:'fruit_planting',col,row,x:gridX(col)+CFG.CELL/2,y:gridY(row)+CFG.CELL/2,hp:1,alive:true,marked:false,claimedBy:null,plantProgress:0,ownerForester:null});
+  G.resourceNodes.push({type:'fruit_planting',col,row,x:gridX(col)+CFG.CELL/2,y:gridY(row)+CFG.CELL/2,hp:1,alive:true,marked:false,claimedBy:null,plantProgress:0,requiredWood:CFG.FRUIT_TREE_WOOD_COST,deliveredWood:0,ownerForester:null});
   return true;
 }
 function resourceObstacle(node) {
@@ -1134,7 +1178,7 @@ function isResourceObstacleNode(node) {
   return node && node.alive && !['tree','sapling','fruit_tree','fruit_sapling','fruit_planting'].includes(node.type);
 }
 function buildingBlocksMovement(b) {
-  return !!b && (b.ruin || (b.hp > 0 && b.type !== 'farm'));
+  return !!b && !b.ruin && b.hp > 0 && b.type !== 'farm';
 }
 function ensureObstacleSpatialHash() {
   if (!G.obstacleSpatial) G.obstacleSpatial = new SpatialHash(CFG.SPATIAL_CELL_SIZE);
@@ -1380,7 +1424,9 @@ function clearNavigation(r) {
   r.navResolvedPoint = null;
   r.navPending = false;
   r.navCheckTimer = 0;
-  r.navStuckTimer = 0;
+  r.navProgressTimer = 0;
+  r.navProgressX = r.x;
+  r.navProgressY = r.y;
 }
 function applyNavigationPlan(r,planned) {
   r.navPending=false;
@@ -1484,14 +1530,30 @@ function flowMove(r, tx, ty, speed, dt) {
   return resolveCollisions(r, steered.x, steered.y);
 }
 function moveViaFlow(r, tx, ty, speed, dt) {
-  const beforeX = r.x, beforeY = r.y;
   const rs = flowMove(r, tx, ty, speed, dt);
   r.x = rs.x; r.y = rs.y;
-  const moved = Math.hypot(r.x - beforeX, r.y - beforeY);
-  const remaining = r.navBlockedGoal&&!r.navPath ? 0 : Math.hypot(tx - r.x, ty - r.y);
-  if (remaining > 48 && moved < Math.max(0.25, speed * dt * 0.12)) r.navStuckTimer += dt;
-  else r.navStuckTimer = 0;
-  if (r.navStuckTimer >= CFG.NAV_STUCK_TIMEOUT) clearNavigation(r);
+  updateNavigationProgress(r,tx,ty,dt);
+}
+function updateNavigationProgress(r,tx,ty,dt) {
+  if (!Number.isFinite(r.navProgressTimer)||!Number.isFinite(r.navProgressX)||!Number.isFinite(r.navProgressY)) {
+    r.navProgressTimer=0;r.navProgressX=r.x;r.navProgressY=r.y;
+  }
+  const remaining=Math.hypot(tx-r.x,ty-r.y);
+  const stoppedAtReachableEnd=r.navBlockedGoal&&!r.navPath&&r.navResolvedPoint&&Math.hypot(r.x-r.navResolvedPoint.x,r.y-r.navResolvedPoint.y)<12;
+  if (remaining<=Math.max(12,CFG.NAV_STUCK_MIN_DISTANCE)||stoppedAtReachableEnd) {
+    r.navProgressTimer=0;r.navProgressX=r.x;r.navProgressY=r.y;
+    return false;
+  }
+  r.navProgressTimer+=dt;
+  if (r.navProgressTimer<CFG.NAV_STUCK_WINDOW) return false;
+  const moved=Math.hypot(r.x-r.navProgressX,r.y-r.navProgressY);
+  r.navProgressTimer=0;r.navProgressX=r.x;r.navProgressY=r.y;
+  if (moved>=CFG.NAV_STUCK_MIN_DISTANCE) return false;
+  clearNavigation(r);
+  r.navTargetX=tx;r.navTargetY=ty;r.navRevision=G.navigationRevision;
+  queueNavigationRequest(r,tx,ty);
+  r.navForcedReplans=(r.navForcedReplans||0)+1;
+  return true;
 }
 function navigationDebugPoints(unit) {
   const points=[];
@@ -1724,21 +1786,37 @@ function releaseGroundPickup(resident) {
 }
 function releaseFruitPlanting(resident) {
   if(resident.plantTarget?.claimedBy===resident) resident.plantTarget.claimedBy=null;
-  resident.plantTarget=null;resident.plantTimer=0;
+  resident.plantTarget=null;resident.plantTimer=0;resident.carryingForPlanting=false;
+}
+function fruitPlantingWoodNeed(node) {
+  return Math.max(0,(node.requiredWood??CFG.FRUIT_TREE_WOOD_COST)-(node.deliveredWood||0));
+}
+function fruitPlantingWoodInTransit(node) {
+  return G.residents.reduce((total,resident)=>total+(resident.plantTarget===node&&resident.carryingForPlanting&&resident.carrying?.type==='wood'?resident.carrying.amount:0),0);
+}
+function reservedFruitPlantingWood() {
+  return G.resourceNodes.reduce((total,node)=>{
+    if(!node.alive||node.type!=='fruit_planting'||!node.claimedBy) return total;
+    return total+Math.max(0,fruitPlantingWoodNeed(node)-fruitPlantingWoodInTransit(node));
+  },0);
+}
+function canFundFruitPlanting(node) {
+  const need=fruitPlantingWoodNeed(node);
+  return need<=0||(G.resources.wood||0)-reservedFruitPlantingWood()>=need;
 }
 function findNearestFruitPlanting(resident) {
   let best=null,bestDistance=Infinity;
   for(const node of G.resourceNodes) {
-    if(!node.alive||node.type!=='fruit_planting'||node.claimedBy||!isWorldVisible(node.x,node.y)) continue;
+    if(!node.alive||node.type!=='fruit_planting'||node.claimedBy||!isWorldVisible(node.x,node.y)||!canFundFruitPlanting(node)) continue;
     const distance=Math.hypot(resident.x-node.x,resident.y-node.y);
     if(distance<bestDistance){bestDistance=distance;best=node;}
   }
   return best;
 }
 function completeFruitPlanting(node) {
-  if(!node||!node.alive||node.type!=='fruit_planting') return false;
+  if(!node||!node.alive||node.type!=='fruit_planting'||fruitPlantingWoodNeed(node)>0) return false;
   const growDuration=CFG.FRUIT_TREE_GROW_TIME_MIN+Math.random()*(CFG.FRUIT_TREE_GROW_TIME_MAX-CFG.FRUIT_TREE_GROW_TIME_MIN);
-  node.type='fruit_sapling';node.claimedBy=null;node.plantProgress=undefined;node.growTimer=growDuration;node.growDuration=growDuration;
+  node.type='fruit_sapling';node.claimedBy=null;node.plantProgress=undefined;node.requiredWood=undefined;node.deliveredWood=undefined;node.growTimer=growDuration;node.growDuration=growDuration;
   return true;
 }
 function findNearestGroundItem(resident) {
@@ -1754,7 +1832,8 @@ function findNearestGroundItem(resident) {
 
 function isFinishableResidentTask(r) {
   return r.state==='CHOPPING' || r.state==='HAULING' || r.state==='GATHERING' ||
-    r.state==='BUILDING' || r.state==='CONSTRUCTING' || r.state==='HUNTING' || r.state==='PLANTING';
+    r.state==='BUILDING' || r.state==='CONSTRUCTING' || r.state==='HUNTING' ||
+    r.state==='GOING_TO_PLANT_MATERIAL' || r.state==='DELIVERING_PLANT_MATERIAL' || r.state==='PLANTING';
 }
 function beginEating(r) {
   if ((G.resources.food||0) <= 0) return false;
@@ -2025,7 +2104,6 @@ class Resident {
     this.x = x; this.y = y;
     this.state = 'IDLE';
     this.workplace = null; this.home = null;
-    this.tired = 0;
     this.carrying = null;
     this.carryQueue = [];
     this.carryingFrom = null;
@@ -2034,7 +2112,8 @@ class Resident {
     this.targetX = x; this.targetY = y;
     this.navWaypoint = null; this.navBlock = null; this.navTargetX = x; this.navTargetY = y;
     this.navPath = null; this.navPathIndex = 0; this.navBlockedGoal = false; this.navResolvedPoint = null; this.navPending = false;
-    this.navRevision = G.navigationRevision; this.navCheckTimer = 0; this.navStuckTimer = 0;
+    this.navRevision = G.navigationRevision; this.navCheckTimer = 0;
+    this.navProgressTimer = 0; this.navProgressX = x; this.navProgressY = y; this.navForcedReplans = 0;
     this.patrolAngle = Math.random()*Math.PI*2;
     this.patrolTimer = 0; this.patrolTarget = null;
     this.eatTimer = 0; this.prodTimer = 0;
@@ -2044,6 +2123,7 @@ class Resident {
     this.chopTarget = null; this.chopTimer = 0; this.chopShakeBeat = -1;
     this.huntTarget = null; this.huntAttackTimer = 0;
     this.plantTarget = null; this.plantTimer = 0;
+    this.carryingForPlanting = false;
     this.finishCurrentChopForWork = false;
     this.finishBeforeEating = false;
     this.mealPending = false;
@@ -2070,7 +2150,8 @@ class Animal {
     this.facingRight=Math.random()>=0.5;
     this.navWaypoint=null;this.navBlock=null;this.navTargetX=x;this.navTargetY=y;
     this.navPath=null;this.navPathIndex=0;this.navBlockedGoal=false;this.navResolvedPoint=null;this.navPending=false;
-    this.navRevision=G.navigationRevision;this.navCheckTimer=0;this.navStuckTimer=0;
+    this.navRevision=G.navigationRevision;this.navCheckTimer=0;
+    this.navProgressTimer=0;this.navProgressX=x;this.navProgressY=y;this.navForcedReplans=0;
   }
 }
 
@@ -2091,7 +2172,8 @@ class Enemy {
     else { this.targetX = CFG.WORLD_W/2; this.targetY = CFG.WORLD_H/2; }
     this.navWaypoint = null; this.navBlock = null; this.navTargetX = this.targetX; this.navTargetY = this.targetY;
     this.navPath = null; this.navPathIndex = 0; this.navBlockedGoal = false; this.navResolvedPoint = null; this.navPending = false;
-    this.navRevision = G.navigationRevision; this.navCheckTimer = 0; this.navStuckTimer = 0;
+    this.navRevision = G.navigationRevision; this.navCheckTimer = 0;
+    this.navProgressTimer = 0; this.navProgressX = x; this.navProgressY = y; this.navForcedReplans = 0;
     this.attacking = null; this.attackTimer = 0;
     this.fightingGuard = null;
     this.guardTarget = null;
@@ -2289,10 +2371,9 @@ function updateDayNight(dt) {
       // 让居民回家睡觉
       for (const r of G.residents) {
         if (r.isGuard) continue; // guards handle their own sleep
-        if (r.carrying) { r.state = 'HAULING'; continue; }
+        if (r.carrying) { if(r.carryingForPlanting)releaseFruitPlanting(r);r.state = 'HAULING'; continue; }
         releaseGroundPickup(r);
         releaseFruitPlanting(r);
-        r.tired = CFG.TIRED_THRESHOLD;
         const home = r.home || findNearestHome(r, r.isGuard);
         if (home) {
           r.state = 'GOING_HOME';
@@ -2330,7 +2411,7 @@ function updateDayNight(dt) {
           r.guardHP = r.guardMaxHP;
           r.manningTower = null;
         } else {
-          r.state=r.carrying?'HAULING':'IDLE'; r.tired=0; r.hidden=false;
+          r.state=r.carrying?'HAULING':'IDLE'; r.hidden=false;
         }
       }
     }
@@ -2592,7 +2673,7 @@ function releaseGuardTower(r) {
 }
 
 function setGuardControlMode(r, mode) {
-  if (!r || !r.isGuard || r.guardHP<=0 || r.hidden) return false;
+  if (!r || !r.isGuard || r.guardHP<=0 || r.hidden || !isWorldVisible(r.x,r.y)) return false;
   clearNavigation(r);r.patrolTarget=null;r.formationCommandId=0;
   if (mode==='manual') {
     releaseGuardTower(r);
@@ -2627,6 +2708,7 @@ function finishManualGuardCommand(r,point={x:r.x,y:r.y}) {
   r.navDebugTarget={x:point.x,y:point.y};r.navDebugTick=G.tick;
   clearNavigation(r);
 }
+function canIssueManualGuardMove(x,y) { return isWorldVisible(x,y); }
 
 function updateManualGuard(r, dt) {
   let target=r.manualTargetEnemy;
@@ -2636,16 +2718,25 @@ function updateManualGuard(r, dt) {
   if (target) {
     const distance=Math.hypot(target.x-r.x,target.y-r.y);
     if (distance<=20) guardAttackEnemy(r,target,dt);
-    else moveViaFlow(r,target.x,target.y,CFG.GUARD_SPEED,dt);
+    else moveManualGuardWithinVision(r,target.x,target.y,dt);
     return;
   }
   if (!r.manualTarget) return;
+  if(!isWorldVisible(r.manualTarget.x,r.manualTarget.y)) { finishManualGuardCommand(r);return; }
   if(r.navBlockedGoal&&r.navResolvedPoint&&Math.hypot(r.navResolvedPoint.x-r.x,r.navResolvedPoint.y-r.y)<=4) {
     finishManualGuardCommand(r,r.navResolvedPoint);return;
   }
   const distance=Math.hypot(r.manualTarget.x-r.x,r.manualTarget.y-r.y);
   if (distance<=3) { finishManualGuardCommand(r,r.manualTarget);return; }
-  moveViaFlow(r,r.manualTarget.x,r.manualTarget.y,CFG.GUARD_SPEED,dt);
+  moveManualGuardWithinVision(r,r.manualTarget.x,r.manualTarget.y,dt);
+}
+function moveManualGuardWithinVision(guard,targetX,targetY,dt) {
+  const previousX=guard.x,previousY=guard.y;
+  moveViaFlow(guard,targetX,targetY,CFG.GUARD_SPEED,dt);
+  if(isWorldVisible(guard.x,guard.y)) return true;
+  guard.x=previousX;guard.y=previousY;
+  finishManualGuardCommand(guard,{x:previousX,y:previousY});
+  return false;
 }
 
 function guardFormationAssignments(guards,target) {
@@ -2693,7 +2784,7 @@ function guardMovementClusters(guards,maxSize=25,joinDistance=320) {
   return clusters;
 }
 function assignGuardGroupMove(guards,target) {
-  const assignments=guardFormationAssignments(guards,target);
+  const assignments=fitGuardFormationToVisibility(guardFormationAssignments(guards,target),target);
   if(!assignments.length) return assignments;
   const commandId=++G.guardMoveCommandSequence;
   const assignmentByGuard=new Map(assignments.map(assignment=>[assignment.guard,assignment]));
@@ -2726,6 +2817,25 @@ function assignGuardGroupMove(guards,target) {
     }
   }
   return assignments;
+}
+function fitGuardFormationToVisibility(assignments,commandTarget) {
+  if(!G.fogVisible) return assignments;
+  const occupied=new Set(),step=RESIDENT_RADIUS*2.5;
+  const reserve=point=>{occupied.add(point.x.toFixed(2)+','+point.y.toFixed(2));return point;};
+  const available=point=>isWorldVisible(point.x,point.y)&&!occupied.has(point.x.toFixed(2)+','+point.y.toFixed(2));
+  return assignments.map(assignment=>{
+    if(available(assignment.target)) return {...assignment,target:reserve(assignment.target)};
+    for(let ring=1;ring<=10;ring++) for(let index=0;index<16;index++) {
+      const angle=index*Math.PI/8;
+      const candidate={
+        x:clamp(assignment.target.x+Math.cos(angle)*ring*step,RESIDENT_RADIUS,CFG.WORLD_W-RESIDENT_RADIUS),
+        y:clamp(assignment.target.y+Math.sin(angle)*ring*step,RESIDENT_RADIUS,CFG.WORLD_H-RESIDENT_RADIUS)
+      };
+      if(available(candidate)) return {...assignment,target:reserve(candidate)};
+    }
+    const fallback=available(commandTarget)?commandTarget:{x:assignment.guard.x,y:assignment.guard.y};
+    return {...assignment,target:reserve(fallback)};
+  });
 }
 
 function guardUpdateAI(r, dt) {
@@ -2775,14 +2885,14 @@ function guardUpdateAI(r, dt) {
       // Seek nearest enemy within vision range (450px)
       let targetEnemy = null, bestD = 450;
       for (const e of G.enemies) {
-        if (!e.alive) continue;
+        if (!e.alive||!isWorldVisible(e.x,e.y)) continue;
         const d = Math.hypot(r.x - e.x, r.y - e.y);
         if (d < bestD) { bestD = d; targetEnemy = e; }
       }
       // If no enemy in vision, prioritize enemies attacking buildings
       if (!targetEnemy) {
         for (const e of G.enemies) {
-          if (!e.alive) continue;
+          if (!e.alive||!isWorldVisible(e.x,e.y)) continue;
           if (e.attacking && e.attacking.hp > 0) {
             targetEnemy = e; break;
           }
@@ -2869,17 +2979,10 @@ function updateResidents(dt) {
   rebuildResidentSpatialHash();
   G.targetedTrees = new Set(G.residents.map(r=>r.chopTarget).filter(Boolean));
   G.targetedAnimals = new Set(G.residents.map(r=>r.huntTarget).filter(Boolean));
-  for (const r of G.residents) {
-    if (r.isGuard) continue;
-    if (r.state!=='SLEEPING') {
-      r.tired += CFG.TIRED_RATE * dt;
-      if (G.phase==='night') r.tired += CFG.TIRED_RATE*2*dt;
-    }
-  }
 
   for (const r of G.residents) {
     if (r.state==='SLEEPING') {
-      if (G.phase==='day'||G.phase==='dawn') { r.state='IDLE'; r.tired=0; r.hidden=false; }
+      if (G.phase==='day'||G.phase==='dawn') { r.state='IDLE'; r.hidden=false; }
       continue;
     }
     if (r.state==='GUARD_SLEEPING') {
@@ -2904,17 +3007,17 @@ function updateResidents(dt) {
       }
     }
 
-    // Priority 2: Tired
-    if (r.tired >= CFG.TIRED_THRESHOLD && r.state!=='GOING_HOME' && r.state!=='SLEEPING'
+    // Priority 2: return home after work at dusk or night.
+    if ((G.phase==='dusk'||G.phase==='night') && r.state!=='GOING_HOME' && r.state!=='SLEEPING'
         && r.state!=='GOING_TO_EAT' && r.state!=='EATING' && !r.finishBeforeEating) {
       const home = r.home || findNearestHome(r, r.isGuard);
       if (home) {
         releaseGroundPickup(r);
         releaseFruitPlanting(r);
-        r.state = 'GOING_HOME';
+        if(r.carrying) { r.state='HAULING'; }
+        else r.state = 'GOING_HOME';
         const hc = home.center();
-        r.targetX = hc.x; r.targetY = hc.y;
-        assignHome(r, home);
+        if(!r.carrying) { r.targetX = hc.x; r.targetY = hc.y;assignHome(r, home); }
       }
     }
 
@@ -2941,7 +3044,7 @@ function updateResidents(dt) {
         const home = r.home || findNearestHome(r, r.isGuard);
         if (home) { const hc=home.center(); r.targetX=hc.x; r.targetY=hc.y; }
         const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
-        if (home && Math.hypot(r.x-home.center().x, r.y-home.center().y) < home.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='SLEEPING'; r.tired=0; r.hidden=true; }
+        if (home && Math.hypot(r.x-home.center().x, r.y-home.center().y) < home.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='SLEEPING'; r.hidden=true; }
         else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
@@ -3096,11 +3199,43 @@ function updateResidents(dt) {
         } else moveViaFlow(r,item.x,item.y,CFG.RESIDENT_SPEED,dt);
         break;
       }
+      case 'GOING_TO_PLANT_MATERIAL': {
+        const node=r.plantTarget;
+        if(!node||!node.alive||node.type!=='fruit_planting'||node.claimedBy!==r||!isWorldVisible(node.x,node.y)) {
+          releaseFruitPlanting(r);r.state=r.carrying?'HAULING':'IDLE';break;
+        }
+        const need=fruitPlantingWoodNeed(node)-fruitPlantingWoodInTransit(node);
+        if(need<=0) { r.state='GOING_TO_PLANT';break; }
+        const storage=findNearestStorage(r,'wood',{requireAmount:1});
+        if(!storage) { releaseFruitPlanting(r);r.state='PATROL';break; }
+        const center=storage.center();r.targetX=center.x;r.targetY=center.y;
+        if(Math.hypot(r.x-center.x,r.y-center.y)<storage.collisionRadius()+RESIDENT_RADIUS+3) {
+          const amount=Math.min(5,need,storedAmount(storage,'wood'));
+          if(amount<=0) { releaseFruitPlanting(r);r.state='PATROL';break; }
+          r.carrying={type:'wood',amount};r.carryingForPlanting=true;r.dropCarryingWhenBlocked=true;
+          withdrawFromStorage(storage,'wood',amount);r.state='DELIVERING_PLANT_MATERIAL';
+        } else moveViaFlow(r,center.x,center.y,CFG.RESIDENT_SPEED,dt);
+        break;
+      }
+      case 'DELIVERING_PLANT_MATERIAL': {
+        const node=r.plantTarget;
+        if(!node||!node.alive||node.type!=='fruit_planting'||node.claimedBy!==r||!r.carryingForPlanting||r.carrying?.type!=='wood') {
+          releaseFruitPlanting(r);r.state=r.carrying?'HAULING':'IDLE';break;
+        }
+        r.targetX=node.x;r.targetY=node.y;
+        if(Math.hypot(r.x-node.x,r.y-node.y)<RESIDENT_RADIUS+9) {
+          node.deliveredWood=(node.deliveredWood||0)+r.carrying.amount;
+          r.carrying=null;r.carryingForPlanting=false;r.dropCarryingWhenBlocked=false;
+          r.state=fruitPlantingWoodNeed(node)>0?'GOING_TO_PLANT_MATERIAL':'GOING_TO_PLANT';
+        } else moveViaFlow(r,node.x,node.y,CFG.RESIDENT_SPEED,dt);
+        break;
+      }
       case 'GOING_TO_PLANT': {
         const node=r.plantTarget;
         if(!node||!node.alive||node.type!=='fruit_planting'||node.claimedBy!==r||!isWorldVisible(node.x,node.y)) {
           releaseFruitPlanting(r);r.state='IDLE';break;
         }
+        if(fruitPlantingWoodNeed(node)>0) { r.state='GOING_TO_PLANT_MATERIAL';break; }
         r.targetX=node.x;r.targetY=node.y;
         if(Math.hypot(r.x-node.x,r.y-node.y)<RESIDENT_RADIUS+9) { r.state='PLANTING';r.plantTimer=0; }
         else moveViaFlow(r,node.x,node.y,CFG.RESIDENT_SPEED,dt);
@@ -3111,6 +3246,7 @@ function updateResidents(dt) {
         if(!node||!node.alive||node.type!=='fruit_planting'||node.claimedBy!==r) {
           releaseFruitPlanting(r);r.state='IDLE';break;
         }
+        if(fruitPlantingWoodNeed(node)>0) { r.state='GOING_TO_PLANT_MATERIAL';break; }
         node.plantProgress=(node.plantProgress||0)+dt;r.plantTimer=node.plantProgress;
         if(node.plantProgress>=CFG.FRUIT_TREE_PLANT_TIME) {
           completeFruitPlanting(node);r.plantTarget=null;r.plantTimer=0;
@@ -3244,7 +3380,8 @@ function updateResidents(dt) {
         if(!r.isEngineer) {
           const planting=findNearestFruitPlanting(r);
           if(planting) {
-            planting.claimedBy=r;r.plantTarget=planting;r.plantTimer=0;r.state='GOING_TO_PLANT';r.targetX=planting.x;r.targetY=planting.y;
+            planting.claimedBy=r;r.plantTarget=planting;r.plantTimer=0;
+            r.state=fruitPlantingWoodNeed(planting)>0?'GOING_TO_PLANT_MATERIAL':'GOING_TO_PLANT';r.targetX=planting.x;r.targetY=planting.y;
             break;
           }
         }
@@ -3607,7 +3744,7 @@ function skipToNight() {
     if (r.isGuard) { r.state = 'GUARD_FIND_TOWER'; r.hidden = false; continue; }
     releaseGroundPickup(r);
     releaseFruitPlanting(r);
-    r.tired = CFG.TIRED_THRESHOLD;
+    if(r.carrying) { r.state='HAULING';continue; }
     const home = r.home || findNearestHome(r, r.isGuard);
     if (home) { r.state = 'GOING_HOME'; const hc = home.center(); r.targetX = hc.x; r.targetY = hc.y; if (!r.home) assignHome(r, home); }
   }
@@ -3640,7 +3777,7 @@ function skipToDay() {
       r.controlMode='auto'; r.manualTarget=null; r.manualTargetEnemy=null;
       r.state = 'GUARD_SLEEPING'; r.hidden = true; r.guardHP = r.guardMaxHP; r.manningTower = null;
     } else {
-      r.state = 'IDLE'; r.tired = 0; r.hidden = false;
+      r.state = 'IDLE'; r.hidden = false;
     }
   }
   showTimeIndicator('跳至第 '+G.day+' 天');
@@ -3682,7 +3819,7 @@ const BLD_TYPE_EDIT_FIELDS = {
     { k:'batchSize', label:'搬运批量', type:'num', min:1, step:1, unit:'件' },
     { k:'levelSpeedBonus', label:'每级生产效率', type:'num', min:0, max:2, step:0.05, unit:'倍率' },
     { k:'levelBufferBonus', label:'每级暂存加成', type:'num', min:0, step:1, unit:'件' },
-    { k:'produces', label:'产物', type:'text' },
+    { k:'produces', label:'产物', type:'resource' },
   ],
   forester: [
     { k:'maxWorkers', label:'最大工人', type:'num', min:0, step:1 },
@@ -3710,6 +3847,15 @@ const BLD_TYPE_EDIT_FIELDS = {
     { k:'levelSpeedBonus', label:'每级生产效率', type:'num', min:0, max:2, step:0.05, unit:'倍率' },
     { k:'levelBufferBonus', label:'每级暂存加成', type:'num', min:0, step:1, unit:'件' },
   ],
+  charcoal_kiln: [
+    { k:'maxWorkers', label:'最大工人', type:'num', min:0, step:1 },
+    { k:'baseTime', label:'基础生产时间', type:'num', min:0.5, step:0.5, unit:'秒' },
+    { k:'batchSize', label:'搬运批量', type:'num', min:1, step:1, unit:'件' },
+    { k:'levelSpeedBonus', label:'每级生产效率', type:'num', min:0, max:2, step:0.05, unit:'倍率' },
+    { k:'levelBufferBonus', label:'每级暂存加成', type:'num', min:0, step:1, unit:'件' },
+    { k:'inputs', label:'每份木炭消耗', type:'resources' },
+    { k:'produces', label:'产物', type:'resource' },
+  ],
   smelter: [
     { k:'maxWorkers', label:'最大工人', type:'num', min:0, step:1 },
     { k:'baseTime', label:'基础生产时间', type:'num', min:0.5, step:0.5, unit:'秒' },
@@ -3717,12 +3863,13 @@ const BLD_TYPE_EDIT_FIELDS = {
     { k:'levelSpeedBonus', label:'每级生产效率', type:'num', min:0, max:2, step:0.05, unit:'倍率' },
     { k:'levelBufferBonus', label:'每级暂存加成', type:'num', min:0, step:1, unit:'件' },
     { k:'inputs', label:'每批消耗', type:'resources' },
-    { k:'produces', label:'产物', type:'text' },
+    { k:'produces', label:'产物', type:'resource' },
   ],
   food_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
   wood_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }, { k:'unlockTreesChopped', label:'砍伐树木解锁要求', type:'num', min:0, step:1, unit:'棵' }],
   stone_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
   iron_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
+  charcoal_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
   ingot_storage: [{ k:'capacity', label:'基础仓储容量', type:'num', min:0, step:1 }, { k:'levelCapacityBonus', label:'每级容量加成', type:'num', min:0, step:1, unit:'件' }],
   arrow_tower: [
     { k:'range', label:'射程', type:'num', min:1, step:1, unit:'像素' },
@@ -3755,9 +3902,7 @@ const GLOBAL_EDIT_FIELDS = [
   { k:'NIGHT_DURATION', label:'夜晚时长', min:10, step:1, unit:'秒', restart:true },
   { k:'MEAL_TIME_LUNCH', label:'第一餐时间', min:0, max:23.5, step:0.5, unit:'时' },
   { k:'MEAL_TIME_DINNER', label:'第二餐时间', min:0, max:23.5, step:0.5, unit:'时' },
-  { k:'TIRED_RATE', label:'疲劳增长', min:0, step:0.05, unit:'/秒' },
   { k:'RESIDENT_SPEED', label:'居民速度', min:1, step:1, unit:'像素/秒' },
-  { k:'RESIDENT_VISION', label:'居民视野', min:0, step:1, unit:'格' },
   { k:'FRUIT_TREE_WOOD_COST', label:'果树苗木材消耗', min:0, step:1, unit:'木材' },
   { k:'FRUIT_TREE_PLANT_TIME', label:'果树种植时间', min:0.1, step:0.1, unit:'秒' },
   { k:'FRUIT_TREE_GROW_TIME_MIN', label:'果树成长时间下限', min:1, step:1, unit:'秒' },
@@ -3771,14 +3916,26 @@ const GLOBAL_EDIT_FIELDS = [
   { k:'ANIMAL_FOOD_MAX', label:'狩猎食物产量上限', min:0, step:1, unit:'食物' },
   { k:'ANIMAL_SPEED', label:'猎物移动速度', min:1, step:1, unit:'像素/秒' },
   { k:'ANIMAL_HP', label:'猎物生命', min:1, step:1, unit:'生命', restart:true },
+  { k:'NAV_STUCK_WINDOW', label:'停滞检测时长', min:0.25, step:0.25, unit:'秒' },
+  { k:'NAV_STUCK_MIN_DISTANCE', label:'停滞最小位移', min:1, step:1, unit:'像素' },
 ];
+const GLOBAL_EDIT_GROUPS=[
+  {key:'time',label:'时间与居民作息',description:'昼夜长度和居民固定用餐时间。',fields:['DAY_DURATION','NIGHT_DURATION','MEAL_TIME_LUNCH','MEAL_TIME_DINNER']},
+  {key:'movement',label:'移动与寻路',description:'居民基础速度，以及移动单位停滞后强制重新寻路的条件。',fields:['RESIDENT_SPEED','NAV_STUCK_WINDOW','NAV_STUCK_MIN_DISTANCE']},
+  {key:'fruitTrees',label:'果树种植与收获',description:'果树种植成本、施工成长时间和食物产量。',fields:['FRUIT_TREE_WOOD_COST','FRUIT_TREE_PLANT_TIME','FRUIT_TREE_GROW_TIME_MIN','FRUIT_TREE_GROW_TIME_MAX','FRUIT_TREE_FOOD_MIN','FRUIT_TREE_FOOD_MAX']},
+  {key:'hunting',label:'猎物与狩猎',description:'地图猎物数量、补充速度、属性和狩猎产量。',fields:['ANIMAL_INITIAL_COUNT','ANIMAL_MAX_COUNT','ANIMAL_RESPAWN_INTERVAL','ANIMAL_FOOD_MIN','ANIMAL_FOOD_MAX','ANIMAL_SPEED','ANIMAL_HP']},
+];
+function globalEditGroup(key) { return GLOBAL_EDIT_GROUPS.find(group=>group.key===key)||GLOBAL_EDIT_GROUPS[0]; }
+function globalEditFields(key) {
+  const keys=new Set(globalEditGroup(key).fields);
+  return GLOBAL_EDIT_FIELDS.filter(field=>keys.has(field.k));
+}
 const PROFESSION_EDIT_FIELDS = {
   guard: [
     { k:'GUARD_MAX_HP', label:'生命', min:1, step:1, unit:'生命' },
     { k:'GUARD_DAMAGE', label:'攻击', min:0, step:1, unit:'伤害' },
     { k:'GUARD_SPEED', label:'移动速度', min:1, step:1, unit:'像素/秒' },
     { k:'GUARD_ATTACK_COOLDOWN', label:'攻击间隔', min:0.05, step:0.05, unit:'秒' },
-    { k:'GUARD_VISION', label:'视野', min:0, step:1, unit:'格' },
   ],
   engineer: [
     { k:'ENGINEER_REPAIR_RATE', label:'修理速度', min:1, step:1, unit:'生命/秒' },
@@ -3909,10 +4066,56 @@ function cfgSetDevelopmentServerLink() {
   el.innerHTML='当前页面不支持写入项目。<a href="http://127.0.0.1:3010/game.html" style="color:#8ed7e0;text-decoration:underline;">打开可保存的开发版本</a>';
   el.style.color='#f0c979';
 }
-function closeConfigPanel() { document.getElementById('config-overlay').style.display='none'; }
+let cfgEditSession=null;
+function cfgPanelKey(view) { return `${view.cat}|${view.key}|${view.level||1}`; }
+function cfgPanelFields(view) {
+  if(view.cat==='globals') return globalEditFields(view.key).map(field=>({id:'cfg-global-'+field.k,field}));
+  if(view.cat==='professions') return (PROFESSION_EDIT_FIELDS[view.key]||[]).map(field=>({id:'cfg-profession-'+field.k,field}));
+  if(view.cat==='enemySpawns') return ENEMY_SPAWN_EDIT_FIELDS.map(field=>({id:'cfg-spawn-'+field.k,field}));
+  if(view.cat==='enemies') return ENEMY_EDIT_FIELDS.map(field=>({id:'cfg-enemy-'+field.k,field}));
+  if(view.cat==='worldResources') return WORLD_RESOURCE_EDIT_FIELDS.map(field=>({id:'cfg-world-'+field.k,field}));
+  if(view.cat==='buildings'&&BLD_DEFS[view.key]) {
+    const level=view.level||1;
+    const fields=buildingEditFields(view.key,level).filter(field=>level===1||!['name','icon','maxLevel','cost'].includes(field.k));
+    if(level>1) fields.push({k:'upgradeCost',label:'升至本级消耗',type:'resources'});
+    return fields.map(field=>({id:'cfg-fld-'+field.k,field}));
+  }
+  if(view.cat==='initialResources') return [
+    {id:'cfg-initial-POP',field:{k:'START_POP',label:'初始人口'}},
+    {id:'cfg-initial-ENGINEERS',field:{k:'START_ENGINEERS',label:'初始工程师'}},
+    {id:'cfg-initial-MAXPOP',field:{k:'MAX_POP_BASE',label:'人口上限基数'}},
+    {id:'cfg-initial-MAXGUARD',field:{k:'MAX_GUARD_BASE',label:'初始守卫上限'}},
+  ];
+  return [];
+}
+function cfgCaptureCurrentPanel() {
+  if(!cfgEditSession?.view) return;
+  const values={};
+  for(const {id} of cfgPanelFields(cfgEditSession.view)) {
+    const element=document.getElementById(id);
+    if(element) values[id]=element.value;
+  }
+  cfgEditSession.panels.set(cfgPanelKey(cfgEditSession.view),{view:{...cfgEditSession.view},values});
+}
+function cfgRestoreCurrentPanel(view) {
+  if(!cfgEditSession) return;
+  cfgEditSession.view={...view};
+  const panel=cfgEditSession.panels.get(cfgPanelKey(view));
+  if(!panel) return;
+  for(const [id,value] of Object.entries(panel.values)) {
+    const element=document.getElementById(id);
+    if(element) element.value=value;
+  }
+}
+function closeConfigPanel() {
+  cfgEditSession=null;
+  document.getElementById('config-overlay').style.display='none';
+}
 function openConfigPanel() {
+  cfgEditSession={panels:new Map(),view:null};
   document.getElementById('config-overlay').style.display='flex';
   cfgSelectCategory();
+  cfgSetStatus('本次打开期间的修改会暂存；应用会一次处理全部修改，保存到项目会写入完整配置表。');
 }
 function syncCfgBuildingLevelOptions(type) {
   const select=document.getElementById('cfg-building-level');
@@ -3928,13 +4131,107 @@ function syncCfgBuildingLevelOptions(type) {
   select.style.display='block';
   return Number(select.value)||1;
 }
+function sortedBuildingEntries() {
+  return Object.entries(BLD_DEFS)
+    .map(([key,def],index)=>({key,def,index}))
+    .sort((a,b)=>(Number(a.def.unlock)||1)-(Number(b.def.unlock)||1)||a.index-b.index)
+    .map(({key,def})=>[key,def]);
+}
+const CFG_BUILDING_FILTER_TYPES=[
+  {key:'production',label:'生产'},
+  {key:'defense',label:'塔防'},
+  {key:'storage',label:'仓储'},
+  {key:'other',label:'其他'},
+];
+const cfgBuildingFilters={levels:new Set(),types:new Set()};
+function cfgBuildingFilterType(type,def=BLD_DEFS[type]) {
+  if(type==='nursery'||type==='training_ground') return 'production';
+  if(type==='house'||type==='barracks') return 'storage';
+  if(def?.cat==='production') return 'production';
+  if(def?.cat==='defense') return 'defense';
+  if(def?.cat==='storage') return 'storage';
+  return 'other';
+}
+function buildingMatchesCfgFilters(type,def) {
+  const level=Math.max(1,Math.floor(Number(def.unlock)||1));
+  const levelMatches=!cfgBuildingFilters.levels.size||cfgBuildingFilters.levels.has(level);
+  const typeMatches=!cfgBuildingFilters.types.size||cfgBuildingFilters.types.has(cfgBuildingFilterType(type,def));
+  return levelMatches&&typeMatches;
+}
+function filteredCfgBuildingEntries() {
+  return sortedBuildingEntries().filter(([type,def])=>buildingMatchesCfgFilters(type,def));
+}
+function renderCfgBuildingFilters() {
+  const levelContainer=document.getElementById('cfg-filter-levels');
+  const typeContainer=document.getElementById('cfg-filter-types');
+  levelContainer.innerHTML='';typeContainer.innerHTML='';
+  const levels=[...new Set(sortedBuildingEntries().map(([,def])=>Math.max(1,Math.floor(Number(def.unlock)||1))))].sort((a,b)=>a-b);
+  for(const selected of [...cfgBuildingFilters.levels]) if(!levels.includes(selected)) cfgBuildingFilters.levels.delete(selected);
+  for(const level of levels) {
+    const button=document.createElement('button');button.type='button';button.className='cfg-filter-btn';
+    button.textContent=level+'级';button.classList.toggle('active',cfgBuildingFilters.levels.has(level));
+    button.onclick=()=>toggleCfgBuildingFilter('levels',level);levelContainer.appendChild(button);
+  }
+  for(const item of CFG_BUILDING_FILTER_TYPES) {
+    const button=document.createElement('button');button.type='button';button.className='cfg-filter-btn';
+    button.textContent=item.label;button.classList.toggle('active',cfgBuildingFilters.types.has(item.key));
+    button.onclick=()=>toggleCfgBuildingFilter('types',item.key);typeContainer.appendChild(button);
+  }
+}
+function toggleCfgBuildingFilter(group,value) {
+  const selected=cfgBuildingFilters[group];
+  if(selected.has(value)) selected.delete(value); else selected.add(value);
+  const previous=document.getElementById('cfg-item').value;
+  renderCfgBuildingFilters();syncCfgBuildingOptions(previous);cfgSelectItem();
+}
+function renderCfgBuildingResults(selectedType='') {
+  const container=document.getElementById('cfg-building-results');
+  container.innerHTML='';
+  const entries=filteredCfgBuildingEntries();
+  if(!entries.length) {
+    const empty=document.createElement('div');empty.className='cfg-building-results-empty';empty.textContent='无匹配建筑';container.appendChild(empty);return;
+  }
+  for(const [key,def] of entries) {
+    const button=document.createElement('button');button.type='button';
+    button.className='cfg-building-result'+(key===selectedType?' active':'');
+    button.textContent=def.name;button.onclick=()=>selectCfgBuilding(key);container.appendChild(button);
+  }
+}
+function selectCfgBuilding(type) {
+  const select=document.getElementById('cfg-item');
+  if(!BLD_DEFS[type]||!filteredCfgBuildingEntries().some(([key])=>key===type)) return false;
+  select.value=type;renderCfgBuildingResults(type);cfgSelectItem();return true;
+}
+function syncCfgBuildingOptions(selectedType='') {
+  const select=document.getElementById('cfg-item');
+  select.innerHTML='';
+  const entries=filteredCfgBuildingEntries();
+  for(const [key,def] of entries) {
+    const option=document.createElement('option');
+    option.value=key;option.textContent=def.name;
+    if(key===selectedType) option.selected=true;
+    select.appendChild(option);
+  }
+  if(!entries.length) {
+    const option=document.createElement('option');option.value='';option.textContent='无匹配建筑';option.disabled=true;option.selected=true;select.appendChild(option);
+  }
+  const active=entries.some(([key])=>key===selectedType)?selectedType:(entries[0]?.[0]||'');
+  if(active) select.value=active;
+  renderCfgBuildingResults(active);
+}
 function cfgSelectCategory() {
+  cfgCaptureCurrentPanel();
   const cat=document.getElementById('cfg-category').value;
   const sel=document.getElementById('cfg-item');
+  const filters=document.getElementById('cfg-building-filters');
+  filters.style.display=cat==='buildings'?'block':'none';
+  sel.style.display=cat==='buildings'?'none':'';
   document.getElementById('cfg-building-level').style.display=cat==='buildings'?'block':'none';
   sel.innerHTML='';
   if(cat==='globals') {
-    const opt=document.createElement('option'); opt.value='gameplay'; opt.textContent='游戏节奏与单位'; sel.appendChild(opt);
+    for(const group of GLOBAL_EDIT_GROUPS) {
+      const opt=document.createElement('option');opt.value=group.key;opt.textContent=group.label;sel.appendChild(opt);
+    }
   } else if(cat==='professions') {
     const guard=document.createElement('option'); guard.value='guard'; guard.textContent='守卫'; sel.appendChild(guard);
     const engineer=document.createElement('option'); engineer.value='engineer'; engineer.textContent='工程师'; sel.appendChild(engineer);
@@ -3945,11 +4242,8 @@ function cfgSelectCategory() {
       const opt=document.createElement('option'); opt.value=key; opt.textContent=def.name+' ('+key+')'; sel.appendChild(opt);
     }
   } else if(cat==='buildings') {
-    for(const [k,d] of Object.entries(BLD_DEFS)) {
-      const opt=document.createElement('option');
-      opt.value=k; opt.textContent=d.name;
-      sel.appendChild(opt);
-    }
+    renderCfgBuildingFilters();
+    syncCfgBuildingOptions();
   } else if(cat==='initialResources') {
     const opt=document.createElement('option'); opt.value='all'; opt.textContent='初始人口'; sel.appendChild(opt);
   } else if(cat==='worldResources') {
@@ -3958,10 +4252,17 @@ function cfgSelectCategory() {
   cfgSelectItem();
 }
 function cfgSelectItem() {
+  cfgCaptureCurrentPanel();
   const cat=document.getElementById('cfg-category').value;
   const key=document.getElementById('cfg-item').value;
   const container=document.getElementById('cfg-fields');
   let html='';
+  if(cat==='buildings'&&BLD_DEFS[key]) renderCfgBuildingResults(key);
+  if(cat==='buildings'&&!BLD_DEFS[key]) {
+    document.getElementById('cfg-building-level').style.display='none';
+    container.innerHTML='<div style="padding:18px;text-align:center;color:#819087;">没有符合当前筛选条件的建筑</div>';
+    return;
+  }
   if(cat==='unlocks') {
     const maxUnlockLevel=Math.max(10,...Object.values(BLD_DEFS).map(def=>def.unlock||1));
     html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">为每种建筑选择首次可建造时所需的大本营等级。</div>';
@@ -3972,7 +4273,9 @@ function cfgSelectItem() {
       html+=`<div style="display:grid;grid-template-columns:1fr 132px;align-items:center;gap:8px;padding:4px 0;border-bottom:1px solid #344038;"><span>${def.name}</span><select id="cfg-unlock-${type}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;">${options}</select></div>`;
     }
   } else if(cat==='globals') {
-    for(const f of GLOBAL_EDIT_FIELDS) {
+    const group=globalEditGroup(key);
+    html=`<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">${group.description}</div>`;
+    for(const f of globalEditFields(key)) {
       html+=`<div style="display:grid;grid-template-columns:120px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-global-${f.k}" type="number" min="${f.min}" step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:${f.restart?'#d5a85c':'#788898'}">${f.restart?'重开生效':f.unit}</span></div>`;
     }
   } else if(cat==='professions') {
@@ -4008,9 +4311,15 @@ function cfgSelectItem() {
     for(const f of fields) {
       let val=f.k==='upgradeCost' ? upgradeCostForLevel(key,level) : (level===1||['name','icon','maxLevel','cost'].includes(f.k) ? d[f.k] : buildingLevelValue(key,level,f.k));
       if(f.type==='resources') val=Object.entries(val||{}).map(([resource,amount])=>resource+':'+amount).join(',');
+      if(f.type==='resource') {
+        const options=RESOURCE_TYPES.map(resource=>`<option value="${resource}" ${resource===val?'selected':''}>${RESOURCE_NAMES[resource]}</option>`).join('');
+        html+=`<div style="display:grid;grid-template-columns:132px 1fr 52px;align-items:center;gap:8px;padding:3px 0;"><label style="text-align:right;color:#aaa;">${f.label}</label><select id="cfg-fld-${f.k}" style="min-width:0;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;">${options}</select><span></span></div>`;
+        continue;
+      }
       const inputType=f.type==='num'?'number':'text';
       const limits=f.type==='num'?`min="${f.min}" ${f.max!==undefined?`max="${f.max}"`:''} step="${f.step??1}"`:'';
-      html+=`<div style="display:grid;grid-template-columns:132px 1fr 52px;align-items:center;gap:8px;padding:3px 0;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-fld-${f.k}" type="${inputType}" ${limits} value="${val??''}" style="min-width:0;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:#788898;font-size:11px;">${f.unit||''}</span></div>`;
+      const resourceHint=f.type==='resources'?'placeholder="wood:10,stone:5" title="资源键：food, wood, stone, iron, charcoal, ingot"':'';
+      html+=`<div style="display:grid;grid-template-columns:132px 1fr 52px;align-items:center;gap:8px;padding:3px 0;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-fld-${f.k}" type="${inputType}" ${limits} ${resourceHint} value="${val??''}" style="min-width:0;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:#788898;font-size:11px;">${f.unit||''}</span></div>`;
     }
   } else if(cat==='initialResources') {
     html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">重新开始游戏时将使用以下初始人口配置。初始资源与大本营各资源仓储上限请在“建筑 → 大本营 → 等级 1”中编辑。</div>';
@@ -4020,136 +4329,145 @@ function cfgSelectItem() {
     html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">初始守卫上限</label><input id="cfg-initial-MAXGUARD" type="number" min="0" step="1" value="${CFG.MAX_GUARD_BASE}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
   }
   container.innerHTML=html;
+  const level=cat==='buildings'?(Number(document.getElementById('cfg-building-level').value)||1):1;
+  cfgRestoreCurrentPanel({cat,key,level});
+}
+function cfgConfigSnapshot() {
+  const globals={...CFG};
+  return {globals,enemies:JSON.parse(JSON.stringify(ENEMY_DEFS)),buildings:JSON.parse(JSON.stringify(BLD_DEFS))};
+}
+function cfgParseNumber(raw,field) {
+  const value=Number(raw);
+  if(!Number.isFinite(value)||value<field.min||(field.max!==undefined&&value>field.max)) return {error:field.label+'不是有效数值'};
+  return {value};
+}
+function cfgMergePanelIntoCandidate(panel,candidate) {
+  const {view,values}=panel;
+  const read=id=>String(values[id]??'').trim();
+  if(view.cat==='globals') {
+    for(const field of globalEditFields(view.key)) {
+      const parsed=cfgParseNumber(read('cfg-global-'+field.k),field);
+      if(parsed.error) return parsed.error;
+      candidate.globals[field.k]=parsed.value;
+    }
+  } else if(view.cat==='professions') {
+    for(const field of PROFESSION_EDIT_FIELDS[view.key]||[]) {
+      const parsed=cfgParseNumber(read('cfg-profession-'+field.k),field);
+      if(parsed.error) return parsed.error;
+      candidate.globals[field.k]=parsed.value;
+    }
+  } else if(view.cat==='enemySpawns') {
+    for(const field of ENEMY_SPAWN_EDIT_FIELDS) {
+      const parsed=cfgParseNumber(read('cfg-spawn-'+field.k),field);
+      if(parsed.error) return parsed.error;
+      candidate.globals[field.k]=parsed.value;
+    }
+  } else if(view.cat==='enemies'&&candidate.enemies[view.key]) {
+    for(const field of ENEMY_EDIT_FIELDS) {
+      const raw=read('cfg-enemy-'+field.k);
+      if(field.type==='text') candidate.enemies[view.key][field.k]=raw;
+      else {
+        const parsed=cfgParseNumber(raw,field);
+        if(parsed.error) return parsed.error;
+        candidate.enemies[view.key][field.k]=parsed.value;
+      }
+    }
+  } else if(view.cat==='worldResources') {
+    for(const field of WORLD_RESOURCE_EDIT_FIELDS) {
+      const parsed=cfgParseNumber(read('cfg-world-'+field.k),field);
+      if(parsed.error) return parsed.error;
+      candidate.globals[field.k]=parsed.value;
+    }
+  } else if(view.cat==='buildings'&&candidate.buildings[view.key]) {
+    const level=view.level||1;
+    const target=level===1?candidate.buildings[view.key]:((candidate.buildings[view.key].levels||(candidate.buildings[view.key].levels={}))[level]||((candidate.buildings[view.key].levels||(candidate.buildings[view.key].levels={}))[level]={}));
+    for(const {id,field} of cfgPanelFields(view)) {
+      const raw=read(id);
+      if(field.type==='num') {
+        const parsed=cfgParseNumber(raw,field);
+        if(parsed.error) return candidate.buildings[view.key].name+'：'+parsed.error;
+        target[field.k]=parsed.value;
+      } else if(field.type==='resources') {
+        const parsed=parseResourceMapInput(raw);
+        if(parsed.error) return candidate.buildings[view.key].name+' '+field.label+'：'+parsed.error;
+        target[field.k]=parsed.value;
+      } else if(field.type==='resource') {
+        if(!RESOURCE_TYPES.includes(raw)) return candidate.buildings[view.key].name+' '+field.label+'不是有效资源';
+        target[field.k]=raw;
+      } else target[field.k]=raw;
+    }
+  } else if(view.cat==='initialResources') {
+    const fields=[
+      ['cfg-initial-POP','START_POP','初始人口',0],
+      ['cfg-initial-ENGINEERS','START_ENGINEERS','初始工程师',0],
+      ['cfg-initial-MAXPOP','MAX_POP_BASE','人口上限基数',1],
+      ['cfg-initial-MAXGUARD','MAX_GUARD_BASE','初始守卫上限',0],
+    ];
+    for(const [id,key,label,min] of fields) {
+      const value=Number(read(id));
+      if(!Number.isFinite(value)||value<min) return label+'不是有效数值';
+      candidate.globals[key]=Math.floor(value);
+    }
+  }
+  return '';
+}
+function cfgValidateCandidate(candidate) {
+  const cfg=candidate.globals;
+  if(cfg.MEAL_TIME_LUNCH===cfg.MEAL_TIME_DINNER) return '两次用餐时间不能相同';
+  if(cfg.FRUIT_TREE_GROW_TIME_MIN>cfg.FRUIT_TREE_GROW_TIME_MAX||cfg.FRUIT_TREE_FOOD_MIN>cfg.FRUIT_TREE_FOOD_MAX) return '果树的随机下限不能大于上限';
+  if(cfg.ANIMAL_INITIAL_COUNT>cfg.ANIMAL_MAX_COUNT||cfg.ANIMAL_FOOD_MIN>cfg.ANIMAL_FOOD_MAX) return '猎物数量或产量下限不能大于上限';
+  if(cfg.START_ENGINEERS>cfg.START_POP) return '初始工程师必须介于 0 和初始人口之间';
+  if(cfg.TREE_CLUSTER_AVERAGE>cfg.TREE_CLUSTER_MAX||cfg.STONE_CLUSTER_AVERAGE>cfg.STONE_CLUSTER_MAX||cfg.IRON_CLUSTER_AVERAGE>cfg.IRON_CLUSTER_MAX) return '资源簇平均数量不能大于对应最大数量';
+  if(cfg.TREE_WILD_MIN_COUNT>cfg.TREE_WILD_MAX_COUNT) return '野生树木补充下限不能大于上限';
+  if(cfg.WILD_TREE_SPAWN_INTERVAL_MIN>cfg.WILD_TREE_SPAWN_INTERVAL_MAX||cfg.WILD_TREE_GROW_TIME_MIN>cfg.WILD_TREE_GROW_TIME_MAX) return '野生树木的随机时间下限不能大于上限';
+  if(cfg.START_VISIBLE_TREE_MIN>cfg.TREE_INITIAL_COUNT) return '初始可见树木下限不能大于初始树木总数';
+  const townHallVision=Number(candidate.buildings.town_hall?.vision)||0;
+  if(cfg.START_VISIBLE_TREE_MIN>0&&cfg.TREE_MIN_SPAWN_RADIUS>=townHallVision) return '树木最小半径必须小于大本营视野，才能保证初始可见树木';
+  return '';
+}
+function cfgReplaceConfigObject(target,source) {
+  for(const key of Object.keys(target)) if(!Object.prototype.hasOwnProperty.call(source,key)) delete target[key];
+  for(const [key,value] of Object.entries(source)) target[key]=JSON.parse(JSON.stringify(value));
+}
+function cfgCommitCandidate(candidate) {
+  Object.assign(CFG,candidate.globals);
+  cfgReplaceConfigObject(ENEMY_DEFS,candidate.enemies);
+  cfgReplaceConfigObject(BLD_DEFS,candidate.buildings);
+  for(const resident of G.residents) if(resident.isGuard) {
+    resident.guardMaxHP=CFG.GUARD_MAX_HP;
+    resident.guardHP=Math.min(resident.guardHP,resident.guardMaxHP);
+  }
+  for(const building of G.buildings) {
+    building.maxHp=Math.floor(buildingLevelValue(building.type,building.level,'hp'));
+    building.hp=Math.min(building.hp,building.maxHp);
+  }
+  recalculatePopulationLimits();
+  updateAllResourceTotals();
+  updateFruitPlantCommandCost();
+  refreshFogVisibility();
+  updateBuildingPanel();
 }
 function cfgApply() {
-  const cat=document.getElementById('cfg-category').value;
-  const key=document.getElementById('cfg-item').value;
-  if(cat==='unlocks') {
-    for(const [type,def] of Object.entries(BLD_DEFS)) {
-      if(type==='town_hall') continue;
-      const level=Number(document.getElementById('cfg-unlock-'+type)?.value);
-      if(!Number.isInteger(level)||level<1) { cfgSetStatus(def.name+'的解锁等级无效','error'); return false; }
-      def.unlock=level;
-    }
-    updateBuildingPanel();
-    cfgSetStatus('大本营解锁规则已应用到当前游戏。','ok');
-    return true;
-  } else if(cat==='globals') {
-    for(const f of GLOBAL_EDIT_FIELDS) {
-      const value=Number(document.getElementById('cfg-global-'+f.k)?.value);
-      if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
-      CFG[f.k]=value;
-    }
-    if(CFG.MEAL_TIME_LUNCH===CFG.MEAL_TIME_DINNER) { cfgSetStatus('两次用餐时间不能相同','error'); return false; }
-    if(CFG.FRUIT_TREE_GROW_TIME_MIN>CFG.FRUIT_TREE_GROW_TIME_MAX||CFG.FRUIT_TREE_FOOD_MIN>CFG.FRUIT_TREE_FOOD_MAX) { cfgSetStatus('果树的随机下限不能大于上限','error'); return false; }
-    if(CFG.ANIMAL_INITIAL_COUNT>CFG.ANIMAL_MAX_COUNT||CFG.ANIMAL_FOOD_MIN>CFG.ANIMAL_FOOD_MAX) { cfgSetStatus('猎物数量或产量下限不能大于上限','error'); return false; }
-    cfgSetStatus('全局数值已应用；标记“重开生效”的项目需要重新开始。','ok');
-    return true;
-  } else if(cat==='professions') {
-    const fields=PROFESSION_EDIT_FIELDS[key]||[];
-    for(const f of fields) {
-      const value=Number(document.getElementById('cfg-profession-'+f.k)?.value);
-      if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
-      CFG[f.k]=value;
-    }
-    if(key==='guard') {
-      for(const r of G.residents) if(r.isGuard) {
-        r.guardMaxHP=CFG.GUARD_MAX_HP;
-        r.guardHP=Math.min(r.guardHP,r.guardMaxHP);
-      }
-      refreshFogVisibility();
-    }
-    cfgSetStatus((key==='guard'?'守卫':'工程师')+'参数已应用到当前游戏。','ok');
-    return true;
-  } else if(cat==='enemySpawns') {
-    for(const f of ENEMY_SPAWN_EDIT_FIELDS) {
-      const value=Number(document.getElementById('cfg-spawn-'+f.k)?.value);
-      if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
-      CFG[f.k]=value;
-    }
-    cfgSetStatus('敌人生成配置已应用，将在下一次进入夜晚时生效。','ok');
-    return true;
-  } else if(cat==='enemies'&&ENEMY_DEFS[key]) {
-    const d=ENEMY_DEFS[key];
-    for(const f of ENEMY_EDIT_FIELDS) {
-      const el=document.getElementById('cfg-enemy-'+f.k);
-      if (!el) continue;
-      const value=f.type==='text'?el.value.trim():Number(el.value);
-      if (f.type==='num' && (!Number.isFinite(value)||value<f.min)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
-      d[f.k]=value;
-    }
-    cfgSetStatus(d.name+'已应用；下一次夜晚的新敌人会使用该数值。','ok');
-    return true;
-  } else if(cat==='worldResources') {
-    for(const f of WORLD_RESOURCE_EDIT_FIELDS) {
-      const value=Number(document.getElementById('cfg-world-'+f.k)?.value);
-      if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
-      CFG[f.k]=value;
-    }
-    if (CFG.TREE_CLUSTER_AVERAGE>CFG.TREE_CLUSTER_MAX||CFG.STONE_CLUSTER_AVERAGE>CFG.STONE_CLUSTER_MAX||CFG.IRON_CLUSTER_AVERAGE>CFG.IRON_CLUSTER_MAX) { cfgSetStatus('资源簇平均数量不能大于对应最大数量','error'); return false; }
-    if (CFG.TREE_WILD_MIN_COUNT>CFG.TREE_WILD_MAX_COUNT) { cfgSetStatus('野生树木补充下限不能大于上限','error'); return false; }
-    if (CFG.WILD_TREE_SPAWN_INTERVAL_MIN>CFG.WILD_TREE_SPAWN_INTERVAL_MAX||CFG.WILD_TREE_GROW_TIME_MIN>CFG.WILD_TREE_GROW_TIME_MAX) { cfgSetStatus('野生树木的随机时间下限不能大于上限','error'); return false; }
-    if (CFG.START_VISIBLE_TREE_MIN>CFG.TREE_INITIAL_COUNT) { cfgSetStatus('初始可见树木下限不能大于初始树木总数','error'); return false; }
-    if (CFG.START_VISIBLE_TREE_MIN>0&&CFG.TREE_MIN_SPAWN_RADIUS>=buildingLevelValue('town_hall',1,'vision')) { cfgSetStatus('树木最小半径必须小于大本营视野，才能保证初始可见树木','error'); return false; }
-    cfgSetStatus('初始地图资源配置已应用，重新开始游戏后生成新分布。','ok');
-    return true;
-  } else if(cat==='buildings'&&BLD_DEFS[key]) {
-    const d=BLD_DEFS[key];
-    const level=Number(document.getElementById('cfg-building-level').value)||1;
-    const fields=buildingEditFields(key,level).filter(field=>level===1||!['name','icon','maxLevel','cost'].includes(field.k));
-    if(level>1) fields.push({k:'upgradeCost',label:'升至本级消耗',type:'resources'});
-    const target=level===1 ? d : (d.levels||(d.levels={}))[level]||((d.levels||(d.levels={}))[level]={});
-    for(const f of fields) {
-      const el=document.getElementById('cfg-fld-'+f.k);
-      if(!el) continue;
-      const raw=el.value.trim();
-      if(f.type==='num') {
-        const value=Number(raw);
-        if(!Number.isFinite(value)||value<f.min||(f.max!==undefined&&value>f.max)) { cfgSetStatus(f.label+'不是有效数值','error'); return false; }
-        target[f.k]=value;
-      } else if(f.type==='resources') {
-        target[f.k]={};
-        if(raw) {
-          for(const p of raw.split(/[,;\s]+/)) {
-            const [resource,amount]=p.split(':');
-            const value=Number(amount);
-            if(!resource||!Number.isFinite(value)||value<0) { cfgSetStatus(f.label+'格式无效','error'); return false; }
-            target[f.k][resource.trim()]=value;
-          }
-        }
-      } else { target[f.k]=raw; }
-    }
-    for(const b of G.buildings) {
-      if(b.type!==key) continue;
-      b.maxHp=Math.floor(buildingLevelValue(key,b.level,'hp'));
-      b.hp=Math.min(b.hp,b.maxHp);
-    }
-    if(key==='town_hall'||key==='house'||key==='barracks') recalculatePopulationLimits();
-    if(key==='town_hall') updateAllResourceTotals();
-    const btn=document.querySelector(`.bld-btn[data-type="${key}"]`);
-    if(btn&&d.cost) {
-      const costDiv=btn.querySelector('.cost');
-      if(costDiv) costDiv.innerHTML=formatResourceCost(d.cost);
-    }
-    if(key==='lamp'||key==='town_hall') refreshFogVisibility();
-    updateBuildingPanel();
-    showTimeIndicator(d.name+' 配置已应用');
-    cfgSetStatus(key==='town_hall'&&level===1 ? '大本营配置已应用；初始资源将在重新开始游戏后使用。' : d.name+'已应用到当前游戏。','ok');
-  } else if (cat==='initialResources') {
-    const popVal=Number(document.getElementById('cfg-initial-POP')?.value);
-    if(!Number.isFinite(popVal)||popVal<0) { cfgSetStatus('初始人口不是有效数值','error'); return false; }
-    CFG.START_POP=Math.floor(popVal);
-    const engineerVal=Number(document.getElementById('cfg-initial-ENGINEERS')?.value);
-    if(!Number.isFinite(engineerVal)||engineerVal<0||engineerVal>CFG.START_POP) { cfgSetStatus('初始工程师必须介于 0 和初始人口之间','error'); return false; }
-    CFG.START_ENGINEERS=Math.floor(engineerVal);
-    const maxpopVal=Number(document.getElementById('cfg-initial-MAXPOP')?.value);
-    if(!Number.isFinite(maxpopVal)||maxpopVal<1) { cfgSetStatus('人口上限基数不是有效数值','error'); return false; }
-    CFG.MAX_POP_BASE=Math.floor(maxpopVal);
-    const maxguardVal=Number(document.getElementById('cfg-initial-MAXGUARD')?.value);
-    if(!Number.isFinite(maxguardVal)||maxguardVal<0) { cfgSetStatus('初始守卫上限不是有效数值','error'); return false; }
-    CFG.MAX_GUARD_BASE=Math.floor(maxguardVal);
-    cfgSetStatus('初始人口配置已更新，重新开始游戏后生效。','ok');
+  if(!cfgEditSession) cfgEditSession={panels:new Map(),view:null};
+  if(!cfgEditSession.view) {
+    const cat=document.getElementById('cfg-category')?.value;
+    const key=document.getElementById('cfg-item')?.value;
+    const level=cat==='buildings'?(Number(document.getElementById('cfg-building-level')?.value)||1):1;
+    cfgEditSession.view={cat,key,level};
   }
+  cfgCaptureCurrentPanel();
+  const candidate=cfgConfigSnapshot();
+  for(const panel of cfgEditSession.panels.values()) {
+    const error=cfgMergePanelIntoCandidate(panel,candidate);
+    if(error) { cfgSetStatus(error,'error'); return false; }
+  }
+  const validationError=cfgValidateCandidate(candidate);
+  if(validationError) { cfgSetStatus(validationError,'error'); return false; }
+  cfgCommitCandidate(candidate);
+  cfgEditSession={panels:new Map(),view:null};
+  cfgSelectItem();
+  cfgSetStatus('本次打开编辑器所做的全部修改已应用；标记“重开生效”的项目需要重新开始。','ok');
+  showTimeIndicator('配置已全部应用');
   return true;
 }
 function collectBalanceData() {
@@ -4237,7 +4555,7 @@ function gameOver(msg) {
 }
 function restartGame() {
   G.buildings = []; G.residents = []; G.enemies = []; G.animals=[]; G.groundItems=[]; G.particles = []; G.projectiles = []; G.commandMarkers = [];
-  G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, ingot:CFG.START_INGOT };
+  G.resources = { food:CFG.START_FOOD, wood:CFG.START_WOOD, stone:CFG.START_STONE, iron:CFG.START_IRON, charcoal:0, ingot:CFG.START_INGOT };
   G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
   G.selectedBldType = null; G.selectedBuilding = null; clearSelectedGuards(); G.placingMode = false; G.movingBuilding = null;
   G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false;
@@ -4427,11 +4745,12 @@ function drawGuardCommandMarkers() {
   for(const marker of G.commandMarkers) {
     const progress=1-marker.life/marker.maxLife,alpha=clamp(marker.life/marker.maxLife,0,1);
     const radius=(9+progress*14)/G.cam.zoom;
-    ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=marker.type==='attack'?'#ef6d62':'#9ee68f';ctx.lineWidth=2/G.cam.zoom;
+    const rejected=marker.type==='invalid';
+    ctx.save();ctx.globalAlpha=alpha;ctx.strokeStyle=marker.type==='attack'||rejected?'#ef6d62':'#9ee68f';ctx.lineWidth=2/G.cam.zoom;
     ctx.beginPath();ctx.arc(marker.x,marker.y,radius,0,Math.PI*2);ctx.stroke();
     const arm=5/G.cam.zoom;
     ctx.beginPath();
-    if(marker.type==='attack') {
+    if(marker.type==='attack'||rejected) {
       ctx.moveTo(marker.x-arm,marker.y-arm);ctx.lineTo(marker.x+arm,marker.y+arm);
       ctx.moveTo(marker.x+arm,marker.y-arm);ctx.lineTo(marker.x-arm,marker.y+arm);
     } else {
@@ -4624,10 +4943,12 @@ function drawResourceNode(node) {
     ctx.fillStyle='#705139';ctx.beginPath();ctx.ellipse(node.x,node.y+2,8,3.5,0,0,Math.PI*2);ctx.fill();
     ctx.strokeStyle='#b88a55';ctx.lineWidth=1.5/G.cam.zoom;ctx.beginPath();ctx.moveTo(node.x+4,node.y+3);ctx.lineTo(node.x+4,node.y-9);ctx.stroke();
     ctx.fillStyle='#d9c58d';ctx.beginPath();ctx.moveTo(node.x+4,node.y-9);ctx.lineTo(node.x+10,node.y-6);ctx.lineTo(node.x+4,node.y-3);ctx.closePath();ctx.fill();
-    ctx.strokeStyle=node.claimedBy?'#8fcf78':'rgba(225,205,142,0.72)';ctx.setLineDash([3,3]);ctx.strokeRect(node.x-13,node.y-14,26,24);ctx.setLineDash([]);
+    const requiredWood=node.requiredWood??CFG.FRUIT_TREE_WOOD_COST,deliveredWood=node.deliveredWood||0,materialsReady=deliveredWood>=requiredWood;
+    ctx.strokeStyle=materialsReady?'#8fcf78':node.claimedBy?'#d2a45f':'rgba(225,205,142,0.72)';ctx.setLineDash([3,3]);ctx.strokeRect(node.x-13,node.y-14,26,24);ctx.setLineDash([]);
+    ctx.fillStyle=materialsReady?'#9bd58a':'#e0a06a';ctx.font=`${8/G.cam.zoom}px sans-serif`;ctx.textAlign='center';ctx.fillText(`${deliveredWood}/${requiredWood}`,node.x,node.y+10);
     const progress=clamp((node.plantProgress||0)/Math.max(0.1,CFG.FRUIT_TREE_PLANT_TIME),0,1);
-    ctx.fillStyle='rgba(20,28,22,0.82)';ctx.fillRect(node.x-12,node.y+11,24,3);
-    ctx.fillStyle='#82bd68';ctx.fillRect(node.x-12,node.y+11,24*progress,3);
+    ctx.fillStyle='rgba(20,28,22,0.82)';ctx.fillRect(node.x-12,node.y+13,24,3);
+    ctx.fillStyle='#82bd68';ctx.fillRect(node.x-12,node.y+13,24*progress,3);
     return;
   }
   if (node.type === 'sapling'||node.type==='fruit_sapling') {
@@ -4906,6 +5227,11 @@ function drawBuildingDetails(b,cx,cy,cr,w,h) {
   } else if (t==='quarry'||t==='iron_mine') {
     ctx.fillStyle=t==='quarry'?'rgba(210,218,211,0.45)':'rgba(207,112,67,0.5)';
     for (const [ox,oy,s] of [[-10,6,8],[2,-5,10],[12,8,7]]) { ctx.beginPath(); ctx.arc(cx+ox,cy+oy,s,0,Math.PI*2); ctx.fill(); }
+  } else if (t==='charcoal_kiln') {
+    ctx.fillStyle='rgba(43,39,35,0.78)';ctx.beginPath();ctx.moveTo(cx-17,cy+12);ctx.lineTo(cx-13,cy-10);ctx.lineTo(cx+12,cy-10);ctx.lineTo(cx+17,cy+12);ctx.closePath();ctx.fill();
+    ctx.strokeStyle='rgba(148,139,126,0.72)';ctx.stroke();
+    ctx.fillStyle='rgba(31,34,33,0.95)';ctx.beginPath();ctx.arc(cx,cy+2,7,0,Math.PI*2);ctx.fill();
+    ctx.fillStyle='rgba(127,134,129,0.34)';ctx.beginPath();ctx.arc(cx+7,cy-18,5,0,Math.PI*2);ctx.arc(cx+11,cy-25,4,0,Math.PI*2);ctx.fill();
   } else if (t==='smelter') {
     ctx.fillStyle='rgba(48,37,30,0.7)'; ctx.fillRect(cx-15,cy-8,30,21); ctx.fillRect(cx+7,cy-23,8,18);
     ctx.fillStyle='rgba(255,190,70,0.8)'; ctx.beginPath(); ctx.arc(cx-4,cy+2,7,0,Math.PI*2); ctx.fill();
@@ -4926,7 +5252,7 @@ function drawBuildingDetails(b,cx,cy,cr,w,h) {
 }
 
 function buildingColor(t) {
-  return {town_hall:'#8a7a4a',house:'#5b8c5a',nursery:'#8b5961',barracks:'#58697b',training_ground:'#765a4b',lamp:'#806d42',farm:'#8b9a4b',forester:'#3d7a3d',quarry:'#8a8a8a',iron_mine:'#6a5a4a',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',restoration_tower:'#387c78',wall:'#7a7a6a'}[t]||'#777';
+  return {town_hall:'#8a7a4a',house:'#5b8c5a',nursery:'#8b5961',barracks:'#58697b',training_ground:'#765a4b',lamp:'#806d42',farm:'#8b9a4b',forester:'#3d7a3d',quarry:'#8a8a8a',iron_mine:'#6a5a4a',charcoal_kiln:'#4f4b45',smelter:'#c86428',food_storage:'#8a6a3a',wood_storage:'#8a7a3a',stone_storage:'#7a7a6a',iron_storage:'#6a5a3a',charcoal_storage:'#4b514e',ingot_storage:'#5a6a7a',arrow_tower:'#8a5a4a',auto_arrow_tower:'#4a8afa',restoration_tower:'#387c78',wall:'#7a7a6a'}[t]||'#777';
 }
 
 function drawResidentAxeIcon(x, y) {
@@ -5004,7 +5330,7 @@ function drawResident(r) {
   const iconY=r.y-31;
   if (r.state==='GOING_TO_EAT'||r.state==='EATING') drawResidentFoodIcon(r.x,iconY);
   else if (r.state==='GOING_HOME' || r.state==='SLEEPING') drawResidentSleepIcon(r.x,iconY);
-  else if(r.state==='GOING_TO_PLANT'||r.state==='PLANTING') drawResidentPlantIcon(r.x,iconY);
+  else if(['GOING_TO_PLANT_MATERIAL','DELIVERING_PLANT_MATERIAL','GOING_TO_PLANT','PLANTING'].includes(r.state)) drawResidentPlantIcon(r.x,iconY);
   else if(r.state==='GOING_TO_HUNT'||r.state==='HUNTING') drawResidentHuntIcon(r.x,iconY);
   else if (!r.workplace && r.state==='GOING_TO_CHOP') drawResidentAxeIcon(r.x,iconY);
 }
@@ -5040,7 +5366,7 @@ function drawEnemy(e) {
   }
 }
 
-function rc(t) { return {food:'#ffcc44',wood:'#aa8844',stone:'#aaaaaa',iron:'#cc8866'}[t]||'#fff'; }
+function rc(t) { return {food:'#d9574d',wood:'#aa8844',stone:'#aaaaaa',iron:'#cc8866',charcoal:'#4f5753',ingot:'#8fb4c5'}[t]||'#fff'; }
 
 function lerpColor(c1,c2,t) {
   const r1=parseInt(c1.slice(1,3),16),g1=parseInt(c1.slice(3,5),16),b1=parseInt(c1.slice(5,7),16);
@@ -5316,6 +5642,7 @@ function actionRebuildRuin() {
 }
 
 function updateBuildingPanel() {
+  updateFruitPlantCommandCost();
   const th = G.townHall; const lv = th ? th.level : 1;
   for (const btn of document.querySelectorAll('.bld-btn')) {
     const def = BLD_DEFS[btn.dataset.type];
@@ -5356,11 +5683,15 @@ buildingPanel.addEventListener('click', e => {
 // INPUT
 // ============================================================
 function issueManualGuardCommand(clientX, clientY) {
-  const guards=G.selectedGuards.filter(guard=>guard.controlMode==='manual'&&!guard.hidden);
+  const guards=G.selectedGuards.filter(guard=>guard.controlMode==='manual'&&!guard.hidden&&isWorldVisible(guard.x,guard.y));
   if (!guards.length) return false;
   const rect=canvas.getBoundingClientRect();
   if (clientX<rect.left || clientX>rect.right || clientY<rect.top || clientY>rect.bottom) return false;
   const wp=screenToWorld(clientX-rect.left,clientY-rect.top);
+  if(!canIssueManualGuardMove(wp.x,wp.y)) {
+    addGuardCommandMarker(wp.x,wp.y,'invalid');
+    return true;
+  }
   const enemy=G.enemies.find(e=>e.alive && isWorldVisible(e.x,e.y) && Math.hypot(e.x-wp.x,e.y-wp.y)<=e.size+8);
   if(!enemy) {
     assignGuardGroupMove(guards,wp);
@@ -5443,7 +5774,7 @@ canvas.addEventListener('click', e => {
   if (G.guardSelectStart && G.guardSelectMoved) {
     const start=G.guardSelectStart, end=G.guardSelectEnd||start;
     const minX=Math.min(start.x,end.x), maxX=Math.max(start.x,end.x), minY=Math.min(start.y,end.y), maxY=Math.max(start.y,end.y);
-    setSelectedGuards(G.residents.filter(resident=>resident.isGuard&&!resident.hidden&&resident.x>=minX&&resident.x<=maxX&&resident.y>=minY&&resident.y<=maxY));
+    setSelectedGuards(G.residents.filter(resident=>resident.isGuard&&!resident.hidden&&isWorldVisible(resident.x,resident.y)&&resident.x>=minX&&resident.x<=maxX&&resident.y>=minY&&resident.y<=maxY));
     G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false;
     G.selectedBuilding=null; hideContextMenu();
     return;
@@ -5494,7 +5825,7 @@ canvas.addEventListener('click', e => {
   }
   G.dragging = false;
 
-  const clickedGuard=G.residents.find(resident=>resident.isGuard && !resident.hidden && Math.hypot(resident.x-wp.x,resident.y-wp.y)<=RESIDENT_RADIUS+5);
+  const clickedGuard=G.residents.find(resident=>resident.isGuard && !resident.hidden && isWorldVisible(resident.x,resident.y) && Math.hypot(resident.x-wp.x,resident.y-wp.y)<=RESIDENT_RADIUS+5);
   if (clickedGuard) {
     setSelectedGuards([clickedGuard]); G.selectedBuilding=null; G.selectedBldType=null;
     document.querySelectorAll('.bld-btn').forEach(button=>button.classList.remove('selected'));

@@ -98,6 +98,22 @@ test('sleeping residents become visible as soon as dawn begins', () => {
   assert.equal(result.visible, true);
 });
 
+test('residents use phase based sleep without fatigue values', () => {
+  const result=runGameScenario(`
+    const home=new Building('house',10,10),resident=new Resident(0,0),center=home.center();
+    resident.home=home;resident.x=center.x;resident.y=center.y;
+    G.buildings=[home];G.residents=[resident];G.phase='night';
+    updateResidents(0.01);
+    globalThis.__result={state:resident.state,hidden:resident.hidden,hasResidentFatigue:'tired' in resident,hasRate:'TIRED_RATE' in CFG,hasThreshold:'TIRED_THRESHOLD' in CFG,editable:GLOBAL_EDIT_FIELDS.some(field=>field.k.includes('TIRED'))};
+  `);
+  assert.equal(result.state,'SLEEPING');
+  assert.equal(result.hidden,true);
+  assert.equal(result.hasResidentFatigue,false);
+  assert.equal(result.hasRate,false);
+  assert.equal(result.hasThreshold,false);
+  assert.equal(result.editable,false);
+});
+
 test('saved balance overrides global and building defaults before game state is created', () => {
   const result = runGameScenario(`
     applyBalanceData({version:1, globals:{START_FOOD:77, RESIDENT_SPEED:85, ENEMY_WAVE_DURATION:11}, buildings:{farm:{baseTime:6,cost:{wood:8}}}});
@@ -323,6 +339,42 @@ test('global navigation moves continuously around multiple blocking buildings', 
   assert.ok(result < 8, `remaining distance was ${result}`);
 });
 
+test('all movable unit roles force a global replan after making too little progress', () => {
+  const result = runGameScenario(`
+    const resident=new Resident(100,100);
+    const engineer=new Resident(120,100);engineer.isEngineer=true;
+    const guard=new Resident(140,100);guard.isGuard=true;
+    const animal=new Animal(160,100);
+    const enemy=new Enemy(180,100);
+    const units=[resident,engineer,guard,animal,enemy];
+    G.navigationQueue=[];
+    for(const unit of units) updateNavigationProgress(unit,500,100,CFG.NAV_STUCK_WINDOW);
+    globalThis.__result={
+      replans:units.map(unit=>unit.navForcedReplans),
+      pending:units.map(unit=>unit.navPending),
+      queued:G.navigationQueue.length
+    };
+  `);
+  assert.equal(result.replans.join(','), '1,1,1,1,1');
+  assert.equal(result.pending.join(','), 'true,true,true,true,true');
+  assert.equal(result.queued, 5);
+});
+
+test('stuck detection ignores useful movement and an unreachable goal endpoint', () => {
+  const result = runGameScenario(`
+    const moving=new Animal(100,100);
+    moving.x+=CFG.NAV_STUCK_MIN_DISTANCE+1;
+    const movingReplanned=updateNavigationProgress(moving,500,100,CFG.NAV_STUCK_WINDOW);
+    const stopped=new Animal(200,100);
+    stopped.navBlockedGoal=true;stopped.navResolvedPoint={x:200,y:100};
+    const endpointReplanned=updateNavigationProgress(stopped,500,100,CFG.NAV_STUCK_WINDOW);
+    globalThis.__result={movingReplanned,endpointReplanned,queued:G.navigationQueue.length};
+  `);
+  assert.equal(result.movingReplanned, false);
+  assert.equal(result.endpointReplanned, false);
+  assert.equal(result.queued, 0);
+});
+
 test('a moving resident steers around stationary workers instead of being blocked by them', () => {
   const result = runGameScenario(`
     const mover=new Resident(0,100);
@@ -368,21 +420,24 @@ test('spatial hash limits a short navigation query to nearby obstacles', () => {
   assert.ok(result.nearby < result.total / 4, `${result.nearby} of ${result.total} obstacles were returned`);
 });
 
-test('fog visibility is provided by town halls and residents', () => {
+test('fog visibility is provided only by town hall and lamp light sources', () => {
   const result = runGameScenario(`
     const hall = new Building('town_hall', 30, 30);
     const resident = new Resident(20, 20);
-    G.buildings = [hall]; G.residents = [resident]; G.resourceNodes = [];
+    const farm = new Building('farm', 10, 10);
+    G.buildings = [hall,farm]; G.residents = [resident]; G.resourceNodes = [];
     initFog(); refreshFogVisibility();
     const center = hall.center();
     globalThis.__result = {
       hall:isWorldVisible(center.x, center.y),
       resident:isWorldVisible(resident.x, resident.y),
+      farm:isWorldVisible(farm.center().x,farm.center().y),
       distant:isFogCellVisible(0, 40)
     };
   `);
   assert.equal(result.hall, true);
-  assert.equal(result.resident, true);
+  assert.equal(result.resident, false);
+  assert.equal(result.farm,false);
   assert.equal(result.distant, false);
 });
 
@@ -399,6 +454,40 @@ test('lamp reveals five cells and loses vision when removed', () => {
   assert.equal(result.within, true);
   assert.equal(result.beyond, false);
   assert.equal(result.afterRemoval, false);
+});
+
+test('manual guards reject fog destinations and stop when a target loses light', () => {
+  const result=runGameScenario(`
+    const lamp=new Building('lamp',10,10),center=lamp.center(),guard=new Resident(center.x,center.y);
+    guard.isGuard=true;guard.hidden=false;guard.controlMode='manual';guard.state='GUARD_MANUAL';
+    G.buildings=[lamp];G.residents=[guard];initFog();refreshFogVisibility();
+    const visibleAllowed=canIssueManualGuardMove(center.x,center.y),fogX=center.x+CFG.CELL*10,fogY=center.y;
+    const fogAllowed=canIssueManualGuardMove(fogX,fogY);
+    const fogGuard=new Resident(fogX,fogY);fogGuard.isGuard=true;fogGuard.hidden=false;
+    const fogGuardControllable=setGuardControlMode(fogGuard,'manual');
+    guard.manualTarget={x:fogX,y:fogY};updateManualGuard(guard,0.1);
+    globalThis.__result={visibleAllowed,fogAllowed,fogGuardControllable,target:guard.manualTarget,x:guard.x,y:guard.y,startX:center.x,startY:center.y};
+  `);
+  assert.equal(result.visibleAllowed,true);
+  assert.equal(result.fogAllowed,false);
+  assert.equal(result.fogGuardControllable,false);
+  assert.equal(result.target,null);
+  assert.equal(result.x,result.startX);
+  assert.equal(result.y,result.startY);
+});
+
+test('guard formation slots are kept inside the current light radius', () => {
+  const result=runGameScenario(`
+    const lamp=new Building('lamp',12,12),center=lamp.center(),guards=[];
+    for(let index=0;index<9;index++) {const guard=new Resident(center.x-40+(index%3)*16,center.y-16+Math.floor(index/3)*16);guard.isGuard=true;guard.hidden=false;guard.controlMode='manual';guards.push(guard);}
+    G.buildings=[lamp];G.residents=guards;initFog();refreshFogVisibility();
+    const target={x:center.x+buildingFogRadius(lamp)-CFG.CELL,y:center.y};
+    const assignments=assignGuardGroupMove(guards,target);
+    globalThis.__result={count:assignments.length,allVisible:assignments.every(item=>isWorldVisible(item.target.x,item.target.y)),unique:new Set(assignments.map(item=>item.target.x.toFixed(2)+','+item.target.y.toFixed(2))).size};
+  `);
+  assert.equal(result.count,9);
+  assert.equal(result.allVisible,true);
+  assert.equal(result.unique,9);
 });
 
 test('building placement is rejected in fog and allowed in visible cells', () => {
@@ -527,7 +616,7 @@ test('town hall automatically fires entity arrows at visible enemies', () => {
   assert.ok(result.hpAfter<result.hpBefore);
 });
 
-test('idle patrol uses completed building vision instead of its own dynamic vision', () => {
+test('idle patrol stays inside static light without revealing its own position', () => {
   const result = runGameScenario(`
     const resident = new Resident(400, 400);
     G.buildings = []; G.residents = [resident]; initFog(); refreshFogVisibility();
@@ -543,7 +632,7 @@ test('idle patrol uses completed building vision instead of its own dynamic visi
       outside:isStaticPatrolVisible(center.x + buildingLevelValue('town_hall',1,'vision') * CFG.CELL + 1, center.y)
     };
   `);
-  assert.equal(result.selfVisible, true);
+  assert.equal(result.selfVisible, false);
   assert.equal(result.patrolAllowedWithoutBuilding, false);
   assert.equal(result.inside, true);
   assert.equal(result.outside, false);
@@ -660,7 +749,7 @@ test('enemy types unlock by day and carry their own combat stats', () => {
   assert.ok(result.breaker.speed < 40);
 });
 
-test('farms do not block movement or become enemy route blockers, while farm ruins still block', () => {
+test('farms and ruins do not block movement or become enemy route blockers', () => {
   const result = runGameScenario(`
     const hall=new Building('town_hall', 20, 10);
     const frontFarm=new Building('farm', 4, 10);
@@ -677,15 +766,17 @@ test('farms do not block movement or become enemy route blockers, while farm rui
       farmBlocks:buildingBlocksMovement(frontFarm),
       ruinBlocks:buildingBlocksMovement(farmRuin),
       farmIndexed:G.obstacleSpatial.query(fc.x,fc.y,fc.x,fc.y).includes(frontFarm),
-      ruinIndexed:G.obstacleSpatial.query(rc.x,rc.y,rc.x,rc.y).includes(farmRuin)
+      ruinIndexed:G.obstacleSpatial.query(rc.x,rc.y,rc.x,rc.y).includes(farmRuin),
+      ruinPathClear:navigationLineClear({x:rc.x-CFG.CELL*2,y:rc.y},{x:rc.x+CFG.CELL*2,y:rc.y})
     };
   `);
   assert.equal(result.normal, 'wall');
   assert.equal(result.breaker, 'wall');
   assert.equal(result.farmBlocks, false);
-  assert.equal(result.ruinBlocks, true);
+  assert.equal(result.ruinBlocks, false);
   assert.equal(result.farmIndexed, false);
-  assert.equal(result.ruinIndexed, true);
+  assert.equal(result.ruinIndexed, false);
+  assert.equal(result.ruinPathClear,true);
 });
 
 test('town hall starts with one guard and separate worker and guard capacity', () => {
@@ -802,6 +893,152 @@ test('building editor fields are tailored by building type and lamp vision uses 
   assert.equal(result.lampVision, 8);
 });
 
+test('global editor fields are divided into complete non-overlapping groups', () => {
+  const result=runGameScenario(`
+    const grouped=GLOBAL_EDIT_GROUPS.flatMap(group=>group.fields);
+    globalThis.__result={
+      keys:GLOBAL_EDIT_GROUPS.map(group=>group.key),
+      labels:GLOBAL_EDIT_GROUPS.map(group=>group.label),
+      complete:GLOBAL_EDIT_FIELDS.every(field=>grouped.includes(field.k)),
+      unique:new Set(grouped).size===grouped.length,
+      movement:globalEditFields('movement').map(field=>field.k)
+    };
+  `);
+  assert.equal(result.keys.join(','),'time,movement,fruitTrees,hunting');
+  assert.equal(result.labels.join(','),'时间与居民作息,移动与寻路,果树种植与收获,猎物与狩猎');
+  assert.equal(result.complete,true);
+  assert.equal(result.unique,true);
+  assert.equal(result.movement.join(','),'RESIDENT_SPEED,NAV_STUCK_WINDOW,NAV_STUCK_MIN_DISTANCE');
+});
+
+test('invalid global group values do not partially mutate configuration', () => {
+  const result=runGameScenario(`
+    const controls={'cfg-category':{value:'globals'},'cfg-item':{value:'fruitTrees'},'cfg-status':{textContent:'',style:{}}};
+    for(const field of globalEditFields('fruitTrees')) controls['cfg-global-'+field.k]={value:String(CFG[field.k])};
+    controls['cfg-global-FRUIT_TREE_WOOD_COST'].value='9';
+    controls['cfg-global-FRUIT_TREE_GROW_TIME_MIN'].value='50';
+    controls['cfg-global-FRUIT_TREE_GROW_TIME_MAX'].value='10';
+    document.getElementById=id=>controls[id]||elementStub();
+    const before=CFG.FRUIT_TREE_WOOD_COST,applied=cfgApply();
+    globalThis.__result={applied,before,after:CFG.FRUIT_TREE_WOOD_COST};
+  `);
+  assert.equal(result.applied,false);
+  assert.equal(result.after,result.before);
+});
+
+test('config editor session preserves panel values while switching views', () => {
+  const result=runGameScenario(`
+    const controls={};
+    for(const field of globalEditFields('fruitTrees')) controls['cfg-global-'+field.k]={value:String(CFG[field.k])};
+    controls['cfg-global-FRUIT_TREE_WOOD_COST'].value='13';
+    document.getElementById=id=>controls[id]||elementStub();
+    const view={cat:'globals',key:'fruitTrees',level:1};
+    cfgEditSession={panels:new Map(),view};
+    cfgCaptureCurrentPanel();
+    controls['cfg-global-FRUIT_TREE_WOOD_COST'].value='2';
+    cfgRestoreCurrentPanel(view);
+    globalThis.__result={restored:controls['cfg-global-FRUIT_TREE_WOOD_COST'].value,panels:cfgEditSession.panels.size};
+  `);
+  assert.equal(result.restored,'13');
+  assert.equal(result.panels,1);
+});
+
+test('config session merges changes from multiple categories into one commit', () => {
+  const result=runGameScenario(`
+    const panel=(view,fields,prefix,changes={})=>({view,values:Object.fromEntries(fields.map(field=>[prefix+field.k,String(changes[field.k]??CFG[field.k])]))});
+    const fruit=panel({cat:'globals',key:'fruitTrees',level:1},globalEditFields('fruitTrees'),'cfg-global-',{FRUIT_TREE_WOOD_COST:12});
+    const guard=panel({cat:'professions',key:'guard',level:1},PROFESSION_EDIT_FIELDS.guard,'cfg-profession-',{GUARD_DAMAGE:19});
+    const candidate=cfgConfigSnapshot();
+    const fruitError=cfgMergePanelIntoCandidate(fruit,candidate);
+    const guardError=cfgMergePanelIntoCandidate(guard,candidate);
+    const validationError=cfgValidateCandidate(candidate);
+    const before={wood:CFG.FRUIT_TREE_WOOD_COST,damage:CFG.GUARD_DAMAGE};
+    globalThis.updateBuildingPanel=()=>{};
+    if(!fruitError&&!guardError&&!validationError) cfgCommitCandidate(candidate);
+    globalThis.__result={fruitError,guardError,validationError,before,after:{wood:CFG.FRUIT_TREE_WOOD_COST,damage:CFG.GUARD_DAMAGE}};
+  `);
+  assert.equal(result.fruitError,'');
+  assert.equal(result.guardError,'');
+  assert.equal(result.validationError,'');
+  assert.notEqual(result.before.wood,result.after.wood);
+  assert.notEqual(result.before.damage,result.after.damage);
+  assert.deepEqual({...result.after},{wood:12,damage:19});
+});
+
+test('resource map parser rejects unknown and duplicate resource keys', () => {
+  const result=runGameScenario(`
+    globalThis.__result={
+      valid:parseResourceMapInput('wood:2, charcoal:1'),
+      unknown:parseResourceMapInput('coal:1'),
+      duplicate:parseResourceMapInput('wood:1,wood:2'),
+      empty:parseResourceMapInput('wood:'),
+      productTypes:['farm','charcoal_kiln','smelter'].map(type=>buildingEditFields(type).find(field=>field.k==='produces')?.type)
+    };
+  `);
+  assert.deepEqual({...result.valid.value},{wood:2,charcoal:1});
+  assert.match(result.unknown.error,/未知资源键/);
+  assert.match(result.duplicate.error,/重复填写/);
+  assert.match(result.empty.error,/数量无效/);
+  assert.equal(result.productTypes.join(','),'resource,resource,resource');
+});
+
+test('building editor entries are stably sorted by town hall unlock level', () => {
+  const result=runGameScenario(`
+    BLD_DEFS.floor.unlock=3;BLD_DEFS.house.unlock=1;BLD_DEFS.nursery.unlock=2;BLD_DEFS.lamp.unlock=1;
+    const original=Object.keys(BLD_DEFS),entries=sortedBuildingEntries(),keys=entries.map(([key])=>key),levels=entries.map(([,def])=>Number(def.unlock)||1);
+    const stableAtLevel=level=>keys.filter(key=>(Number(BLD_DEFS[key].unlock)||1)===level).join(',')===original.filter(key=>(Number(BLD_DEFS[key].unlock)||1)===level).join(',');
+    globalThis.__result={monotonic:levels.every((level,index)=>index===0||levels[index-1]<=level),stableOne:stableAtLevel(1),stableTwo:stableAtLevel(2),namesOnly:entries.every(([,def])=>!def.name.includes('大本营等级'))};
+  `);
+  assert.equal(result.monotonic,true);
+  assert.equal(result.stableOne,true);
+  assert.equal(result.stableTwo,true);
+  assert.equal(result.namesOnly,true);
+});
+
+test('building editor filters combine town hall levels with custom building types', () => {
+  const result=runGameScenario(`
+    BLD_DEFS.nursery.unlock=2;BLD_DEFS.training_ground.unlock=3;BLD_DEFS.farm.unlock=2;
+    BLD_DEFS.house.unlock=2;BLD_DEFS.barracks.unlock=3;BLD_DEFS.arrow_tower.unlock=2;BLD_DEFS.lamp.unlock=2;
+    cfgBuildingFilters.levels=new Set([2]);cfgBuildingFilters.types=new Set(['production']);
+    const levelTwoProduction=filteredCfgBuildingEntries().map(([key])=>key);
+    cfgBuildingFilters.levels.add(3);
+    const twoLevelsProduction=filteredCfgBuildingEntries().map(([key])=>key);
+    cfgBuildingFilters.types=new Set(['storage']);
+    const storage=filteredCfgBuildingEntries().map(([key])=>key);
+    globalThis.__result={
+      levelTwoProduction,twoLevelsProduction,storage,
+      groups:{nursery:cfgBuildingFilterType('nursery'),training:cfgBuildingFilterType('training_ground'),house:cfgBuildingFilterType('house'),barracks:cfgBuildingFilterType('barracks'),tower:cfgBuildingFilterType('arrow_tower'),lamp:cfgBuildingFilterType('lamp')}
+    };
+  `);
+  assert.equal(result.levelTwoProduction.includes('nursery'),true);
+  assert.equal(result.levelTwoProduction.includes('farm'),true);
+  assert.equal(result.levelTwoProduction.includes('training_ground'),false);
+  assert.equal(result.twoLevelsProduction.includes('training_ground'),true);
+  assert.equal(result.storage.includes('house'),true);
+  assert.equal(result.storage.includes('barracks'),true);
+  assert.deepEqual({...result.groups},{nursery:'production',training:'production',house:'storage',barracks:'storage',tower:'defense',lamp:'other'});
+});
+
+test('filtered buildings render as wrapping name buttons with an active selection', () => {
+  const result=runGameScenario(`
+    BLD_DEFS.farm.unlock=2;BLD_DEFS.nursery.unlock=2;BLD_DEFS.house.unlock=2;
+    cfgBuildingFilters.levels=new Set([2]);cfgBuildingFilters.types=new Set(['production']);
+    const container={innerHTML:'',children:[],appendChild(child){this.children.push(child);}};
+    document.getElementById=id=>id==='cfg-building-results'?container:elementStub();
+    document.createElement=()=>({type:'',className:'',textContent:'',onclick:null});
+    renderCfgBuildingResults('farm');
+    globalThis.__result={
+      names:container.children.map(child=>child.textContent),
+      active:container.children.find(child=>child.className.includes('active'))?.textContent
+    };
+  `);
+  assert.match(html,/id="cfg-building-results" class="cfg-building-results"/);
+  assert.equal(result.names.includes('农场'),true);
+  assert.equal(result.names.includes('产房'),true);
+  assert.equal(result.names.includes('住房'),false);
+  assert.equal(result.active,'农场');
+});
+
 test('building level overrides and town hall resource configuration apply at runtime', () => {
   const result = runGameScenario(`
     BLD_DEFS.town_hall.maxLevel=3;
@@ -903,6 +1140,46 @@ test('dedicated storage accepts only its matching resource type', () => {
   assert.equal(result.food, 0);
 });
 
+test('charcoal uses its own storage and resource icon', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',30,30),store=new Building('charcoal_storage',20,20);
+    G.townHall=hall;G.buildings=[hall,store];G.resources={};
+    globalThis.__result={
+      acceptsCharcoal:depositToStorage(store,'charcoal',6),
+      rejectsWood:depositToStorage(store,'wood',3),
+      stored:storedAmount(store,'charcoal'),
+      mapped:RESOURCE_STORAGE_TYPES.charcoal,
+      icon:resourceIcon('charcoal')
+    };
+  `);
+  assert.equal(result.acceptsCharcoal,6);
+  assert.equal(result.rejectsWood,0);
+  assert.equal(result.stored,6);
+  assert.equal(result.mapped,'charcoal_storage');
+  assert.match(result.icon,/resource-mark charcoal/);
+});
+
+test('charcoal kiln consumes wood and the smelter requires iron plus charcoal', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',30,30),kiln=new Building('charcoal_kiln',20,20),smelter=new Building('smelter',24,20);
+    hall.stored.wood=10;hall.stored.iron=2;hall.stored.charcoal=0;
+    const kilnWorker=new Resident(0,0);kilnWorker.workplace=kiln;kilnWorker.state='WORKING';
+    const smelterWorker=new Resident(0,0);smelterWorker.workplace=smelter;smelterWorker.state='WORKING';
+    G.townHall=hall;G.buildings=[hall,kiln,smelter];G.residents=[kilnWorker,smelterWorker];updateAllResourceTotals();
+    updateBuildings(BLD_DEFS.charcoal_kiln.baseTime*BLD_DEFS.charcoal_kiln.maxWorkers);
+    const afterKiln={wood:G.resources.wood,output:kiln.pendingOutput};
+    updateBuildings(BLD_DEFS.smelter.baseTime*BLD_DEFS.smelter.maxWorkers);
+    const blockedWithoutCharcoal={iron:G.resources.iron,output:smelter.pendingOutput};
+    hall.stored.charcoal=1;updateAllResourceTotals();smelter.productionProgress=0;
+    updateBuildings(BLD_DEFS.smelter.baseTime*BLD_DEFS.smelter.maxWorkers);
+    globalThis.__result={afterKiln,blockedWithoutCharcoal,afterSmelting:{iron:G.resources.iron,charcoal:G.resources.charcoal,output:smelter.pendingOutput},recipe:BLD_DEFS.smelter.inputs};
+  `);
+  assert.deepEqual({...result.afterKiln},{wood:8,output:1});
+  assert.deepEqual({...result.blockedWithoutCharcoal},{iron:2,output:0});
+  assert.deepEqual({...result.afterSmelting},{iron:1,charcoal:0,output:1});
+  assert.deepEqual({...result.recipe},{iron:1,charcoal:1});
+});
+
 test('a zero town hall resource capacity hides the resource from availability and storage', () => {
   const result = runGameScenario(`
     const hall=new Building('town_hall',30,30);
@@ -925,8 +1202,9 @@ test('enemy attributes and profession attributes are kept out of global editor f
       normal:{hp:ENEMY_DEFS.normal.hp,speed:ENEMY_DEFS.normal.speed,damage:ENEMY_DEFS.normal.damage},
     };
   `);
-  assert.doesNotMatch(result.globals, /ENEMY_BASE_HP|ENEMY_SPEED|ENEMY_DAMAGE|GUARD_VISION|ENGINEER_REPAIR_RATE/);
-  assert.match(result.guard, /GUARD_MAX_HP|GUARD_DAMAGE|GUARD_SPEED|GUARD_ATTACK_COOLDOWN|GUARD_VISION/);
+  assert.doesNotMatch(result.globals, /ENEMY_BASE_HP|ENEMY_SPEED|ENEMY_DAMAGE|RESIDENT_VISION|GUARD_VISION|ENGINEER_REPAIR_RATE/);
+  assert.match(result.guard, /GUARD_MAX_HP|GUARD_DAMAGE|GUARD_SPEED|GUARD_ATTACK_COOLDOWN/);
+  assert.doesNotMatch(result.guard,/GUARD_VISION/);
   assert.match(result.engineer, /ENGINEER_REPAIR_RATE/);
   assert.equal(result.normal.hp, 40);
 });
@@ -1451,7 +1729,7 @@ test('engineer task assignment staffs every construction before adding helpers',
   for(const state of result.states) assert.equal(state,'CONSTRUCTING');
 });
 
-test('a destroyed building remains as a blocking ruin with salvage and rebuild costs', () => {
+test('a destroyed building remains as a non-colliding occupied ruin with salvage and rebuild costs', () => {
   const result = runGameScenario(`
     const hall=new Building('town_hall',10,10);
     const farm=new Building('farm',20,20);
@@ -1461,14 +1739,16 @@ test('a destroyed building remains as a blocking ruin with salvage and rebuild c
     globalThis.__result={
       ruin:farm.ruin,
       remains:G.buildings.includes(farm),
-      blocked:isCellBlocked(farm.col,farm.row),
+      occupied:isCellBlocked(farm.col,farm.row),
+      blocksMovement:buildingBlocksMovement(farm),
       salvage:ruinSalvage(farm).wood,
       rebuild:ruinRebuildCost(farm).wood,
     };
   `);
   assert.equal(result.ruin, true);
   assert.equal(result.remains, true);
-  assert.equal(result.blocked, true);
+  assert.equal(result.occupied, true);
+  assert.equal(result.blocksMovement,false);
   assert.equal(result.salvage, 1);
   assert.equal(result.rebuild, 4);
 });
@@ -1498,39 +1778,72 @@ test('resource costs render recognizable icon markup instead of resource text la
   assert.doesNotMatch(result.cost.replace(/<[^>]*>/g,''), /食物|木材|石材/);
 });
 
+test('fruit planting command shows its configured wood cost with the resource icon', () => {
+  const result=runGameScenario(`
+    const costElement={innerHTML:''},button={title:''};
+    document.getElementById=id=>id==='fruit-command-cost'?costElement:id==='fruit-btn'?button:elementStub();
+    CFG.FRUIT_TREE_WOOD_COST=7;
+    updateFruitPlantCommandCost();
+    globalThis.__result={markup:costElement.innerHTML,title:button.title};
+  `);
+  assert.match(result.markup, />7<span class="resource-mark wood"/);
+  assert.match(result.title, /7 木材/);
+});
+
 test('restoration tower has a building catalogue button', () => {
   assert.match(html, /data-type="restoration_tower"/);
 });
 
 test('fruit saplings consume wood and mature into harvestable fruit trees', () => {
   const result=runGameScenario(`
-    const hall=new Building('town_hall',8,8);G.townHall=hall;G.buildings=[hall];
+    const hall=new Building('town_hall',8,8),center=hall.center();G.townHall=hall;G.buildings=[hall];
     hall.stored.wood=10;hall.stored.food=0;updateAllResourceTotals();
     G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);
-    const previewAllowed=canPlantFruitTree(20,20);
-    const planted=plantFruitTree(20,20),node=G.resourceNodes.at(-1),placedAsTask=node.type==='fruit_planting',occupiedRejected=!canPlantFruitTree(20,20);
-    const worker=new Resident(node.x,node.y);G.residents=[worker];G.phase='day';
-    updateResidents(0.1);const claimed=worker.state==='GOING_TO_PLANT'&&worker.plantTarget===node;
-    updateResidents(0.1);updateResidents(CFG.FRUIT_TREE_PLANT_TIME);
+    const previewAllowed=canPlantFruitTree(10,10);
+    const planted=plantFruitTree(10,10),node=G.resourceNodes.at(-1),woodAfterPlacement=G.resources.wood,placedAsTask=node.type==='fruit_planting',occupiedRejected=!canPlantFruitTree(10,10);
+    const worker=new Resident(center.x,center.y);G.residents=[worker];G.phase='day';
+    updateResidents(0.1);const claimed=worker.state==='GOING_TO_PLANT_MATERIAL'&&worker.plantTarget===node;
+    updateResidents(0.1);const woodAfterPickup=G.resources.wood,pickedUp=worker.state==='DELIVERING_PLANT_MATERIAL';
+    worker.x=node.x;worker.y=node.y;updateResidents(0.1);updateResidents(0.1);updateResidents(CFG.FRUIT_TREE_PLANT_TIME);
     const plantedByWorker=node.type==='fruit_sapling';
     node.growTimer=0.01;updateBuildings(0.02);
-    globalThis.__result={previewAllowed,planted,placedAsTask,claimed,plantedByWorker,occupiedRejected,wood:G.resources.wood,type:node.type,harvestable:canResidentHandHarvest(node),blocksMovement:isResourceObstacleNode(node)};
+    globalThis.__result={previewAllowed,planted,placedAsTask,claimed,pickedUp,plantedByWorker,occupiedRejected,woodAfterPlacement,woodAfterPickup,type:node.type,harvestable:canResidentHandHarvest(node),blocksMovement:isResourceObstacleNode(node)};
   `);
   assert.equal(result.previewAllowed,true);
   assert.equal(result.planted,true);
   assert.equal(result.placedAsTask,true);
   assert.equal(result.claimed,true);
+  assert.equal(result.pickedUp,true);
   assert.equal(result.plantedByWorker,true);
   assert.equal(result.occupiedRejected,true);
-  assert.equal(result.wood,8);
+  assert.equal(result.woodAfterPlacement,10);
+  assert.equal(result.woodAfterPickup,8);
   assert.equal(result.type,'fruit_tree');
   assert.equal(result.harvestable,true);
   assert.equal(result.blocksMovement,false);
 });
 
+test('fruit planting tasks can be placed without wood and wait without over-reserving', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',8,8);G.townHall=hall;G.buildings=[hall];hall.stored.wood=0;updateAllResourceTotals();
+    G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);G.phase='day';
+    const previewWithoutWood=canPlantFruitTree(10,10),firstPlaced=plantFruitTree(10,10),secondPlaced=plantFruitTree(11,10);
+    const first=G.resourceNodes[0],second=G.resourceNodes[1],workerA=new Resident(0,0),workerB=new Resident(0,0);G.residents=[workerA,workerB];
+    updateResidents(0.1);const noneClaimed=!first.claimedBy&&!second.claimedBy;
+    hall.stored.wood=CFG.FRUIT_TREE_WOOD_COST;updateAllResourceTotals();workerA.state='IDLE';workerB.state='IDLE';updateResidents(0.1);
+    globalThis.__result={previewWithoutWood,firstPlaced,secondPlaced,noneClaimed,claimed:[first,second].filter(node=>!!node.claimedBy).length,wood:G.resources.wood};
+  `);
+  assert.equal(result.previewWithoutWood,true);
+  assert.equal(result.firstPlaced,true);
+  assert.equal(result.secondPlaced,true);
+  assert.equal(result.noneClaimed,true);
+  assert.equal(result.claimed,1);
+  assert.equal(result.wood,2);
+});
+
 test('fruit planting progress persists when another idle villager takes over', () => {
   const result=runGameScenario(`
-    const node={type:'fruit_planting',col:12,row:12,x:500,y:500,hp:1,alive:true,marked:false,claimedBy:null,plantProgress:0,ownerForester:null};
+    const node={type:'fruit_planting',col:12,row:12,x:500,y:500,hp:1,alive:true,marked:false,claimedBy:null,plantProgress:0,requiredWood:2,deliveredWood:2,ownerForester:null};
     const first=new Resident(500,500);first.state='PLANTING';first.plantTarget=node;node.claimedBy=first;
     G.resourceNodes=[node];G.residents=[first];G.phase='day';G.fogVisible=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.fogVisible.fill(1);
     updateResidents(0.75);const saved=node.plantProgress;releaseFruitPlanting(first);first.state='GOING_HOME';
@@ -1674,7 +1987,7 @@ test('infinite resources fill the town hall actual storage for every resource', 
   `);
   assert.equal(result.infinite,true);
   assert.equal(result.stoneStorage,true);
-  for(const type of ['food','wood','stone','iron','ingot']) {
+  for(const type of ['food','wood','stone','iron','charcoal','ingot']) {
     assert.equal(result.stored[type],9999);
     assert.equal(result.totals[type],9999);
   }
