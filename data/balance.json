@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "savedAt": "2026-07-18T10:12:58.616Z",
+  "savedAt": "2026-07-19T07:28:59.971Z",
   "globals": {
     "DAY_DURATION": 160,
     "NIGHT_DURATION": 80,
@@ -14,7 +14,7 @@
     "FRUIT_TREE_FOOD_MIN": 1,
     "FRUIT_TREE_FOOD_MAX": 3,
     "ANIMAL_INITIAL_COUNT": 2,
-    "ANIMAL_MAX_COUNT": 20,
+    "ANIMAL_MAX_COUNT": 5,
     "ANIMAL_RESPAWN_INTERVAL": 35,
     "ANIMAL_FOOD_MIN": 1,
     "ANIMAL_FOOD_MAX": 4,
@@ -382,7 +382,7 @@
       "capacity": 10,
       "levelCapacityBonus": 20,
       "unlock": 1,
-      "unlockTreesChopped": 5,
+      "unlockTreesChopped": 0,
       "buildTime": 5,
       "maxLevel": 5
     },

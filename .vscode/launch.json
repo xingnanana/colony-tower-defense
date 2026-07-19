@@ -1,0 +1,13 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "editor-browser",
+      "request": "launch",
+      "name": "调试村庄模拟（内嵌浏览器）",
+      "url": "http://127.0.0.1:3010/game.html",
+      "webRoot": "${workspaceFolder}",
+      "preLaunchTask": "启动游戏开发服务器"
+    }
+  ]
+}

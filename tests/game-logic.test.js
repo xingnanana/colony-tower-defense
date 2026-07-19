@@ -6,14 +6,21 @@ const vm = require('node:vm');
 
 const gamePath = path.join(__dirname, '..', 'game.html');
 const html = fs.readFileSync(gamePath, 'utf8');
-const script = html.slice(html.indexOf('<script>') + 8, html.lastIndexOf('</script>'));
-const logicScript = script.slice(0, script.indexOf('const canvas ='));
+const logicFiles = [
+  'config.js', 'world.js', 'navigation.js', 'tasks.js', 'entities.js',
+  'save-game.js', 'simulation.js', 'combat.js', 'residents.js', 'buildings.js',
+  'game-controls.js', 'developer-ui.js',
+];
+const logicScript = logicFiles
+  .map(file => fs.readFileSync(path.join(__dirname, '..', 'js', file), 'utf8'))
+  .join('\n');
+const uiScript = fs.readFileSync(path.join(__dirname, '..', 'js', 'ui.js'), 'utf8');
 
 function elementStub() {
   return {
     addEventListener() {}, appendChild() {}, append() {}, querySelector() { return elementStub(); },
     querySelectorAll() { return []; }, style: {}, classList: { add() {}, remove() {}, toggle() {} },
-    value: '', innerHTML: '', textContent: '', dataset: {}
+    setAttribute() {}, value: '', innerHTML: '', textContent: '', dataset: {}
   };
 }
 
@@ -158,6 +165,51 @@ test('camera drag threshold is clamped and persisted with game settings', () => 
   assert.equal(result.saved, 32);
   assert.equal(result.below, false);
   assert.equal(result.above, true);
+});
+
+test('save game round trip restores world state and entity references', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',30,30),kiln=new Building('charcoal_kiln',20,20),tower=new Building('arrow_tower',24,20);
+    hall.stored.wood=17;kiln.productionInputs.wood=5;
+    const worker=new Resident(100,100),guard=new Resident(120,120);
+    worker.workplace=kiln;worker.home=hall;worker.state='DELIVERING_PRODUCTION_INPUT';worker.productionInputTarget=kiln;worker.productionInputType='wood';worker.productionInputReservedAmount=5;worker.carrying={type:'wood',amount:5};
+    guard.isGuard=true;guard.home=hall;guard.assignedTower=tower;tower.assignedGuard=guard;kiln.inputHaulers.add(worker);
+    const node={type:'sapling',x:200,y:200,col:5,row:5,alive:true,marked:true,ownerForester:kiln,claimedBy:null,growTimer:2};
+    G.buildings=[hall,kiln,tower];G.townHall=hall;G.residents=[worker,guard];G.resourceNodes=[node];G.enemies=[];G.animals=[];G.groundItems=[];
+    G.day=4;G.phase='night';G.dayTime=11;G.totalTime=321;G.floorMask=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.floorMask[42]=1;updateAllResourceTotals();
+    const stored=JSON.parse(JSON.stringify(serializeGameState()));
+    G.buildings=[];G.residents=[];G.resourceNodes=[];G.townHall=null;G.day=1;G.floorMask=null;
+    restoreGameState(stored);
+    const restoredWorker=G.residents[0],restoredGuard=G.residents[1],restoredKiln=G.buildings[1];
+    globalThis.__result={
+      day:G.day,phase:G.phase,dayTime:G.dayTime,totalTime:G.totalTime,floor:G.floorMask[42],wood:G.resources.wood,
+      townHall:G.townHall===G.buildings[0],workplace:restoredWorker.workplace===restoredKiln,home:restoredWorker.home===G.townHall,
+      inputTarget:restoredWorker.productionInputTarget===restoredKiln,inputLock:restoredKiln.inputHaulers.has(restoredWorker),
+      guardHome:restoredGuard.home===G.townHall,guardTower:restoredGuard.assignedTower===G.buildings[2],towerGuard:G.buildings[2].assignedGuard===restoredGuard,
+      nodeOwner:G.resourceNodes[0].ownerForester===restoredKiln,carrying:restoredWorker.carrying.amount
+    };
+  `);
+  assert.deepEqual({...result},{day:4,phase:'night',dayTime:11,totalTime:321,floor:1,wood:17,townHall:true,workplace:true,home:true,inputTarget:true,inputLock:true,guardHome:true,guardTower:true,towerGuard:true,nodeOwner:true,carrying:5});
+});
+
+test('local save storage exposes exactly ten slots with save load and delete operations', () => {
+  const result=runGameScenario(`
+    G.floorMask=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);G.day=3;G.phase='day';
+    const saves=[];for(let index=0;index<MAX_SAVE_SLOTS;index++) saves.push(saveGameToSlot(index));
+    const before=readSaveSlots();G.day=99;const loaded=loadGameFromSlot(2),loadedDay=G.day;
+    const overflow=saveGameToSlot(MAX_SAVE_SLOTS);const removed=deleteGameSave(4);const after=readSaveSlots();
+    globalThis.__result={count:before.length,filled:before.filter(Boolean).length,allSaved:saves.every(Boolean),loaded,loadedDay,overflow,removed,deleted:after[4]===null,neighbors:!!after[3]&&!!after[5]};
+  `);
+  assert.deepEqual({...result},{count:10,filled:10,allSaved:true,loaded:true,loadedDay:3,overflow:false,removed:true,deleted:true,neighbors:true});
+});
+
+test('a damaged save is rejected before replacing the current game', () => {
+  const result=runGameScenario(`
+    const slots=Array(MAX_SAVE_SLOTS).fill(null);slots[0]={version:SAVE_VERSION,savedAt:new Date().toISOString(),day:1,phase:'day',state:{buildings:[{fields:null}],residents:[],resourceNodes:[]}};
+    writeSaveSlots(slots);G.day=7;G.phase='night';
+    globalThis.__result={loaded:loadGameFromSlot(0),day:G.day,phase:G.phase};
+  `);
+  assert.deepEqual({...result},{loaded:false,day:7,phase:'night'});
 });
 
 test('a worker can finish chopping after its forester workplace is removed', () => {
@@ -860,6 +912,51 @@ test('nursery recruitment waits until two assigned workers are simultaneously wo
   assert.equal(result.states[1],'IDLE');
 });
 
+test('nursery workers stay assigned until the entire recruitment queue is complete', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',10,10),nursery=new Building('nursery',20,10);
+    const first=new Resident(0,0),second=new Resident(0,0);
+    G.townHall=hall;G.buildings=[hall,nursery];G.residents=[first,second];G.maxPop=10;G.phase='day';
+    nursery.recruitQueue=2;assignResidentToWorkplace(first,nursery);assignResidentToWorkplace(second,nursery);first.state='WORKING';second.state='WORKING';
+    updateBuildings(BLD_DEFS.nursery.recruitTime);
+    const afterFirst={queue:nursery.recruitQueue,assigned:nursery.assignedWorkers,states:[first.state,second.state],pop:residentCount(false)};
+    updateBuildings(BLD_DEFS.nursery.recruitTime);
+    globalThis.__result={afterFirst,afterLast:{queue:nursery.recruitQueue,assigned:nursery.assignedWorkers,states:[first.state,second.state],pop:residentCount(false)}};
+  `);
+  assert.equal(result.afterFirst.queue,1);
+  assert.equal(result.afterFirst.assigned,2);
+  assert.deepEqual([...result.afterFirst.states],['WORKING','WORKING']);
+  assert.equal(result.afterFirst.pop,3);
+  assert.equal(result.afterLast.queue,0);
+  assert.equal(result.afterLast.assigned,0);
+  assert.deepEqual([...result.afterLast.states],['IDLE','IDLE']);
+  assert.equal(result.afterLast.pop,4);
+});
+
+test('cancel recruitment removes one queued villager and releases workers when the queue becomes empty', () => {
+  const result=runGameScenario(`
+    const nursery=new Building('nursery',20,10),first=new Resident(0,0),second=new Resident(0,0);
+    G.buildings=[nursery];G.residents=[first,second];nursery.recruitQueue=2;nursery.recruitProgress=0.6;
+    first.workplace=nursery;second.workplace=nursery;first.state='WORKING';second.state='WORKING';nursery.assignedWorkers=2;
+    const firstCancel=cancelNurseryRecruit(nursery);
+    const remaining={queue:nursery.recruitQueue,progress:nursery.recruitProgress,assigned:nursery.assignedWorkers,states:[first.state,second.state]};
+    const lastCancel=cancelNurseryRecruit(nursery),extraCancel=cancelNurseryRecruit(nursery);
+    globalThis.__result={firstCancel,remaining,lastCancel,extraCancel,empty:{queue:nursery.recruitQueue,progress:nursery.recruitProgress,assigned:nursery.assignedWorkers,states:[first.state,second.state]}};
+  `);
+  assert.equal(result.firstCancel,true);
+  assert.equal(result.remaining.queue,1);
+  assert.equal(result.remaining.progress,0.6);
+  assert.equal(result.remaining.assigned,2);
+  assert.deepEqual([...result.remaining.states],['WORKING','WORKING']);
+  assert.equal(result.lastCancel,true);
+  assert.equal(result.extraCancel,false);
+  assert.equal(result.empty.queue,0);
+  assert.equal(result.empty.progress,0);
+  assert.equal(result.empty.assigned,0);
+  assert.deepEqual([...result.empty.states],['IDLE','IDLE']);
+  assert.match(uiScript,/actionCancelRecruit/);
+});
+
 test('building editor fields are tailored by building type and lamp vision uses its definition', () => {
   const result = runGameScenario(`
     BLD_DEFS.lamp.vision=7;
@@ -1159,25 +1256,105 @@ test('charcoal uses its own storage and resource icon', () => {
   assert.match(result.icon,/resource-mark charcoal/);
 });
 
-test('charcoal kiln consumes wood and the smelter requires iron plus charcoal', () => {
+test('input production buildings fetch a full round of materials before production', () => {
   const result=runGameScenario(`
-    const hall=new Building('town_hall',30,30),kiln=new Building('charcoal_kiln',20,20),smelter=new Building('smelter',24,20);
-    hall.stored.wood=10;hall.stored.iron=2;hall.stored.charcoal=0;
-    const kilnWorker=new Resident(0,0);kilnWorker.workplace=kiln;kilnWorker.state='WORKING';
-    const smelterWorker=new Resident(0,0);smelterWorker.workplace=smelter;smelterWorker.state='WORKING';
-    G.townHall=hall;G.buildings=[hall,kiln,smelter];G.residents=[kilnWorker,smelterWorker];updateAllResourceTotals();
+    const hall=new Building('town_hall',30,30),ironStore=new Building('iron_storage',28,30),charcoalStore=new Building('charcoal_storage',26,30),kiln=new Building('charcoal_kiln',20,20),smelter=new Building('smelter',24,20);
+    hall.stored.wood=10;ironStore.stored.iron=5;charcoalStore.stored.charcoal=5;
+    const kilnWorker=new Resident(kiln.center().x,kiln.center().y),smelterWorker=new Resident(smelter.center().x,smelter.center().y);
+    assignResidentToWorkplace(kilnWorker,kiln);kilnWorker.state='WORKING';
+    G.townHall=hall;G.buildings=[hall,ironStore,charcoalStore,kiln,smelter];G.residents=[kilnWorker];updateAllResourceTotals();
+    function deliverOneTrip(worker,building) {
+      worker.state='WORKING';updateResidents(0.01);
+      const storage=findNearestStorage(worker,worker.productionInputType,{requireAmount:1});
+      worker.x=storage.center().x;worker.y=storage.center().y;updateResidents(0.01);
+      worker.x=building.center().x;worker.y=building.center().y;updateResidents(0.01);
+    }
     updateBuildings(BLD_DEFS.charcoal_kiln.baseTime*BLD_DEFS.charcoal_kiln.maxWorkers);
-    const afterKiln={wood:G.resources.wood,output:kiln.pendingOutput};
+    const beforeLoading={wood:G.resources.wood,output:kiln.pendingOutput,progress:kiln.productionProgress};
+    deliverOneTrip(kilnWorker,kiln);
+    updateBuildings(BLD_DEFS.charcoal_kiln.baseTime*BLD_DEFS.charcoal_kiln.maxWorkers);
+    const halfLoaded={wood:G.resources.wood,loaded:kiln.productionInputs.wood,output:kiln.pendingOutput};
+    deliverOneTrip(kilnWorker,kiln);
+    const readyKiln={wood:G.resources.wood,loaded:kiln.productionInputs.wood,active:kiln.productionRoundActive};
+    for(let i=0;i<5;i++) updateBuildings(BLD_DEFS.charcoal_kiln.baseTime*BLD_DEFS.charcoal_kiln.maxWorkers);
+    const completedKiln={output:kiln.pendingOutput,inputs:{...kiln.productionInputs},active:kiln.productionRoundActive};
+    assignResidentToWorkplace(smelterWorker,smelter);smelterWorker.state='WORKING';G.residents=[smelterWorker];
+    for(let i=0;i<2;i++) deliverOneTrip(smelterWorker,smelter);
+    const readySmelter={iron:G.resources.iron,charcoal:G.resources.charcoal,inputs:{...smelter.productionInputs},active:smelter.productionRoundActive};
     updateBuildings(BLD_DEFS.smelter.baseTime*BLD_DEFS.smelter.maxWorkers);
-    const blockedWithoutCharcoal={iron:G.resources.iron,output:smelter.pendingOutput};
-    hall.stored.charcoal=1;updateAllResourceTotals();smelter.productionProgress=0;
-    updateBuildings(BLD_DEFS.smelter.baseTime*BLD_DEFS.smelter.maxWorkers);
-    globalThis.__result={afterKiln,blockedWithoutCharcoal,afterSmelting:{iron:G.resources.iron,charcoal:G.resources.charcoal,output:smelter.pendingOutput},recipe:BLD_DEFS.smelter.inputs};
+    globalThis.__result={beforeLoading,halfLoaded,readyKiln,completedKiln,readySmelter,smelterAfterOne:{inputs:{...smelter.productionInputs},output:smelter.pendingOutput},requirements:productionRoundRequirements(new Building('charcoal_kiln',0,0))};
   `);
-  assert.deepEqual({...result.afterKiln},{wood:8,output:1});
-  assert.deepEqual({...result.blockedWithoutCharcoal},{iron:2,output:0});
-  assert.deepEqual({...result.afterSmelting},{iron:1,charcoal:0,output:1});
-  assert.deepEqual({...result.recipe},{iron:1,charcoal:1});
+  assert.deepEqual({...result.beforeLoading},{wood:10,output:0,progress:0});
+  assert.deepEqual({...result.halfLoaded},{wood:5,loaded:5,output:0});
+  assert.deepEqual({...result.readyKiln},{wood:0,loaded:10,active:true});
+  assert.equal(result.completedKiln.output,5);
+  assert.deepEqual({...result.completedKiln.inputs},{wood:0});
+  assert.equal(result.completedKiln.active,false);
+  assert.equal(result.readySmelter.iron,0);
+  assert.equal(result.readySmelter.charcoal,0);
+  assert.deepEqual({...result.readySmelter.inputs},{iron:5,charcoal:5});
+  assert.equal(result.readySmelter.active,true);
+  assert.deepEqual({...result.smelterAfterOne.inputs},{iron:4,charcoal:4});
+  assert.equal(result.smelterAfterOne.output,1);
+  assert.deepEqual({...result.requirements},{wood:10});
+});
+
+test('upgraded production buffer increases full-round input requirements', () => {
+  const result=runGameScenario(`
+    const kiln=new Building('charcoal_kiln',20,20);kiln.level=2;
+    globalThis.__result={capacity:productionBufferCapacity(kiln),requirements:productionRoundRequirements(kiln),ready:productionInputsReady(kiln)};
+  `);
+  assert.equal(result.capacity,7);
+  assert.deepEqual({...result.requirements},{wood:14});
+  assert.equal(result.ready,false);
+});
+
+test('multiple workers reserve and fetch separate production input loads in parallel', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',30,30),kiln=new Building('charcoal_kiln',20,20);
+    hall.stored.wood=10;
+    const first=new Resident(kiln.center().x,kiln.center().y),second=new Resident(kiln.center().x,kiln.center().y);
+    first.workplace=kiln;first.state='WORKING';second.workplace=kiln;second.state='WORKING';kiln.assignedWorkers=2;
+    G.townHall=hall;G.buildings=[hall,kiln];G.residents=[first,second];updateAllResourceTotals();
+    updateResidents(0.01);
+    const assigned={states:[first.state,second.state],reservations:[first.productionInputReservedAmount,second.productionInputReservedAmount],haulers:kiln.inputHaulers.size};
+    for(const worker of [first,second]) { worker.x=hall.center().x;worker.y=hall.center().y; }
+    updateResidents(0.01);
+    const fetched={wood:G.resources.wood,carrying:[first.carrying.amount,second.carrying.amount]};
+    for(const worker of [first,second]) { worker.x=kiln.center().x;worker.y=kiln.center().y; }
+    updateResidents(0.01);
+    globalThis.__result={assigned,fetched,delivered:{wood:kiln.productionInputs.wood,active:kiln.productionRoundActive,haulers:kiln.inputHaulers.size}};
+  `);
+  assert.deepEqual([...result.assigned.states],['GOING_TO_PRODUCTION_INPUT','GOING_TO_PRODUCTION_INPUT']);
+  assert.deepEqual([...result.assigned.reservations],[5,5]);
+  assert.equal(result.assigned.haulers,2);
+  assert.equal(result.fetched.wood,0);
+  assert.deepEqual([...result.fetched.carrying],[5,5]);
+  assert.deepEqual({...result.delivered},{wood:10,active:true,haulers:0});
+});
+
+test('parallel input workers split a multi-resource production recipe', () => {
+  const result=runGameScenario(`
+    const ironStore=new Building('iron_storage',20,20),charcoalStore=new Building('charcoal_storage',22,20),smelter=new Building('smelter',24,20);
+    ironStore.stored.iron=5;charcoalStore.stored.charcoal=5;
+    const first=new Resident(0,0),second=new Resident(0,0);
+    first.workplace=smelter;first.state='WORKING';second.workplace=smelter;second.state='WORKING';smelter.assignedWorkers=2;
+    G.buildings=[ironStore,charcoalStore,smelter];G.residents=[first,second];updateAllResourceTotals();updateResidents(0.01);
+    globalThis.__result={types:[first.productionInputType,second.productionInputType],amounts:[first.productionInputReservedAmount,second.productionInputReservedAmount]};
+  `);
+  assert.deepEqual(new Set(result.types),new Set(['iron','charcoal']));
+  assert.deepEqual([...result.amounts],[5,5]);
+});
+
+test('removing an input hauler returns carried materials to the production building', () => {
+  const result=runGameScenario(`
+    const kiln=new Building('charcoal_kiln',20,20),worker=new Resident(0,0);
+    worker.workplace=kiln;worker.state='DELIVERING_PRODUCTION_INPUT';worker.productionInputTarget=kiln;worker.productionInputType='wood';worker.carrying={type:'wood',amount:5};
+    kiln.assignedWorkers=1;kiln.inputHaulers.add(worker);worker.productionInputReservedAmount=5;G.buildings=[kiln];G.residents=[worker];
+    removeResident(worker);
+    globalThis.__result={loaded:kiln.productionInputs.wood,locks:kiln.inputHaulers.size,workers:kiln.assignedWorkers,residents:G.residents.length};
+  `);
+  assert.deepEqual({...result},{loaded:5,locks:0,workers:0,residents:0});
 });
 
 test('a zero town hall resource capacity hides the resource from availability and storage', () => {
@@ -1226,6 +1403,24 @@ test('building panel unlock rules preview one town hall level and hide extra req
   assert.equal(result.complete.unlocked, true);
 });
 
+test('next town hall buildings share one catalogue unlock section', () => {
+  const result=runGameScenario(`
+    BLD_DEFS.floor.unlock=1;
+    BLD_DEFS.farm.unlock=2;
+    BLD_DEFS.arrow_tower.unlock=3;
+    BLD_DEFS.wood_storage.unlock=2;
+    BLD_DEFS.wood_storage.unlockTreesChopped=10;
+    globalThis.__result={
+      levelOne:{floor:buildingPanelSectionKey('floor',1),farm:buildingPanelSectionKey('farm',1),storage:buildingPanelSectionKey('wood_storage',1),tower:buildingPanelSectionKey('arrow_tower',1)},
+      levelTwo:{farm:buildingPanelSectionKey('farm',2),storage:buildingPanelSectionKey('wood_storage',2),tower:buildingPanelSectionKey('arrow_tower',2)},
+      hasSection:${html.includes('id="next-tier-building-section"')}
+    };
+  `);
+  assert.deepEqual({...result.levelOne},{floor:'facility',farm:'next-tier',storage:'next-tier',tower:'defense'});
+  assert.deepEqual({...result.levelTwo},{farm:'production',storage:'storage',tower:'next-tier'});
+  assert.equal(result.hasSection,true);
+});
+
 test('debug unlock all also satisfies extra building unlock requirements', () => {
   const result = runGameScenario(`
     globalThis.updateBuildingPanel=()=>{};
@@ -1251,6 +1446,38 @@ test('debug population controls keep residents and guards separate', () => {
   `);
   assert.equal(result.workers, 0);
   assert.equal(result.guards, 1);
+});
+
+test('guards wake beside their assigned town hall or barracks', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',30,30),barracks=new Building('barracks',36,30);
+    const guard=new Resident(900,900);guard.isGuard=true;guard.state='GUARD_SLEEPING';guard.hidden=true;
+    G.townHall=hall;G.buildings=[hall,barracks];G.residents=[guard];assignHome(guard,barracks);
+    G.phase='day';G.dayTime=CFG.DAY_DURATION;updateDayNight(0.01);
+    const center=barracks.center(),distance=Math.hypot(guard.x-center.x,guard.y-center.y);
+    globalThis.__result={phase:G.phase,state:guard.state,visible:!guard.hidden,home:guard.home.type,distance,maxDistance:barracks.collisionRadius()+RESIDENT_RADIUS*5};
+  `);
+  assert.equal(result.phase,'dusk');
+  assert.equal(result.state,'GUARD_FIND_TOWER');
+  assert.equal(result.visible,true);
+  assert.equal(result.home,'barracks');
+  assert.ok(result.distance<=result.maxDistance);
+});
+
+test('guards walk home after night and hide only after arriving', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',30,30),barracks=new Building('barracks',36,30),center=barracks.center();
+    const guard=new Resident(center.x+180,center.y);guard.isGuard=true;guard.state='GUARD_FIGHTING';guard.hidden=false;
+    G.townHall=hall;G.buildings=[hall,barracks];G.residents=[guard];assignHome(guard,barracks);
+    G.phase='night';G.dayTime=CFG.NIGHT_DURATION;updateDayNight(0.01);
+    const afterNight={phase:G.phase,state:guard.state,visible:!guard.hidden,distance:Math.hypot(guard.x-center.x,guard.y-center.y)};
+    for(let step=0;step<80&&!guard.hidden;step++){updateResidents(0.1);processNavigationRequests();}
+    globalThis.__result={afterNight,final:{state:guard.state,hidden:guard.hidden,distance:Math.hypot(guard.x-center.x,guard.y-center.y)},arrival:barracks.collisionRadius()+RESIDENT_RADIUS+3};
+  `);
+  assert.deepEqual({...result.afterNight},{phase:'dawn',state:'GUARD_GOING_HOME',visible:true,distance:180});
+  assert.equal(result.final.state,'GUARD_SLEEPING');
+  assert.equal(result.final.hidden,true);
+  assert.ok(result.final.distance<=result.arrival);
 });
 
 test('a guard can enter manual mode and receive a move target', () => {
@@ -1768,14 +1995,44 @@ test('an engineer repairs a damaged building during the day', () => {
   assert.equal(result.state, 'REPAIRING');
 });
 
+test('an engineer resumes automatic repairs after night ends', () => {
+  const result=runGameScenario(`
+    const farm=new Building('farm',10,10);farm.hp=farm.maxHp-30;
+    const engineer=new Resident(0,0);engineer.isEngineer=true;engineer.buildTarget=farm;engineer.state='REPAIRING';farm.assignedEngineer=engineer;
+    G.buildings=[farm];G.residents=[engineer];G.phase='day';G.dayTime=CFG.DAY_DURATION;
+    updateDayNight(0.01);
+    const releasedAtDusk=!farm.assignedEngineer&&!engineer.buildTarget;
+    G.phase='night';G.dayTime=CFG.NIGHT_DURATION;updateDayNight(0.01);
+    G.dayTime=CFG.TRANSITION;updateDayNight(0.01);
+    updateResidents(0.01);
+    const assignedAfterDawn=farm.assignedEngineer===engineer&&engineer.buildTarget===farm&&engineer.state==='GOING_TO_REPAIR';
+    const center=farm.center();engineer.x=center.x;engineer.y=center.y;
+    updateResidents(0.01);const before=farm.hp;updateResidents(1);
+    globalThis.__result={releasedAtDusk,assignedAfterDawn,state:engineer.state,hpGain:farm.hp-before};
+  `);
+  assert.equal(result.releasedAtDusk,true);
+  assert.equal(result.assignedAfterDawn,true);
+  assert.equal(result.state,'REPAIRING');
+  assert.equal(result.hpGain,12);
+});
+
 test('resource costs render recognizable icon markup instead of resource text labels', () => {
   const result = runGameScenario(`
-    globalThis.__result={cost:formatResourceCost({food:5,wood:10,stone:3})};
+    globalThis.__result={
+      cost:formatResourceCost({food:5,wood:10,stone:3}),
+      woodShort:resourceCostIsInsufficient('wood',10,{wood:9}),
+      woodEnough:resourceCostIsInsufficient('wood',10,{wood:10}),
+      stoneShort:resourceCostIsInsufficient('stone',3,{wood:99,stone:2})
+    };
   `);
   assert.match(result.cost, /resource-mark food/);
   assert.match(result.cost, /resource-mark wood/);
   assert.match(result.cost, /resource-mark stone/);
+  assert.match(result.cost, /data-resource="wood" data-amount="10"/);
   assert.doesNotMatch(result.cost.replace(/<[^>]*>/g,''), /食物|木材|石材/);
+  assert.equal(result.woodShort,true);
+  assert.equal(result.woodEnough,false);
+  assert.equal(result.stoneShort,true);
 });
 
 test('fruit planting command shows its configured wood cost with the resource icon', () => {
@@ -2005,4 +2262,128 @@ test('infinite resources refill withdrawn materials in the town hall', () => {
   assert.equal(result.afterRefill,9999);
   assert.equal(result.total,9999);
   assert.equal(result.free,0);
+});
+
+test('dusk releases production input reservations before workers go home', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',10,10),kiln=new Building('charcoal_kiln',20,10),worker=new Resident(0,0);
+    worker.home=hall;worker.workplace=kiln;worker.state='GOING_TO_PRODUCTION_INPUT';
+    worker.productionInputTarget=kiln;worker.productionInputType='wood';worker.productionInputReservedAmount=5;kiln.inputHaulers.add(worker);
+    G.townHall=hall;G.buildings=[hall,kiln];G.residents=[worker];G.phase='day';G.dayTime=CFG.DAY_DURATION;
+    updateDayNight(0.01);
+    globalThis.__result={phase:G.phase,state:worker.state,target:worker.productionInputTarget,reserved:worker.productionInputReservedAmount,locked:kiln.inputHaulers.has(worker)};
+  `);
+  assert.equal(result.phase,'dusk');
+  assert.equal(result.state,'GOING_HOME');
+  assert.equal(result.target,null);
+  assert.equal(result.reserved,0);
+  assert.equal(result.locked,false);
+});
+
+test('unfinished and ruined housing cannot be assigned as a home', () => {
+  const result=runGameScenario(`
+    const blueprint=new Building('house',10,10),building=new Building('house',20,10),ruin=new Building('house',30,10),complete=new Building('house',40,10);
+    blueprint.blueprint=true;building.constructionTimer=5;ruin.ruin=true;ruin.hp=0;
+    G.buildings=[blueprint,building,ruin,complete];
+    globalThis.__result=findNearestHome({x:0,y:0},false)?.col;
+  `);
+  assert.equal(result,40);
+});
+
+test('recruitment pauses at population capacity without consuming its queue', () => {
+  const result=runGameScenario(`
+    const nursery=new Building('nursery',20,10),first=new Resident(0,0),second=new Resident(0,0);
+    G.buildings=[nursery];G.residents=[first,second];G.maxPop=2;G.phase='day';
+    assignResidentToWorkplace(first,nursery);assignResidentToWorkplace(second,nursery);first.state='WORKING';second.state='WORKING';
+    nursery.recruitQueue=1;nursery.recruitProgress=0.4;updateBuildings(BLD_DEFS.nursery.recruitTime*2);
+    globalThis.__result={queue:nursery.recruitQueue,progress:nursery.recruitProgress,pop:residentCount(false),assigned:nursery.assignedWorkers};
+  `);
+  assert.deepEqual({...result},{queue:1,progress:0.4,pop:2,assigned:2});
+});
+
+test('destroying a recruitment building clears its pending population reservation', () => {
+  const result=runGameScenario(`
+    const nursery=new Building('nursery',20,10);nursery.recruitQueue=2;nursery.recruitProgress=0.7;
+    G.buildings=[nursery];G.residents=[];nursery.hp=0;turnBuildingIntoRuin(nursery);
+    globalThis.__result={ruin:nursery.ruin,queue:nursery.recruitQueue,progress:nursery.recruitProgress,queued:queuedRecruitCount('resident')};
+  `);
+  assert.deepEqual({...result},{ruin:true,queue:0,progress:0,queued:0});
+});
+
+test('an enemy stops damaging a building that moved out of attack range', () => {
+  const result=runGameScenario(`
+    const hall=new Building('town_hall',10,10),farm=new Building('farm',20,10),enemy=new Enemy(farm.center().x,farm.center().y);
+    G.townHall=hall;G.buildings=[hall,farm];G.enemies=[enemy];G.residents=[];G.enemySpawnQueue=[];
+    enemy.attacking=farm;enemy.attackTimer=0.49;farm.x+=1000;farm.col+=25;const hp=farm.hp;
+    updateEnemies(0.1);
+    globalThis.__result={hp:farm.hp,original:hp,stillAttacking:enemy.attacking===farm};
+  `);
+  assert.equal(result.hp,result.original);
+  assert.equal(result.stillAttacking,false);
+});
+
+test('production output can be deposited across multiple matching warehouses', () => {
+  const result=runGameScenario(`
+    const farm=new Building('farm',10,10),first=new Building('food_storage',20,10),second=new Building('food_storage',30,10),worker=new Resident(0,0);
+    first.stored.food=storageCapacity(first,'food')-2;second.stored.food=storageCapacity(second,'food')-3;
+    worker.carrying={type:'food',amount:5};worker.carryingFrom=farm;worker.state='HAULING';farm.outputHauler=worker;
+    G.buildings=[farm,first,second];G.residents=[worker];G.phase='day';
+    let center=first.center();worker.x=center.x;worker.y=center.y;updateResidents(0.01);
+    const afterFirst=worker.carrying?.amount;
+    center=second.center();worker.x=center.x;worker.y=center.y;updateResidents(0.01);
+    globalThis.__result={afterFirst,first:first.stored.food,second:second.stored.food,carrying:worker.carrying,lock:farm.outputHauler};
+  `);
+  assert.equal(result.afterFirst,3);
+  assert.equal(result.carrying,null);
+  assert.equal(result.lock,null);
+});
+
+test('ruin salvage drops overflow on the ground instead of deleting it', () => {
+  const result=runGameScenario(`
+    const farm=new Building('farm',20,20);G.buildings=[farm];G.groundItems=[];
+    addRuinSalvage(farm);
+    globalThis.__result={amount:G.groundItems.reduce((sum,item)=>sum+item.amount,0),expected:ruinSalvage(farm).wood,type:G.groundItems[0]?.type};
+  `);
+  assert.equal(result.amount,result.expected);
+  assert.equal(result.type,'wood');
+});
+
+test('navigation debug excludes enemies that are hidden by fog', () => {
+  const result=runGameScenario(`
+    const visible=new Enemy(CFG.CELL*2,CFG.CELL*2),hidden=new Enemy(CFG.CELL*8,CFG.CELL*8);
+    G.enemies=[visible,hidden];G.residents=[];G.phase='night';initFog();G.fogVisible[fogIndex(2,2)]=1;
+    const units=navigationDebugUnits();globalThis.__result={visible:units.includes(visible),hidden:units.includes(hidden)};
+  `);
+  assert.deepEqual({...result},{visible:true,hidden:false});
+});
+
+test('deeply malformed save references do not partially replace the running world', () => {
+  const result=runGameScenario(`
+    const current=new Building('town_hall',10,10);G.buildings=[current];G.townHall=current;G.residents=[];G.resourceNodes=[];G.enemies=[];G.animals=[];G.groundItems=[];G.floorMask=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);
+    const state=serializeGameState();state.buildings[0].refs.inputHaulers={bad:true};
+    let failed=false;try{restoreGameState(state);}catch(_){failed=true;}
+    globalThis.__result={failed,sameBuilding:G.buildings[0]===current,sameHall:G.townHall===current};
+  `);
+  assert.deepEqual({...result},{failed:true,sameBuilding:true,sameHall:true});
+});
+
+test('floor masks use compact round-trip encoding while old saves remain readable', () => {
+  const result=runGameScenario(`
+    const size=CFG.WORLD_COLS*CFG.WORLD_ROWS,mask=new Uint8Array(size);mask[42]=1;mask[43]=1;
+    const encoded=encodeFloorMask(mask),decoded=decodeFloorMask({floorMaskRle:encoded},size),legacy=decodeFloorMask({floorMask:Array.from(mask)},size);
+    globalThis.__result={runs:encoded.length,raw:size,decoded:decoded[42]+decoded[43],legacy:legacy[42]+legacy[43]};
+  `);
+  assert.ok(result.runs<result.raw);
+  assert.equal(result.decoded,2);
+  assert.equal(result.legacy,2);
+});
+
+test('resource node saves omit derived defaults and restore their world position', () => {
+  const result=runGameScenario(`
+    const node={type:'tree',col:12,row:14,x:gridX(12)+CFG.CELL/2,y:gridY(14)+CFG.CELL/2,hp:1,alive:true,marked:false,ownerForester:null,claimedBy:null};
+    G.buildings=[];G.residents=[];G.enemies=[];G.animals=[];G.groundItems=[];G.resourceNodes=[node];G.floorMask=new Uint8Array(CFG.WORLD_COLS*CFG.WORLD_ROWS);
+    const saved=serializeGameState(),record=saved.resourceNodes[0];restoreGameState(saved);
+    globalThis.__result={hasX:'x' in record.fields,hasAlive:'alive' in record.fields,hasHp:'hp' in record.fields,hasRefs:'refs' in record,x:G.resourceNodes[0].x,y:G.resourceNodes[0].y,alive:G.resourceNodes[0].alive,hp:G.resourceNodes[0].hp};
+  `);
+  assert.deepEqual({...result},{hasX:false,hasAlive:false,hasHp:false,hasRefs:false,x:500,y:580,alive:true,hp:1});
 });
