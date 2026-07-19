@@ -4,7 +4,9 @@ function spawnEnemyWave() {
   G.enemySpawnTimer = 0;
   G.enemySpawnQueue = [];
   if (!candidates.length) return;
-  const count = CFG.ENEMY_WAVE_BASE_COUNT + G.day * CFG.ENEMY_WAVE_PER_DAY;
+  const bloodMoon=isBloodMoonDay(G.day);
+  const baseCount=CFG.ENEMY_WAVE_BASE_COUNT+G.day*CFG.ENEMY_WAVE_PER_DAY;
+  const count=Math.max(0,Math.ceil(baseCount*(bloodMoon?CFG.BLOOD_MOON_COUNT_MULTIPLIER:1)));
   const waves=clamp(1+Math.floor((G.day-1)/CFG.ENEMY_WAVE_DAY_STEP),1,CFG.ENEMY_WAVE_MAX);
   let remaining=count;
   for(let wave=0;wave<waves;wave++) {
@@ -17,18 +19,19 @@ function spawnEnemyWave() {
       const point=pickFogSpawnCandidate(candidates,reserved);
       if (!point) continue;
       reserved.push(point);
-      G.enemySpawnQueue.push({delay:waveStart+clamp(slot,0,1)*CFG.ENEMY_WAVE_DURATION,x:point.x,y:point.y,wave,type:pickEnemyType(G.day)});
+      G.enemySpawnQueue.push({delay:waveStart+clamp(slot,0,1)*CFG.ENEMY_WAVE_DURATION,x:point.x,y:point.y,wave,type:pickEnemyType(G.day,bloodMoon),bloodMoon});
     }
   }
 }
 
-function pickEnemyType(day) {
-  const eligible=Object.entries(ENEMY_DEFS).filter(([type, def])=>type==='normal'||day>=def.unlockDay);
-  const total=eligible.reduce((sum,[,def])=>sum+Math.max(0,def.spawnWeight||0),0);
+function pickEnemyType(day,bloodMoon=false) {
+  const unlockKey=bloodMoon?'bloodMoonUnlockDay':'unlockDay',weightKey=bloodMoon?'bloodMoonSpawnWeight':'spawnWeight';
+  const eligible=Object.entries(ENEMY_DEFS).filter(([,def])=>day>=Math.max(1,Number(def[unlockKey]??def.unlockDay)||1));
+  const total=eligible.reduce((sum,[,def])=>sum+Math.max(0,Number(def[weightKey]??def.spawnWeight)||0),0);
   if (total<=0) return 'normal';
   let roll=Math.random()*total;
   for (const [type, def] of eligible) {
-    roll-=Math.max(0,def.spawnWeight||0);
+    roll-=Math.max(0,Number(def[weightKey]??def.spawnWeight)||0);
     if (roll<=0) return type;
   }
   return eligible[eligible.length-1][0];
@@ -65,7 +68,7 @@ function pickFogSpawnCandidate(candidates,reserved) {
 
 function spawnEnemy(entry) {
   if (!entry || isWorldVisible(entry.x,entry.y)) return false;
-  G.enemies.push(new Enemy(entry.x,entry.y,entry.type));
+  G.enemies.push(new Enemy(entry.x,entry.y,entry.type,{bloodMoon:entry.bloodMoon}));
   return true;
 }
 
@@ -139,6 +142,7 @@ function updateEnemyGuardCombat(e, dt) {
     e.attackTimer = 0;
     guard.guardHP -= e.damage;
     spawnParticles(e.x, e.y, '#ff4444', 2);
+    playGameSound('damage',guard.x,guard.y);
     if (guard.guardHP <= 0) {
       guard.guardHP=0;
       guard.controlMode='auto'; guard.manualTarget=null; guard.manualTargetEnemy=null;
@@ -167,6 +171,7 @@ function updateEnemies(dt) {
         e.attackTimer = 0;
         e.attacking.hp -= buildingDamageTaken(e.attacking, e.damage);
         spawnParticles(e.x,e.y,'#ff4444',3);
+        const center=e.attacking.center();playGameSound('damage',center.x,center.y);
         if (e.attacking.hp <= 0) { e.attacking.hp = 0; e.attacking = null; }
       }
     } else {
@@ -277,6 +282,7 @@ function guardAttackEnemy(r, enemy, dt) {
   enemy.hp-=CFG.GUARD_DAMAGE;
   enemyAggroGuard(enemy,r);
   spawnParticles(enemy.x,enemy.y,'#ffaa00',2);
+  playGameSound('impact',enemy.x,enemy.y);
   if (enemy.hp<=0) {
     enemy.alive=false;
     spawnParticles(enemy.x,enemy.y,'#ff6600',5);
@@ -423,17 +429,16 @@ function guardUpdateAI(r, dt) {
   const th = G.townHall; if (!th) return;
   if (r.controlMode==='manual') { updateManualGuard(r,dt); return; }
   const thCenter = th.center();
-  const cycleLen = CFG.DAY_DURATION + CFG.NIGHT_DURATION + CFG.TRANSITION * 2;
-  const twoGameHours = cycleLen * 2 / 24;
+  const twoGameHours = gameDayDuration() * 2 / CLOCK_HOURS;
 
   switch (r.state) {
     case 'GUARD_GOING_HOME': {
       const home=ensureGuardHome(r);
       if(!home) { r.state='GUARD_SLEEPING';r.hidden=true;break; }
-      const center=home.center();r.targetX=center.x;r.targetY=center.y;
-      if(Math.hypot(r.x-center.x,r.y-center.y)<home.collisionRadius()+RESIDENT_RADIUS+3) {
+      setBuildingInteractionTarget(r,home);
+      if(residentReachedBuilding(r,home)) {
         clearNavigation(r);r.state='GUARD_SLEEPING';r.hidden=true;r.guardHP=r.guardMaxHP;
-      } else moveViaFlow(r,center.x,center.y,CFG.GUARD_SPEED,dt);
+      } else moveViaFlow(r,r.targetX,r.targetY,CFG.GUARD_SPEED,dt);
       break;
     }
     case 'GUARD_FIND_TOWER': {
@@ -515,11 +520,11 @@ function guardUpdateAI(r, dt) {
     }
     case 'GUARD_RETURNING': {
       // Return to town hall
-      const dx = thCenter.x - r.x, dy = thCenter.y - r.y, dd = Math.hypot(dx, dy) || 1;
-      if (Math.hypot(r.x - thCenter.x, r.y - thCenter.y) < th.collisionRadius() + RESIDENT_RADIUS + 3) {
+      setBuildingInteractionTarget(r,th);
+      if (residentReachedBuilding(r,th)) {
         r.state = 'GUARD_HEALING'; r.guardHealTimer = twoGameHours; r.hidden = true;
       } else {
-        moveViaFlow(r, thCenter.x, thCenter.y, CFG.GUARD_SPEED, dt);
+        moveViaFlow(r, r.targetX, r.targetY, CFG.GUARD_SPEED, dt);
       }
       break;
     }

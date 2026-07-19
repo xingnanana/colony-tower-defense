@@ -20,17 +20,19 @@ function updateTopBar() {
   for (const r of G.residents) {
     if (!r.home && !r.isGuard) homeless++;
     if (r.isGuard) guardTotal++;
-    if (r.isEngineer) {
+    if (r.isEngineer||r.pendingEngineer) {
       engTotal++;
-      if (r.state==='GATHERING'||r.state==='BUILDING'||r.state==='GOING_TO_REPAIR'||r.state==='REPAIRING') engActive++;
-    } else if ((r.state==='IDLE'||r.state==='PATROL') && !r.workplace) hasIdle=true;
+      if (r.isEngineer&&(r.state==='GATHERING'||r.state==='BUILDING'||r.state==='CONSTRUCTING'||r.state==='GOING_TO_REPAIR'||r.state==='REPAIRING')) engActive++;
+    }
   }
+  hasIdle=getAssignableResidents().length>0;
   document.getElementById('eng-plus').style.display = hasIdle ? '' : 'none';
   document.getElementById('eng-minus').style.display = engTotal > 0 ? '' : 'none';
   document.getElementById('r-eng').textContent = engActive+'/'+engTotal;
   document.getElementById('r-guard-top').textContent = `${guardTotal}/${G.maxGuards}`;
   document.getElementById('r-pop').textContent = `${residentCount(false)}/${G.maxPop}` + (homeless>0?` !${homeless}`:'');
-  document.getElementById('r-time').textContent = G.phase==='day'?`第 ${G.day} 天`:G.phase==='night'?`第 ${G.day} 夜`:`第 ${G.day} 天 · 过渡`;
+  const bloodMoon=isBloodMoonDay(G.day),nightLabel=bloodMoon?`第 ${G.day} 夜 · 血月`:`第 ${G.day} 夜`;
+  document.getElementById('r-time').textContent = G.phase==='day'?`第 ${G.day} 天`:G.phase==='night'?nightLabel:`第 ${G.day} 天 · 过渡${bloodMoon?' · 血月':''}`;
   const dayIcon=document.getElementById('day-icon');
   dayIcon.className='resource-mark '+(G.phase==='day'?'day':'day '+G.phase);
 }
@@ -51,8 +53,27 @@ function showContextMenu(building, mx, my) {
     contextMenu.style.top=Math.min(my,cr.bottom-220)+'px';
     return;
   }
+  if(b.blueprint) {
+    const totalCost=Object.values(b.constructCost||{}).reduce((sum,value)=>sum+value,0);
+    const delivered=Object.values(b.constructDelivered||{}).reduce((sum,value)=>sum+value,0);
+    let h=`<div class="info-line">蓝图 · ${def.name}</div>`;
+    h+=`<div class="info-line" style="font-size:10px">材料: ${Math.floor(delivered)}/${totalCost}</div>`;
+    h+=`<button onclick="actionMove()">移动</button>`;
+    h+=`<button onclick="actionDemolish()" style="color:#f66">删除</button>`;
+    contextMenu.innerHTML=h;
+    contextMenu.style.display='flex';
+    const cr=canvas.getBoundingClientRect();
+    contextMenu.style.left=Math.min(mx,cr.right-150)+'px';
+    contextMenu.style.top=Math.min(my,cr.bottom-220)+'px';
+    return;
+  }
   let h=`<div class="info-line">${def.icon} ${def.name} Lv.${b.level}</div>`;
   h+=`<div class="info-line" style="font-size:10px">HP: ${Math.ceil(b.hp)}/${b.maxHp}</div>`;
+  if(b.upgrading) {
+    const total=Object.values(b.constructCost||{}).reduce((sum,value)=>sum+value,0);
+    const delivered=Object.values(b.constructDelivered||{}).reduce((sum,value)=>sum+value,0);
+    h+=`<div class="info-line" style="font-size:10px;color:#e5c66c">${b.constructionTimer>0?'升级施工中':`升级材料: ${Math.floor(delivered)}/${total}`}</div>`;
+  }
   if (b.type==='house') h+=`<div class="info-line" style="font-size:10px">村民床位: ${b.residentCount}/${houseCapacity(b)}</div>`;
   if (b.type==='barracks') h+=`<div class="info-line" style="font-size:10px">守卫床位: ${b.guardResidentCount||0}/${guardCapacity(b)}</div>`;
   if(def.maxWorkers>0 && !b.blueprint) h+=`<div class="info-line" style="font-size:10px">工人: ${b.assignedWorkers}/${def.maxWorkers}</div>`;
@@ -73,14 +94,14 @@ function showContextMenu(building, mx, my) {
     const capText = `建筑等级上限 → Lv.${nextLv}`;
     const unlockText = unlocks.length ? '解锁: '+unlocks.join(' ') : '';
     h+=`<div class="info-line" style="font-size:10px;color:#ffd700;">⬆ 升级后: ${capText}${unlockText?' | '+unlockText:''}</div>`;
-    h+=`<button onclick="actionUpgrade()"${capped?' disabled':''}>升级 Lv.${b.level}→${nextLv} ${costStr}${b.upgrading?' (升级中...)':''}${capped?' [已达上限]':''}</button>`;
+    h+=`<button onclick="actionUpgrade()"${capped||b.upgrading?' disabled':''}>升级 Lv.${b.level}→${nextLv} ${costStr}${b.upgrading?' [进行中]':''}${capped?' [已达上限]':''}</button>`;
   } else {
     const maxLv = maxBuildingLevel(b.type);
     const capped = b.level >= maxLv;
     const nextUpgradeSummary=!capped ? buildingUpgradeSummary(b,true) : null;
     if (nextUpgradeSummary) h+=`<div class="info-line" style="font-size:10px;color:#e5c66c">升级后: ${nextUpgradeSummary}</div>`;
     const upgradeCost=!capped ? formatResourceCost(upgradeCostForLevel(b.type,b.level+1)) : '';
-    h+=`<button onclick="actionUpgrade()"${capped?' disabled':''}>升级 ${upgradeCost}${b.upgrading?' (升级中...)':''}${capped?` [需大本营Lv.${b.level+1}]`:''}</button>`;
+    h+=`<button onclick="actionUpgrade()"${capped||b.upgrading?' disabled':''}>升级 ${upgradeCost}${b.upgrading?' [进行中]':''}${capped?` [需大本营Lv.${b.level+1}]`:''}</button>`;
     if (def.recruits && !b.blueprint) {
       const full=availableRecruitSlots(def.recruits)<=0;
       const isGuard=def.recruits==='guard';
@@ -90,7 +111,7 @@ function showContextMenu(building, mx, my) {
         ? ` | ${activeRecruitWorkers>=def.maxWorkers?'生产中':`等待工人 ${activeRecruitWorkers}/${def.maxWorkers}`}`:'';
       h+=`<div class="info-line" style="font-size:10px">${label}队列: ${b.recruitQueue}${recruitState}</div>`;
       h+=`<button onclick="${isGuard?'actionRecruitGuard()':'actionRecruit()'}"${full?' disabled':''}>${label} ${formatResourceCost(def.recruitCost)}${b.recruitQueue>0?` (${b.recruitQueue})`:''}${full?isGuard?' [守卫已满]':' [村民已满]':''}</button>`;
-      if(b.type==='nursery') h+=`<button onclick="actionCancelRecruit()"${b.recruitQueue>0?'':' disabled'}>取消招募${b.recruitQueue>0?` (${b.recruitQueue})`:' [空]'}</button>`;
+      if(b.type==='nursery') h+=`<button onclick="actionCancelRecruit()"${b.recruitQueue>0?'':' disabled'}>取消招募 +${formatResourceCost(def.recruitCost)}${b.recruitQueue>0?` (${b.recruitQueue})`:' [空]'}</button>`;
     }
     if (b.type==='arrow_tower' && !b.blueprint) {
       const assignedGuard = b.assignedGuard;
@@ -118,17 +139,12 @@ function showContextMenu(building, mx, my) {
 function hideContextMenu() { contextMenu.style.display='none'; }
 
 function actionUpgrade() {
-  const b=G.selectedBuilding; if(!b||b.ruin||b.upgrading) return;
-  const maxLv = maxBuildingLevel(b.type);
-  if (b.level >= maxLv) return;
-  const cost=upgradeCostForLevel(b.type,b.level+1);
-  if(!canAfford(cost)) return;
-  payCost(cost); b.upgrading=true; b.upgradeProgress=0; hideContextMenu();
+  if(startBuildingUpgrade(G.selectedBuilding)) hideContextMenu();
 }
 function actionAddWorker() {
   const b=G.selectedBuilding; if(!b) return;
   if(b.assignedWorkers>=buildingRuntimeDef(b).maxWorkers) return;
-  const candidates=b.type==='nursery'?getIdleResidents():getAssignableResidents(); if(candidates.length===0) return;
+  const candidates=getAssignableResidents(); if(candidates.length===0) return;
   if(!assignResidentToWorkplace(candidates[0],b)) return;
   // Refresh menu to show updated count
   const menu=document.getElementById('context-menu');
@@ -137,8 +153,13 @@ function actionAddWorker() {
 function actionRemoveWorker() {
   const b=G.selectedBuilding; if(!b||b.assignedWorkers<=0) return;
   const workers=G.residents.filter(r=>r.workplace===b&&!r.isGuard);
-  const w=workers.find(r=>r.state==='GOING_TO_WORK'||r.state==='WORKING')||workers[0];
-  if(w){if (b.outputHauler===w) b.outputHauler=null;releaseProductionInputTask(w);w.workplace=null;w.finishCurrentChopForWork=false;w.chopTarget=null;w.state=w.carrying?'HAULING':'IDLE';}
+  const w=workers.find(residentHasFiniteIndependentTask)||workers.find(r=>r.state==='GOING_TO_WORK')||workers.find(r=>r.state==='WORKING')||workers[0];
+  if(w){
+    const finishingTask=residentHasFiniteIndependentTask(w);
+    if (b.outputHauler===w) b.outputHauler=null;
+    releaseProductionInputTask(w);w.workplace=null;w.finishCurrentChopForWork=false;
+    if(!finishingTask) w.state=w.carrying?'HAULING':'IDLE';
+  }
   b.assignedWorkers=Math.max(0,b.assignedWorkers-1);
   const menu=document.getElementById('context-menu');
   showContextMenu(b, parseInt(menu.style.left), parseInt(menu.style.top));

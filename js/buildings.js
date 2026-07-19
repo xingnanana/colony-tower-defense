@@ -75,30 +75,32 @@ function updateBuildings(dt) {
     if (b.constructionTimer > 0) {
       const center=b.center();
       const activeEngineers=G.residents.filter(r=>r.isEngineer&&r.buildTarget===b&&r.state==='CONSTRUCTING'&&
-        Math.hypot(r.x-center.x,r.y-center.y)<b.collisionRadius()+RESIDENT_RADIUS+5);
+        Math.hypot(r.x-center.x,r.y-center.y)<buildingInteractionRange(b));
       if (activeEngineers.length>0) {
-        b.constructionTimer -= dt*activeEngineers.length;
+        b.constructionTimer -= dt*activeEngineers.reduce((sum,engineer)=>sum+residentHungerMultiplier(engineer),0);
         if (b.constructionTimer <= 0) {
-          b.constructionTimer = 0; b.hp = b.maxHp; b.assignedEngineer = null;
-          if (b.type==='house') G.maxPop += houseCapacity(b);
-          if (b.type==='barracks') G.maxGuards += guardCapacity(b);
-          if (b.type==='farm') refreshFarmAdjacency();
-          if (isStorage(b.type)) updateAllResourceTotals();
+          b.constructionTimer=0;b.constructionDuration=0;b.assignedEngineer=null;
+          if(b.upgrading) {
+            const oldPop=houseCapacity(b),oldGuard=guardCapacity(b);
+            b.level=Math.min(maxBuildingLevel(b.type),b.upgradeTargetLevel||b.level+1);
+            b.upgrading=false;b.upgradeTargetLevel=0;b.upgradeProgress=0;
+            b.maxHp=Math.floor(buildingLevelValue(b.type,b.level,'hp'));b.hp=b.maxHp;
+            if(b.type==='house'||b.type==='town_hall') G.maxPop+=houseCapacity(b)-oldPop;
+            if(b.type==='barracks'||b.type==='town_hall') G.maxGuards+=guardCapacity(b)-oldGuard;
+            if(b.type==='town_hall') updateBuildingPanel();
+            refreshFogVisibility();
+            if(b.type==='farm') refreshFarmAdjacency();
+            if(isStorage(b.type)) updateAllResourceTotals();
+            playGameSound('upgrade',center.x,center.y);
+          } else {
+            b.hp=b.maxHp;
+            if(b.type==='house') G.maxPop+=houseCapacity(b);
+            if(b.type==='barracks') G.maxGuards+=guardCapacity(b);
+            if(b.type==='farm') refreshFarmAdjacency();
+            if(isStorage(b.type)) updateAllResourceTotals();
+            playGameSound('complete',center.x,center.y);
+          }
         }
-      }
-    }
-    if (b.upgrading) {
-      b.upgradeProgress += dt/(buildingRuntimeDef(b).buildTime||15);
-      if (b.upgradeProgress>=1) {
-        b.upgradeProgress=0; b.upgrading=false;
-        const oldPop=houseCapacity(b), oldGuard=guardCapacity(b);
-        b.level++;
-        b.maxHp=Math.floor(buildingLevelValue(b.type,b.level,'hp'));
-        b.hp=b.maxHp;
-        if (b.type==='house'||b.type==='town_hall') G.maxPop += houseCapacity(b)-oldPop;
-        if (b.type==='barracks'||b.type==='town_hall') G.maxGuards += guardCapacity(b)-oldGuard;
-        if (b.type==='town_hall') { updateBuildingPanel(); refreshFogVisibility(); }
-        if (isStorage(b.type)) updateAllResourceTotals();
       }
     }
     // Recruitment belongs to its dedicated building, not the town hall.
@@ -109,7 +111,8 @@ function updateBuildings(dt) {
       const activeRecruitWorkers=activeWorkersByBuilding.get(b)||[];
       const hasRecruitWorkers=b.type!=='nursery'||activeRecruitWorkers.length>=recruitDef.maxWorkers;
       if(!hasRecruitWorkers) continue;
-      b.recruitProgress += dt / recruitDef.recruitTime;
+      const recruitEfficiency=b.type==='nursery' ? activeRecruitWorkers.reduce((sum,worker)=>sum+residentHungerMultiplier(worker),0)/recruitDef.maxWorkers : 1;
+      b.recruitProgress += dt / recruitDef.recruitTime*recruitEfficiency;
       if (b.recruitProgress >= 1) {
         b.recruitProgress = 0; b.recruitQueue--;
         const hc = b.center();
@@ -120,6 +123,7 @@ function updateBuildings(dt) {
           nr.hidden = (G.phase!=='night'&&G.phase!=='dusk');
         }
         G.residents.push(nr);
+        playGameSound('complete',hc.x,hc.y);
         assignHome(nr, findNearestHome(nr, nr.isGuard));
         if(isGuard&&(G.phase==='night'||G.phase==='dusk')) wakeGuardAtHome(nr);
         if(b.type==='nursery'&&b.recruitQueue===0) releaseNurseryWorkers(b);
@@ -129,7 +133,8 @@ function updateBuildings(dt) {
     const def = buildingRuntimeDef(b);
     if (def.cat === 'production' && b.type !== 'forester' && !b.blueprint && b.constructionTimer <= 0 && b.hp > 0) {
       const activeWorkers = activeWorkersByBuilding.get(b) || [];
-      const efficiency = def.maxWorkers > 0 ? Math.min(1, activeWorkers.length / def.maxWorkers) : 0;
+      const workforce=activeWorkers.reduce((sum,worker)=>sum+residentHungerMultiplier(worker),0);
+      const efficiency = def.maxWorkers > 0 ? Math.min(1, workforce / def.maxWorkers) : 0;
       const needsInputs=Object.values(def.inputs||{}).some(amount=>amount>0);
       if(needsInputs&&!b.productionRoundActive&&productionInputsReady(b)) b.productionRoundActive=true;
       if (efficiency > 0 && b.pendingOutput < productionBufferCapacity(b) && (!needsInputs||b.productionRoundActive)) {

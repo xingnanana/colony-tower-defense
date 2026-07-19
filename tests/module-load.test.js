@@ -31,7 +31,7 @@ function elementStub() {
 
 test('browser scripts load in declared order and initialize the game', () => {
   assert.deepEqual(scriptFiles, [
-    'js/config.js', 'js/world.js', 'js/navigation.js', 'js/tasks.js', 'js/entities.js',
+    'js/config.js', 'js/audio.js', 'js/world.js', 'js/navigation.js', 'js/tasks.js', 'js/entities.js',
     'js/save-game.js', 'js/simulation.js', 'js/combat.js', 'js/residents.js',
     'js/buildings.js', 'js/game-controls.js', 'js/developer-ui.js', 'js/render.js',
     'js/ui.js', 'js/input.js', 'js/main.js',

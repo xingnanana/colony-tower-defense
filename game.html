@@ -20,6 +20,7 @@
       <div class="debug-stepper"><button class="dbg-btn" onclick="addPop(-1)" aria-label="减少居民" title="减少居民">-</button><span>居民</span><button class="dbg-btn" onclick="addPop(1)" aria-label="增加居民" title="增加居民">+</button></div>
       <div class="debug-stepper"><button class="dbg-btn" onclick="addDebugGuard(-1)" aria-label="减少守卫" title="减少守卫">-</button><span>守卫</span><button class="dbg-btn" onclick="addDebugGuard(1)" aria-label="增加守卫" title="增加守卫">+</button></div>
       <button class="dbg-btn" onclick="skipToDay()">跳至白天</button><button class="dbg-btn" onclick="skipToNight()">跳至夜晚</button>
+      <button id="debug-lock-day-btn" class="dbg-btn" onclick="toggleDebugTimeLock('day')">永久白天</button><button id="debug-lock-night-btn" class="dbg-btn" onclick="toggleDebugTimeLock('night')">永久黑夜</button>
       <button class="dbg-btn" onclick="unlockAll()">全部解锁</button><button class="dbg-btn" onclick="upgradeTH()">升级大本营</button>
       <button class="dbg-btn full" onclick="debugRevealAllFog()">去除迷雾</button>
       <button id="debug-navigation-btn" class="dbg-btn full active" onclick="toggleDebugNavigation()">隐藏寻路</button>
@@ -162,6 +163,11 @@
       <span>右键拖动判定距离</span>
       <label style="display:flex;align-items:center;gap:8px;"><input id="settings-camera-drag" type="range" min="4" max="32" step="1" oninput="setCameraDragThreshold(this.value)"><span id="settings-camera-drag-value" style="width:34px;color:#e5c66c;"></span></label>
     </div>
+    <div class="section-label" style="margin:10px 0 6px;">声音设置</div>
+    <div style="display:grid;grid-template-columns:1fr 160px;align-items:center;gap:10px;padding:6px 0;border-bottom:1px solid #344038;">
+      <span>启用音效</span><label style="display:flex;justify-content:flex-end;"><input id="settings-sound-enabled" type="checkbox" onchange="setSoundEnabled(this.checked)"></label>
+      <span>音效音量</span><label style="display:flex;align-items:center;gap:8px;"><input id="settings-sound-volume" type="range" min="0" max="100" step="1" oninput="setSoundVolume(this.value)"><span id="settings-sound-volume-value" style="width:34px;color:#e5c66c;"></span></label>
+    </div>
     <div id="settings-shortcuts" style="display:flex;flex-direction:column;gap:6px;"></div>
     <div style="display:flex;justify-content:flex-end;margin-top:12px;">
       <button onclick="resetShortcuts()" style="background:#4c5960;color:#fff;border:none;padding:7px 12px;cursor:pointer;font:inherit;">恢复默认</button>
@@ -182,6 +188,7 @@
 
 
 <script src="js/config.js"></script>
+<script src="js/audio.js"></script>
 <script src="js/world.js"></script>
 <script src="js/navigation.js"></script>
 <script src="js/tasks.js"></script>

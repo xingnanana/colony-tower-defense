@@ -1,25 +1,34 @@
 {
-  "version": 1,
-  "savedAt": "2026-07-19T07:28:59.971Z",
+  "version": 2,
+  "savedAt": "2026-07-19T16:04:33.917Z",
   "globals": {
-    "DAY_DURATION": 160,
-    "NIGHT_DURATION": 80,
-    "MEAL_TIME_LUNCH": 12,
-    "MEAL_TIME_DINNER": 18,
+    "DAY_LENGTH": 300,
+    "NIGHT_START_HOUR": 0,
+    "NIGHT_END_HOUR": 2.5,
+    "BLOOD_MOON_INTERVAL_DAYS": 5,
+    "NIGHT_GROWTH_HOURS": 0.5,
+    "NIGHT_MAX_HOURS": 5.5,
+    "MEAL_TIME_LUNCH": 5.5,
+    "MEAL_TIME_DINNER": 8.5,
+    "HUNGER_LEVEL_ONE_MULTIPLIER": 0.75,
+    "HUNGER_LEVEL_TWO_MULTIPLIER": 0.5,
+    "HUNGER_DEATH_MISSED_MEALS": 3,
     "RESIDENT_SPEED": 60,
+    "TREE_CHOP_TIME": 10,
+    "TREE_WOOD_YIELD": 5,
     "FRUIT_TREE_WOOD_COST": 5,
     "FRUIT_TREE_PLANT_TIME": 5,
     "FRUIT_TREE_GROW_TIME_MIN": 50,
     "FRUIT_TREE_GROW_TIME_MAX": 80,
     "FRUIT_TREE_FOOD_MIN": 1,
-    "FRUIT_TREE_FOOD_MAX": 3,
+    "FRUIT_TREE_FOOD_MAX": 1,
     "ANIMAL_INITIAL_COUNT": 2,
     "ANIMAL_MAX_COUNT": 5,
-    "ANIMAL_RESPAWN_INTERVAL": 35,
-    "ANIMAL_FOOD_MIN": 1,
-    "ANIMAL_FOOD_MAX": 4,
+    "ANIMAL_RESPAWN_INTERVAL": 70,
+    "ANIMAL_FOOD_MIN": 2,
+    "ANIMAL_FOOD_MAX": 5,
     "ANIMAL_SPEED": 42,
-    "ANIMAL_HP": 10,
+    "ANIMAL_HP": 20,
     "NAV_STUCK_WINDOW": 2,
     "NAV_STUCK_MIN_DISTANCE": 10,
     "GUARD_MAX_HP": 80,
@@ -35,6 +44,10 @@
     "ENEMY_WAVE_INTERVAL": 10,
     "ENEMY_SPAWN_JITTER": 0.35,
     "ENEMY_SPAWN_FOG_DEPTH": 2,
+    "BLOOD_MOON_COUNT_MULTIPLIER": 1.75,
+    "BLOOD_MOON_HP_MULTIPLIER": 1.5,
+    "BLOOD_MOON_DAMAGE_MULTIPLIER": 1.35,
+    "BLOOD_MOON_SPEED_MULTIPLIER": 1.1,
     "TREE_INITIAL_COUNT": 3000,
     "STONE_CLUSTER_COUNT": 25,
     "IRON_CLUSTER_COUNT": 15,
@@ -46,7 +59,7 @@
     "TREE_CLUSTER_MAX": 50,
     "TREE_WILD_MIN_COUNT": 2000,
     "TREE_WILD_MAX_COUNT": 5000,
-    "WILD_TREE_SPAWN_INTERVAL_MIN": 12,
+    "WILD_TREE_SPAWN_INTERVAL_MIN": 1,
     "WILD_TREE_SPAWN_INTERVAL_MAX": 28,
     "WILD_TREE_GROW_TIME_MIN": 40,
     "WILD_TREE_GROW_TIME_MAX": 80,
@@ -56,9 +69,7 @@
     "IRON_CLUSTER_MAX": 4,
     "IRON_RARE_CLUSTER_CHANCE": 0.04,
     "START_POP": 3,
-    "START_ENGINEERS": 1,
-    "MAX_POP_BASE": 4,
-    "MAX_GUARD_BASE": 2
+    "START_ENGINEERS": 1
   },
   "enemies": {
     "normal": {
@@ -69,6 +80,8 @@
       "size": 10,
       "unlockDay": 1,
       "spawnWeight": 1,
+      "bloodMoonUnlockDay": 1,
+      "bloodMoonSpawnWeight": 0.7,
       "color": "#ff6633"
     },
     "fast": {
@@ -79,6 +92,8 @@
       "size": 7,
       "unlockDay": 3,
       "spawnWeight": 0.5,
+      "bloodMoonUnlockDay": 5,
+      "bloodMoonSpawnWeight": 1.2,
       "color": "#c978df"
     },
     "breaker": {
@@ -89,6 +104,8 @@
       "size": 14,
       "unlockDay": 6,
       "spawnWeight": 0.28,
+      "bloodMoonUnlockDay": 5,
+      "bloodMoonSpawnWeight": 1,
       "color": "#a94c38"
     }
   },
@@ -120,15 +137,36 @@
         2
       ],
       "cost": {
-        "wood": 10,
-        "stone": 5
+        "wood": 20
       },
       "hp": 200,
       "maxWorkers": 0,
-      "popBonus": 4,
+      "popBonus": 2,
       "unlock": 3,
       "buildTime": 5,
-      "maxLevel": 5
+      "maxLevel": 5,
+      "levels": {
+        "3": {
+          "unlock": 2,
+          "hp": 338,
+          "buildTime": 5,
+          "popBonus": 6,
+          "upgradeCost": {
+            "wood": 20,
+            "stone": 10
+          }
+        },
+        "4": {
+          "unlock": 2,
+          "hp": 439,
+          "buildTime": 5,
+          "popBonus": 8,
+          "upgradeCost": {
+            "wood": 30,
+            "stone": 15
+          }
+        }
+      }
     },
     "nursery": {
       "name": "产房",
@@ -139,7 +177,7 @@
         2
       ],
       "cost": {
-        "wood": 40
+        "wood": 20
       },
       "hp": 150,
       "maxWorkers": 2,
@@ -148,7 +186,7 @@
       "recruitCost": {
         "food": 10
       },
-      "unlock": 2,
+      "unlock": 3,
       "buildTime": 10,
       "maxLevel": 5
     },
@@ -169,7 +207,29 @@
       "guardBonus": 4,
       "unlock": 3,
       "buildTime": 5,
-      "maxLevel": 5
+      "maxLevel": 5,
+      "levels": {
+        "3": {
+          "unlock": 3,
+          "hp": 338,
+          "buildTime": 5,
+          "guardBonus": 8,
+          "upgradeCost": {
+            "wood": 20,
+            "stone": 10
+          }
+        },
+        "4": {
+          "unlock": 3,
+          "hp": 439,
+          "buildTime": 5,
+          "guardBonus": 10,
+          "upgradeCost": {
+            "wood": 30,
+            "stone": 15
+          }
+        }
+      }
     },
     "training_ground": {
       "name": "练兵房",
@@ -180,8 +240,7 @@
         2
       ],
       "cost": {
-        "wood": 15,
-        "stone": 10
+        "wood": 15
       },
       "hp": 160,
       "maxWorkers": 0,
@@ -190,7 +249,7 @@
       "recruitCost": {
         "food": 20
       },
-      "unlock": 2,
+      "unlock": 3,
       "buildTime": 5,
       "maxLevel": 5
     },
@@ -203,18 +262,65 @@
         2
       ],
       "cost": {
-        "wood": 5
+        "wood": 50
       },
       "hp": 100,
       "maxWorkers": 2,
       "produces": "food",
-      "baseTime": 35,
+      "baseTime": 10,
       "batchSize": 5,
       "levelSpeedBonus": 0.2,
-      "levelBufferBonus": 2,
-      "unlock": 4,
+      "levelBufferBonus": 0,
+      "unlock": 5,
       "buildTime": 2,
-      "maxLevel": 5
+      "maxLevel": 5,
+      "levels": {
+        "2": {
+          "unlock": 4,
+          "hp": 130,
+          "buildTime": 2,
+          "maxWorkers": 3,
+          "baseTime": 35,
+          "batchSize": 5,
+          "levelSpeedBonus": 0.2,
+          "levelBufferBonus": 0,
+          "produces": "food",
+          "upgradeCost": {
+            "wood": 10,
+            "stone": 5
+          }
+        },
+        "3": {
+          "unlock": 4,
+          "hp": 169,
+          "buildTime": 2,
+          "maxWorkers": 3,
+          "baseTime": 35,
+          "batchSize": 5,
+          "levelSpeedBonus": 0.2,
+          "levelBufferBonus": 0,
+          "produces": "food",
+          "upgradeCost": {
+            "wood": 20,
+            "stone": 10
+          }
+        },
+        "4": {
+          "unlock": 4,
+          "hp": 219,
+          "buildTime": 2,
+          "maxWorkers": 2,
+          "baseTime": 10,
+          "batchSize": 5,
+          "levelSpeedBonus": 0.2,
+          "levelBufferBonus": 0,
+          "produces": "food",
+          "upgradeCost": {
+            "wood": 30,
+            "stone": 15
+          }
+        }
+      }
     },
     "forester": {
       "name": "护林员小屋",
@@ -225,8 +331,7 @@
         2
       ],
       "cost": {
-        "wood": 15,
-        "stone": 10
+        "wood": 50
       },
       "hp": 150,
       "maxWorkers": 3,
@@ -235,10 +340,9 @@
       "batchSize": 5,
       "levelSpeedBonus": 0.2,
       "levelBufferBonus": 2,
-      "chopTime": 3,
       "saplingGrowTime": 5,
       "growJitter": 0.2,
-      "unlock": 6,
+      "unlock": 2,
       "buildTime": 5,
       "foresterRadius": 4,
       "maxLevel": 5
@@ -252,8 +356,7 @@
         2
       ],
       "cost": {
-        "wood": 10,
-        "stone": 5
+        "wood": 100
       },
       "hp": 120,
       "maxWorkers": 3,
@@ -264,7 +367,7 @@
       "batchSize": 5,
       "levelSpeedBonus": 0.2,
       "levelBufferBonus": 2,
-      "unlock": 5,
+      "unlock": 4,
       "buildTime": 8,
       "maxLevel": 5
     },
@@ -289,7 +392,7 @@
       "batchSize": 5,
       "levelSpeedBonus": 0.2,
       "levelBufferBonus": 2,
-      "unlock": 7,
+      "unlock": 6,
       "buildTime": 11,
       "maxLevel": 5
     },
@@ -317,7 +420,27 @@
       "levelBufferBonus": 2,
       "unlock": 6,
       "buildTime": 10,
-      "maxLevel": 5
+      "maxLevel": 5,
+      "levels": {
+        "5": {
+          "unlock": 6,
+          "hp": 342,
+          "buildTime": 10,
+          "maxWorkers": 2,
+          "baseTime": 8,
+          "batchSize": 5,
+          "levelSpeedBonus": 0.2,
+          "levelBufferBonus": 2,
+          "inputs": {
+            "wood": 2
+          },
+          "produces": "charcoal",
+          "upgradeCost": {
+            "wood": 40,
+            "stone": 20
+          }
+        }
+      }
     },
     "smelter": {
       "name": "炼铁机",
@@ -342,7 +465,7 @@
       "batchSize": 5,
       "levelSpeedBonus": 0.2,
       "levelBufferBonus": 2,
-      "unlock": 7,
+      "unlock": 6,
       "buildTime": 11,
       "maxLevel": 5
     },
@@ -355,13 +478,12 @@
         2
       ],
       "cost": {
-        "wood": 10,
-        "stone": 5
+        "wood": 10
       },
       "hp": 150,
       "maxWorkers": 0,
-      "capacity": 50,
-      "levelCapacityBonus": 25,
+      "capacity": 10,
+      "levelCapacityBonus": 20,
       "unlock": 2,
       "buildTime": 5,
       "maxLevel": 5
@@ -379,12 +501,37 @@
       },
       "hp": 100,
       "maxWorkers": 0,
-      "capacity": 10,
+      "capacity": 20,
       "levelCapacityBonus": 20,
       "unlock": 1,
       "unlockTreesChopped": 0,
       "buildTime": 5,
-      "maxLevel": 5
+      "maxLevel": 5,
+      "levels": {
+        "2": {
+          "unlock": 1,
+          "hp": 130,
+          "buildTime": 5,
+          "capacity": 40,
+          "levelCapacityBonus": 20,
+          "unlockTreesChopped": 0,
+          "upgradeCost": {
+            "wood": 25
+          }
+        },
+        "3": {
+          "unlock": 1,
+          "hp": 169,
+          "buildTime": 5,
+          "capacity": 100,
+          "levelCapacityBonus": 40,
+          "unlockTreesChopped": 0,
+          "upgradeCost": {
+            "wood": 20,
+            "stone": 10
+          }
+        }
+      }
     },
     "stone_storage": {
       "name": "石材仓库",
@@ -395,14 +542,14 @@
         2
       ],
       "cost": {
-        "wood": 10,
+        "wood": 50,
         "stone": 5
       },
       "hp": 150,
       "maxWorkers": 0,
       "capacity": 50,
       "levelCapacityBonus": 25,
-      "unlock": 5,
+      "unlock": 4,
       "buildTime": 8,
       "maxLevel": 5
     },
@@ -422,7 +569,7 @@
       "maxWorkers": 0,
       "capacity": 50,
       "levelCapacityBonus": 25,
-      "unlock": 7,
+      "unlock": 6,
       "buildTime": 11,
       "maxLevel": 5
     },
@@ -462,7 +609,7 @@
       "maxWorkers": 0,
       "capacity": 50,
       "levelCapacityBonus": 25,
-      "unlock": 7,
+      "unlock": 6,
       "buildTime": 11,
       "maxLevel": 5
     },
@@ -475,7 +622,8 @@
         1
       ],
       "cost": {
-        "wood": 20
+        "wood": 50,
+        "stone": 20
       },
       "hp": 120,
       "maxWorkers": 0,
@@ -507,7 +655,7 @@
       "damage": 18,
       "cooldown": 0.7,
       "levelRangeBonus": 20,
-      "unlock": 8,
+      "unlock": 7,
       "buildTime": 14,
       "maxLevel": 5
     },
@@ -544,13 +692,15 @@
       "cost": {},
       "hp": 500,
       "maxWorkers": 0,
+      "popBonus": 3,
+      "guardBonus": 1,
       "capacity": 200,
       "vision": 13,
-      "range": 180,
+      "range": 200,
       "damage": 12,
       "cooldown": 1,
       "startResources": {
-        "food": 5,
+        "food": 6,
         "wood": 5,
         "stone": 0,
         "iron": 0,
@@ -567,9 +717,11 @@
       },
       "unlock": 1,
       "buildTime": 2,
-      "maxLevel": 10,
+      "maxLevel": 7,
       "levels": {
         "2": {
+          "popBonus": 3,
+          "guardBonus": 1,
           "hp": 650,
           "vision": 15,
           "startResources": {
@@ -581,25 +733,7 @@
             "ingot": 0
           },
           "storageCaps": {
-            "food": 20,
-            "wood": 25,
-            "stone": 0,
-            "iron": 0,
-            "charcoal": 0,
-            "ingot": 0
-          },
-          "upgradeCost": {
-            "wood": 30
-          },
-          "range": 180,
-          "damage": 12,
-          "cooldown": 1
-        },
-        "3": {
-          "hp": 845,
-          "vision": 13,
-          "storageCaps": {
-            "food": 20,
+            "food": 15,
             "wood": 20,
             "stone": 0,
             "iron": 0,
@@ -608,9 +742,54 @@
           },
           "upgradeCost": {
             "wood": 50
+          },
+          "range": 180,
+          "damage": 12,
+          "cooldown": 1
+        },
+        "3": {
+          "popBonus": 5,
+          "guardBonus": 2,
+          "hp": 845,
+          "vision": 13,
+          "storageCaps": {
+            "food": 20,
+            "wood": 30,
+            "stone": 0,
+            "iron": 0,
+            "charcoal": 0,
+            "ingot": 0
+          },
+          "upgradeCost": {
+            "wood": 300
+          },
+          "range": 180,
+          "damage": 12,
+          "cooldown": 1
+        },
+        "4": {
+          "popBonus": 7,
+          "guardBonus": 3,
+          "hp": 1098,
+          "vision": 13,
+          "range": 180,
+          "damage": 12,
+          "cooldown": 1,
+          "storageCaps": {
+            "food": 10,
+            "wood": 10,
+            "stone": 0,
+            "iron": 0,
+            "charcoal": 0,
+            "ingot": 0
+          },
+          "upgradeCost": {
+            "wood": 1000
           }
         },
         "5": {
+          "popBonus": 10,
+          "guardBonus": 5,
           "hp": 1428,
           "vision": 13,
           "storageCaps": {
@@ -622,11 +801,16 @@
             "ingot": 0
           },
           "upgradeCost": {
-            "wood": 500,
-            "stone": 200
-          }
+            "wood": 2000,
+            "stone": 100
+          },
+          "range": 180,
+          "damage": 12,
+          "cooldown": 1
         },
         "6": {
+          "popBonus": 15,
+          "guardBonus": 10,
           "storageCaps": {
             "food": 20,
             "wood": 20,
@@ -636,11 +820,18 @@
             "ingot": 0
           },
           "upgradeCost": {
-            "wood": 500,
-            "stone": 200
-          }
+            "wood": 3000,
+            "stone": 1000
+          },
+          "hp": 1856,
+          "vision": 13,
+          "range": 180,
+          "damage": 12,
+          "cooldown": 1
         },
         "7": {
+          "popBonus": 30,
+          "guardBonus": 30,
           "storageCaps": {
             "food": 25,
             "wood": 25,
@@ -650,11 +841,19 @@
             "ingot": 10
           },
           "upgradeCost": {
-            "wood": 600,
-            "stone": 300
-          }
+            "wood": 3000,
+            "stone": 1000,
+            "iron": 100
+          },
+          "hp": 2413,
+          "vision": 13,
+          "range": 180,
+          "damage": 12,
+          "cooldown": 1
         },
         "8": {
+          "popBonus": 31,
+          "guardBonus": 1,
           "storageCaps": {
             "food": 30,
             "wood": 30,
@@ -669,6 +868,8 @@
           }
         },
         "9": {
+          "popBonus": 35,
+          "guardBonus": 1,
           "storageCaps": {
             "food": 35,
             "wood": 35,
@@ -683,6 +884,8 @@
           }
         },
         "10": {
+          "popBonus": 39,
+          "guardBonus": 1,
           "storageCaps": {
             "food": 40,
             "wood": 40,
@@ -711,7 +914,7 @@
       },
       "hp": 50,
       "maxWorkers": 0,
-      "unlock": 3,
+      "unlock": 4,
       "buildTime": 1,
       "vision": 8,
       "levelVisionBonus": 3,
@@ -726,12 +929,12 @@
         1
       ],
       "cost": {
-        "stone": 5
+        "wood": 5
       },
       "hp": 250,
       "maxWorkers": 0,
       "levelDamageReduction": 0.15,
-      "unlock": 4,
+      "unlock": 5,
       "buildTime": 8,
       "maxLevel": 5
     }

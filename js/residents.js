@@ -18,6 +18,7 @@ function updateResidents(dt) {
       guardUpdateAI(r, dt);
       continue;
     }
+    activatePendingEngineer(r);
 
     // Priority 1: scheduled meal
     if (r.mealPending && r.state!=='GOING_TO_EAT' && r.state!=='EATING') {
@@ -29,10 +30,11 @@ function updateResidents(dt) {
         beginEating(r);
       }
     }
+    if(r.starved) continue;
 
     // Priority 2: return home after work at dusk or night.
     if ((G.phase==='dusk'||G.phase==='night') && r.state!=='GOING_HOME' && r.state!=='SLEEPING'
-        && r.state!=='GOING_TO_EAT' && r.state!=='EATING' && !r.finishBeforeEating) {
+        && r.state!=='GOING_TO_EAT' && r.state!=='EATING' && !r.finishBeforeEating && !r.pendingEngineer) {
       const home = r.home || findNearestHome(r, r.isGuard);
       if (home) {
         releaseGroundPickup(r);
@@ -45,45 +47,54 @@ function updateResidents(dt) {
       }
     }
 
+    const canRecoverGroundItem=(G.phase==='day'||G.phase==='dawn')&&!r.isEngineer&&!r.carrying&&!r.mealPending&&
+      (r.state==='IDLE'||r.state==='PATROL'||r.state==='GOING_TO_WORK'||r.state==='WORKING');
+    if(canRecoverGroundItem) claimNearestGroundItem(r);
+
     // Execute state
     switch (r.state) {
       case 'GOING_TO_EAT': {
         // Recalculate target each frame
         const storage = findNearestStorage(r, 'food', {requireAmount:1});
         if (!storage) { r.state='EATING'; r.eatTimer=0.5; break; }
-        const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
-        if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='EATING'; r.eatTimer=1.5; }
+        setBuildingInteractionTarget(r,storage);
+        if (residentReachedBuilding(r,storage)) { r.state='EATING'; r.eatTimer=1.5; }
         else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
       case 'EATING':
         if ((r.eatTimer-=dt)<=0) {
-          const storage = findNearestStorage(r, 'food', {requireAmount:1});
-          if (storage && withdrawFromStorage(storage, 'food', 1) === 1) r.mealPending=false;
+          const mealCost=residentMealCost(r);
+          const consumed=withdrawFromAnyStorage('food',Math.min(mealCost,G.resources.food||0));
+          if (consumed>0) completeResidentMeal(r,consumed);
+          else recordMissedMeal(r);
           r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
             : r.carrying?'HAULING' : r.workplace?'GOING_TO_WORK':'IDLE';
         }
         break;
       case 'GOING_HOME': {
         const home = r.home || findNearestHome(r, r.isGuard);
-        if (home) { const hc=home.center(); r.targetX=hc.x; r.targetY=hc.y; }
-        const dx=r.targetX-r.x, dy=r.targetY-r.y, dd=Math.hypot(dx,dy)||1;
-        if (home && Math.hypot(r.x-home.center().x, r.y-home.center().y) < home.collisionRadius() + RESIDENT_RADIUS + 2) { r.state='SLEEPING'; r.hidden=true; }
+        if (home) setBuildingInteractionTarget(r,home);
+        if (home && residentReachedBuilding(r,home)) { clearNavigation(r);r.state='SLEEPING'; r.hidden=true; }
         else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
       case 'GOING_TO_WORK': {
         if (!r.workplace||r.workplace.hp<=0) { r.state='IDLE'; r.workplace=null; break; }
-        const wc=r.workplace.center();
-        const dx=wc.x-r.x, dy=wc.y-r.y, dd=Math.hypot(dx,dy)||1;
-        r.targetX=wc.x; r.targetY=wc.y;
-        if (Math.hypot(r.x-wc.x, r.y-wc.y) < workplaceWorkRange(r.workplace)) { r.state='WORKING'; r.prodTimer=0; }
-        else { moveViaFlow(r, wc.x, wc.y, CFG.RESIDENT_SPEED, dt); }
+        const wc=workplaceInteriorPoint(r,r.workplace);
+        const travelPoint=workplaceTravelPoint(r,r.workplace);
+        r.targetX=travelPoint.x;r.targetY=travelPoint.y;
+        const arrived=Math.hypot(r.x-wc.x,r.y-wc.y)<6;
+        if (arrived) { r.state='WORKING'; r.prodTimer=0; }
+        else { moveViaFlow(r,travelPoint.x,travelPoint.y,CFG.RESIDENT_SPEED,dt); }
         break;
       }
       case 'WORKING': {
         if (!r.workplace||r.workplace.hp<=0) { r.state='IDLE'; r.workplace=null; break; }
         const b=r.workplace, def=BLD_DEFS[b.type];
+        const workPoint=workplaceInteriorPoint(r,b);
+        r.targetX=workPoint.x;r.targetY=workPoint.y;
+        if(Math.hypot(r.x-workPoint.x,r.y-workPoint.y)>4) moveViaFlow(r,workPoint.x,workPoint.y,CFG.RESIDENT_SPEED*0.5,dt);
         if (b.type==='forester') {
           if (r.carrying && r.carrying.amount >= productionBufferCapacity(b)) { r.state='HAULING'; break; }
           const tree=findForesterTree(r,b);
@@ -98,15 +109,14 @@ function updateResidents(dt) {
         const batchCapacity=productionBufferCapacity(b);
         if (b.pendingOutput >= batchCapacity && !b.outputHauler) {
           const batch = batchCapacity;
-          if(totalStorageFreeSpace(def.produces)<batch) break;
           const storage = findNearestStorage(r, def.produces, {requireSpace:1});
-          if (!storage) break;
           b.pendingOutput -= batch;
           b.outputHauler = r;
           r.state = 'HAULING';
           r.carrying = { type:def.produces, amount:batch };
           r.carryingFrom = b;
-          const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
+          if(storage) { const sc=storage.center();r.targetX=sc.x;r.targetY=sc.y; }
+          else { r.targetX=r.x;r.targetY=r.y; }
           break;
         }
         if (def.inputs && !b.productionRoundActive && b.pendingOutput < batchCapacity) {
@@ -139,8 +149,8 @@ function updateResidents(dt) {
         }
         const storage=findNearestStorage(r,inputType,{requireAmount:1});
         if(!storage) { releaseProductionInputTask(r);r.state='GOING_TO_WORK';break; }
-        const sc=storage.center();r.targetX=sc.x;r.targetY=sc.y;
-        if(Math.hypot(r.x-sc.x,r.y-sc.y)<storage.collisionRadius()+RESIDENT_RADIUS+2) {
+        setBuildingInteractionTarget(r,storage);
+        if(residentReachedBuilding(r,storage)) {
           const amount=withdrawFromStorage(storage,inputType,need);
           if(amount<=0) { releaseProductionInputTask(r);r.state='GOING_TO_WORK';break; }
           r.productionInputReservedAmount=amount;
@@ -154,37 +164,36 @@ function updateResidents(dt) {
         if(!b||b.hp<=0||b.ruin||r.workplace!==b||!r.carrying) {
           releaseProductionInputTask(r);r.state=r.carrying?'HAULING':(r.workplace?'GOING_TO_WORK':'IDLE');break;
         }
-        const bc=b.center();r.targetX=bc.x;r.targetY=bc.y;
-        if(Math.hypot(r.x-bc.x,r.y-bc.y)<workplaceWorkRange(b)) {
+        const bc=workplaceInteriorPoint(r,b),travelPoint=workplaceTravelPoint(r,b);r.targetX=travelPoint.x;r.targetY=travelPoint.y;
+        if(Math.hypot(r.x-bc.x,r.y-bc.y)<6) {
           b.productionInputs[r.carrying.type]=productionInputAmount(b,r.carrying.type)+r.carrying.amount;
           r.carrying=null;
           releaseProductionInputTask(r);
           if(productionInputsReady(b)) b.productionRoundActive=true;
           if(!eatAfterFinishingTask(r)) r.state='WORKING';
-        } else moveViaFlow(r,bc.x,bc.y,CFG.RESIDENT_SPEED,dt);
+        } else moveViaFlow(r,travelPoint.x,travelPoint.y,CFG.RESIDENT_SPEED,dt);
         break;
       }
       case 'HAULING': {
         if (!r.carrying) {
           r.carryingFrom=null;r.dropCarryingWhenBlocked=false;
           if(nextQueuedCarry(r)) break;
-          r.state='IDLE';break;
+          finishHaulingTask(r);break;
         }
         const storage = findNearestStorage(r, r.carrying.type, {requireSpace:1});
         if (!storage) {
-          if(r.dropCarryingWhenBlocked) {
-            dropGroundItem(r);
-            r.state='IDLE';
-          }
+          dropGroundItem(r);
+          if(!nextQueuedCarry(r)) finishHaulingTask(r);
           break;
         }
-        const sc=storage.center(); r.targetX=sc.x; r.targetY=sc.y;
-        if (Math.hypot(r.x-sc.x, r.y-sc.y) < storage.collisionRadius() + RESIDENT_RADIUS + 2) {
+        setBuildingInteractionTarget(r,storage);
+        if (residentReachedBuilding(r,storage)) {
           const deposited = depositToStorage(storage, r.carrying.type, r.carrying.amount);
           r.carrying.amount -= deposited;
           if (r.carrying.amount > 0) {
-            if(r.dropCarryingWhenBlocked&&totalStorageFreeSpace(r.carrying.type)<1) {
-              dropGroundItem(r);r.state='IDLE';
+            if(totalStorageFreeSpace(r.carrying.type)<1) {
+              dropGroundItem(r);
+              if(!nextQueuedCarry(r)) finishHaulingTask(r);
             }
             break;
           }
@@ -194,11 +203,7 @@ function updateResidents(dt) {
           r.carryingFrom=null;
           r.dropCarryingWhenBlocked=false;
           if(nextQueuedCarry(r)) break;
-          r.finishCurrentChopForWork=false;
-          if (!eatAfterFinishingTask(r)) {
-            r.state = (G.phase==='night'||G.phase==='dusk') ? 'IDLE'
-              : r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
-          }
+          finishHaulingTask(r);
         } else { moveViaFlow(r, r.targetX, r.targetY, CFG.RESIDENT_SPEED, dt); }
         break;
       }
@@ -217,34 +222,26 @@ function updateResidents(dt) {
           r.chopTarget=null;r.finishCurrentChopForWork=false;
           r.state=r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';break;
         }
-        r.chopTimer += dt;
+        r.chopTimer += dt*residentHungerMultiplier(r);
         const shakeBeat=Math.floor(r.chopTimer/0.55);
         if (shakeBeat !== r.chopShakeBeat) {
           r.chopShakeBeat=shakeBeat;
           r.chopTarget.shakeUntil=G.totalTime+0.12;
+          playGameSound('chop',r.chopTarget.x,r.chopTarget.y);
         }
         const forester=!r.finishCurrentChopForWork&&r.workplace&&r.workplace.type==='forester' ? r.workplace : {type:'forester',level:1};
-        const chopTime=buildingRuntimeDef(forester).chopTime/productionSpeedMultiplier(forester);
+        const chopTime=Math.max(0.1,Number(CFG.TREE_CHOP_TIME)||3)/productionSpeedMultiplier(forester);
         if (r.chopTimer >= chopTime) {
-          const carried = r.carrying ? r.carrying.amount : 0;
           const carryCapacity=productionBufferCapacity(r.finishCurrentChopForWork?{level:1}:(r.workplace||{level:1}));
           const harvestedNode=r.chopTarget;
-          const woodSpaceNeeded=Math.max(1,carryCapacity-carried);
-          const s2=totalStorageFreeSpace('wood')>=woodSpaceNeeded?findNearestStorage(r,'wood',{requireSpace:1}):null;
-          const foodStorage=harvestedNode.type==='fruit_tree'&&totalStorageFreeSpace('food')>=CFG.FRUIT_TREE_FOOD_MAX
-            ? findNearestStorage(r,'food',{requireSpace:1}) : null;
-          if (!s2||(harvestedNode.type==='fruit_tree'&&!foodStorage)) {
-            r.chopTarget=null; r.chopTimer=0;
-            r.finishCurrentChopForWork=false;
-            r.state=r.workplace?'GOING_TO_WORK':'IDLE';
-            break;
-          }
           r.chopTarget.alive = false; r.chopTarget.marked = false; invalidateResourceCellIndex();
           G.treesChopped++;
           G.buildingPanelDirty=true;
           spawnParticles(r.chopTarget.x, r.chopTarget.y, '#8B4513', 5);
-          if (!r.carrying) r.carrying = { type: 'wood', amount: 1 };
-          else r.carrying.amount++;
+          playGameSound('tree_fall',r.chopTarget.x,r.chopTarget.y);
+          const woodYield=Math.max(1,Math.floor(CFG.TREE_WOOD_YIELD||1));
+          if (!r.carrying) r.carrying = { type: 'wood', amount: woodYield };
+          else r.carrying.amount+=woodYield;
           if(harvestedNode.type==='fruit_tree') {
             const foodAmount=Math.floor(CFG.FRUIT_TREE_FOOD_MIN+Math.random()*(CFG.FRUIT_TREE_FOOD_MAX-CFG.FRUIT_TREE_FOOD_MIN+1));
             r.carryQueue.push({type:'food',amount:foodAmount});
@@ -252,7 +249,11 @@ function updateResidents(dt) {
           r.chopTarget = null;
           const nextTree = r.finishCurrentChopForWork ? null : findForesterTree(r, r.workplace);
           r.state = !r.finishBeforeEating && nextTree && r.carrying.amount < carryCapacity ? 'WORKING' : 'HAULING';
-          if (r.state === 'HAULING') { const sc = s2.center(); r.targetX = sc.x; r.targetY = sc.y; }
+          if (r.state === 'HAULING') {
+            const storage=findNearestStorage(r,'wood',{requireSpace:1});
+            if(storage) { const sc=storage.center();r.targetX=sc.x;r.targetY=sc.y; }
+            else { r.targetX=r.x;r.targetY=r.y; }
+          }
         }
         break;
       }
@@ -271,12 +272,12 @@ function updateResidents(dt) {
         if(!item||!item.alive||item.claimedBy!==r||!isWorldVisible(item.x,item.y)||availableGroundPickupSpace(item.type)<1) {
           releaseGroundPickup(r);r.state='IDLE';break;
         }
-        r.targetX=item.x;r.targetY=item.y;
-        if(Math.hypot(r.x-item.x,r.y-item.y)<RESIDENT_RADIUS+8) {
+        const access=groundItemInteractionPoint(r,item);r.targetX=access.x;r.targetY=access.y;
+        if(residentReachedGroundItem(r,item,access)) {
           const takeAmount=Math.min(item.amount,availableGroundPickupSpace(item.type));
           r.carrying={type:item.type,amount:takeAmount};r.dropCarryingWhenBlocked=true;
           item.amount-=takeAmount;item.alive=item.amount>0;item.claimedBy=null;r.pickupTarget=null;r.state='HAULING';
-        } else moveViaFlow(r,item.x,item.y,CFG.RESIDENT_SPEED,dt);
+        } else moveViaFlow(r,access.x,access.y,CFG.RESIDENT_SPEED,dt);
         break;
       }
       case 'GOING_TO_PLANT_MATERIAL': {
@@ -288,13 +289,13 @@ function updateResidents(dt) {
         if(need<=0) { r.state='GOING_TO_PLANT';break; }
         const storage=findNearestStorage(r,'wood',{requireAmount:1});
         if(!storage) { releaseFruitPlanting(r);r.state='PATROL';break; }
-        const center=storage.center();r.targetX=center.x;r.targetY=center.y;
-        if(Math.hypot(r.x-center.x,r.y-center.y)<storage.collisionRadius()+RESIDENT_RADIUS+3) {
+        setBuildingInteractionTarget(r,storage);
+        if(residentReachedBuilding(r,storage)) {
           const amount=Math.min(5,need,storedAmount(storage,'wood'));
           if(amount<=0) { releaseFruitPlanting(r);r.state='PATROL';break; }
           r.carrying={type:'wood',amount};r.carryingForPlanting=true;r.dropCarryingWhenBlocked=true;
           withdrawFromStorage(storage,'wood',amount);r.state='DELIVERING_PLANT_MATERIAL';
-        } else moveViaFlow(r,center.x,center.y,CFG.RESIDENT_SPEED,dt);
+        } else moveViaFlow(r,r.targetX,r.targetY,CFG.RESIDENT_SPEED,dt);
         break;
       }
       case 'DELIVERING_PLANT_MATERIAL': {
@@ -327,7 +328,7 @@ function updateResidents(dt) {
           releaseFruitPlanting(r);r.state='IDLE';break;
         }
         if(fruitPlantingWoodNeed(node)>0) { r.state='GOING_TO_PLANT_MATERIAL';break; }
-        node.plantProgress=(node.plantProgress||0)+dt;r.plantTimer=node.plantProgress;
+        node.plantProgress=(node.plantProgress||0)+dt*residentHungerMultiplier(r);r.plantTimer=node.plantProgress;
         if(node.plantProgress>=CFG.FRUIT_TREE_PLANT_TIME) {
           completeFruitPlanting(node);r.plantTarget=null;r.plantTimer=0;
           if(!eatAfterFinishingTask(r)) r.state='IDLE';
@@ -342,7 +343,7 @@ function updateResidents(dt) {
         r.targetX=animal.x;r.targetY=animal.y;
         const distance=Math.hypot(r.x-animal.x,r.y-animal.y);
         if(distance>RESIDENT_RADIUS+animal.size+9) { r.state='GOING_TO_HUNT';break; }
-        r.huntAttackTimer-=dt;
+        r.huntAttackTimer-=dt*residentHungerMultiplier(r);
         if(r.huntAttackTimer<=0) {
           r.huntAttackTimer=0.7;animal.hp--;
           spawnParticles(animal.x,animal.y,'#b98962',2);
@@ -360,8 +361,8 @@ function updateResidents(dt) {
         if (!need) { if(r.buildTarget.constructionTimer>0){r.state='CONSTRUCTING';}else{if(r.buildTarget.assignedEngineer===r)r.buildTarget.assignedEngineer=null;r.buildTarget=null;if(!eatAfterFinishingTask(r))r.state=(r.workplace&&r.workplace.hp>0)?'GOING_TO_WORK':'IDLE';} break; }
         const gs = findNearestStorage(r, need.type, {requireAmount:1});
         if (!gs) { if(r.buildTarget.assignedEngineer===r)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state='PATROL'; break; }
-        const gsc = gs.center(); r.targetX = gsc.x; r.targetY = gsc.y;
-        if (Math.hypot(r.x-gsc.x, r.y-gsc.y) < gs.collisionRadius() + RESIDENT_RADIUS + 3) {
+        setBuildingInteractionTarget(r,gs);
+        if (residentReachedBuilding(r,gs)) {
           const take = Math.min(5, need.amount, storedAmount(gs, need.type));
           if (take <= 0) break;
           if (!r.carrying) r.carrying = { type: need.type, amount: 0 };
@@ -374,8 +375,8 @@ function updateResidents(dt) {
       }
       case 'BUILDING': {
         if (!r.buildTarget || r.buildTarget.hp <= 0) { if(r.buildTarget?.assignedEngineer===r)r.buildTarget.assignedEngineer=null; r.buildTarget=null; r.state=r.carrying?'HAULING':'IDLE'; break; }
-        const bc = r.buildTarget.center(); r.targetX = bc.x; r.targetY = bc.y;
-        if (Math.hypot(r.x-bc.x, r.y-bc.y) < r.buildTarget.collisionRadius() + RESIDENT_RADIUS + 3) {
+        const bc=r.buildTarget.center(),access=buildingInteractionPoint(r,r.buildTarget);r.targetX=access.x;r.targetY=access.y;
+        if (Math.hypot(r.x-bc.x, r.y-bc.y) < buildingInteractionRange(r.buildTarget)) {
           if (r.carrying && r.carrying.amount > 0) {
             const t = r.carrying.type;
             r.buildTarget.constructDelivered[t] = (r.buildTarget.constructDelivered[t]||0) + r.carrying.amount;
@@ -385,9 +386,7 @@ function updateResidents(dt) {
               if ((r.buildTarget.constructDelivered[k]||0) < v) { done = false; break; }
             }
             if (done) {
-              r.buildTarget.blueprint = false;
-              r.buildTarget.constructCost = null; r.buildTarget.constructDelivered = null;
-              r.buildTarget.constructionTimer = BLD_DEFS[r.buildTarget.type].buildTime || 2;
+              beginBuildingConstruction(r.buildTarget);
               r.state = 'CONSTRUCTING';
               break;
             }
@@ -405,12 +404,12 @@ function updateResidents(dt) {
           if(!assignEngineerBuildTask(r)) r.state='IDLE';
           break;
         }
-        const cc = r.buildTarget.center();
-        r.targetX=cc.x;r.targetY=cc.y;
-        if (Math.hypot(r.x-cc.x, r.y-cc.y) < r.buildTarget.collisionRadius() + RESIDENT_RADIUS + 5) {
+        const cc=r.buildTarget.center(),access=buildingInteractionPoint(r,r.buildTarget);
+        r.targetX=access.x;r.targetY=access.y;
+        if (Math.hypot(r.x-cc.x, r.y-cc.y) < buildingInteractionRange(r.buildTarget)) {
           // Stay near building while timer counts down
         } else {
-          moveViaFlow(r, cc.x, cc.y, CFG.RESIDENT_SPEED, dt);
+          moveViaFlow(r,access.x,access.y,CFG.RESIDENT_SPEED,dt);
         }
         break;
       }
@@ -420,9 +419,9 @@ function updateResidents(dt) {
           if(target) target.assignedEngineer=null;
           r.buildTarget=null; r.state='IDLE'; break;
         }
-        const center=target.center(); r.targetX=center.x; r.targetY=center.y;
-        if(Math.hypot(r.x-center.x,r.y-center.y)<target.collisionRadius()+RESIDENT_RADIUS+4) r.state='REPAIRING';
-        else moveViaFlow(r,center.x,center.y,CFG.RESIDENT_SPEED,dt);
+        const center=target.center(),access=buildingInteractionPoint(r,target);r.targetX=access.x;r.targetY=access.y;
+        if(Math.hypot(r.x-center.x,r.y-center.y)<buildingInteractionRange(target)) r.state='REPAIRING';
+        else moveViaFlow(r,access.x,access.y,CFG.RESIDENT_SPEED,dt);
         break;
       }
       case 'REPAIRING': {
@@ -431,7 +430,7 @@ function updateResidents(dt) {
           if(target) target.assignedEngineer=null;
           r.buildTarget=null; r.state='IDLE'; break;
         }
-        target.hp=Math.min(target.maxHp,target.hp+CFG.ENGINEER_REPAIR_RATE*dt);
+        target.hp=Math.min(target.maxHp,target.hp+CFG.ENGINEER_REPAIR_RATE*dt*residentHungerMultiplier(r));
         break;
       }
       default: { // IDLE / PATROL
@@ -453,13 +452,6 @@ function updateResidents(dt) {
           if(assignEngineerBuildTask(r)) break;
         }
         if(!r.isEngineer) {
-          const groundItem=findNearestGroundItem(r);
-          if(groundItem) {
-            groundItem.claimedBy=r;r.pickupTarget=groundItem;r.state='GOING_TO_PICKUP';r.targetX=groundItem.x;r.targetY=groundItem.y;
-            break;
-          }
-        }
-        if(!r.isEngineer) {
           const planting=findNearestFruitPlanting(r);
           if(planting) {
             planting.claimedBy=r;r.plantTarget=planting;r.plantTimer=0;
@@ -467,7 +459,7 @@ function updateResidents(dt) {
             break;
           }
         }
-        if(!r.isEngineer&&findNearestStorage(r,'food',{requireSpace:1})) {
+        if(!r.isEngineer) {
           let huntTarget=null,huntDistance=Infinity;
           for(const animal of G.animals) {
             if(!animal.alive||!animal.marked||!isWorldVisible(animal.x,animal.y)||G.targetedAnimals.has(animal)) continue;
@@ -480,10 +472,10 @@ function updateResidents(dt) {
           }
         }
         // Only idle non-engineers chop trees
-        if (!r.isEngineer && findNearestStorage(r,'wood',{requireSpace:1})) {
+        if (!r.isEngineer) {
           let treeTarget = null, treeDist = Infinity;
           for (const node of G.resourceNodes) {
-            if (canResidentHandHarvest(node) && node.marked && !node.ownerForester && harvestStorageAvailable(r,node)) {
+            if (canResidentHandHarvest(node) && node.marked && !node.ownerForester) {
               // Skip trees already targeted by another villager
               if (G.targetedTrees.has(node)) continue;
               const d = Math.hypot(r.x - node.x, r.y - node.y);
@@ -510,6 +502,7 @@ function updateResidents(dt) {
     }
   }
 
+  for(const r of G.residents.filter(resident=>resident.starved)) removeResident(r);
   G.groundItems=G.groundItems.filter(item=>item.alive);
 
   // Population growth is manual via town hall recruitment

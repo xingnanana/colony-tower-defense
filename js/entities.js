@@ -15,7 +15,7 @@ class Building {
     this.productionInputs = {};
     this.inputHaulers = new Set();
     this.productionRoundActive = false;
-    this.upgradeProgress = 0; this.upgrading = false;
+    this.upgradeProgress = 0; this.upgrading = false; this.upgradeTargetLevel = 0;
     this.stored = {};
     this.attackCooldown = 0;
     this.size = def.sz;
@@ -31,6 +31,7 @@ class Building {
     this.constructDelivered = null;
     this.assignedEngineer = null;
     this.constructionTimer = 0;
+    this.constructionDuration = 0;
     this.foresterPlantCooldown = 0;
     this.repairTarget = null;
     this.ruin = false;
@@ -81,7 +82,11 @@ class Resident {
     this.eatTimer = 0; this.prodTimer = 0;
     this.hidden = false;
     this.buildTarget = null;
+    this.buildingAccessTarget = null;
+    this.buildingAccessBuilding = null;
+    this.buildingAccessRevision = -1;
     this.isEngineer = false;
+    this.pendingEngineer = false;
     this.chopTarget = null; this.chopTimer = 0; this.chopShakeBeat = -1;
     this.huntTarget = null; this.huntAttackTimer = 0;
     this.plantTarget = null; this.plantTimer = 0;
@@ -89,6 +94,9 @@ class Resident {
     this.finishCurrentChopForWork = false;
     this.finishBeforeEating = false;
     this.mealPending = false;
+    this.missedMeals = 0;
+    this.mealPenaltyRecorded = false;
+    this.starved = false;
     // Guard properties
     this.isGuard = false;
     this.guardHP = CFG.GUARD_MAX_HP;
@@ -121,13 +129,17 @@ class Animal {
 // ENEMY CLASS
 // ============================================================
 class Enemy {
-  constructor(x, y, type='normal') {
+  constructor(x, y, type='normal', modifiers={}) {
     const def=ENEMY_DEFS[type] || ENEMY_DEFS.normal;
     this.x = x; this.y = y;
     this.type=ENEMY_DEFS[type] ? type : 'normal';
-    this.hp = def.hp; this.maxHp = def.hp;
-    this.speed = def.speed * (0.9+Math.random()*0.2);
-    this.damage = def.damage; this.attackRange=CFG.ENEMY_ATTACK_RANGE;
+    this.bloodMoon=!!modifiers.bloodMoon;
+    const hpMultiplier=this.bloodMoon?Math.max(0,CFG.BLOOD_MOON_HP_MULTIPLIER):1;
+    const damageMultiplier=this.bloodMoon?Math.max(0,CFG.BLOOD_MOON_DAMAGE_MULTIPLIER):1;
+    const speedMultiplier=this.bloodMoon?Math.max(0,CFG.BLOOD_MOON_SPEED_MULTIPLIER):1;
+    this.hp = def.hp*hpMultiplier; this.maxHp = this.hp;
+    this.speed = def.speed*speedMultiplier*(0.9+Math.random()*0.2);
+    this.damage = def.damage*damageMultiplier; this.attackRange=CFG.ENEMY_ATTACK_RANGE;
     // 目标：大本营位置
     const th = G.townHall;
     if (th) { this.targetX = th.x+th.size[0]*CFG.CELL/2; this.targetY = th.y+th.size[1]*CFG.CELL/2; }

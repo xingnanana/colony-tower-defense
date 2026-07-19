@@ -128,7 +128,14 @@ function restoreGameState(state) {
     const type=record?.fields?.type;
     if(!BLD_DEFS[type]) throw new Error('存档包含未知建筑：'+String(type));
     const building=new Building(type,Number(record.fields.col)||0,Number(record.fields.row)||0);
-    Object.assign(building,record.fields);building.inputHaulers=new Set();return building;
+    Object.assign(building,record.fields);building.inputHaulers=new Set();
+    if(building.upgrading&&!building.upgradeTargetLevel) building.upgradeTargetLevel=Math.min(BLD_DEFS[type].maxLevel||1,building.level+1);
+    if(building.upgrading&&!building.constructCost&&building.constructionTimer<=0) {
+      building.constructionDuration=constructionWorkDuration(building);
+      building.constructionTimer=Math.max(0.1,building.constructionDuration*(1-clamp(Number(building.upgradeProgress)||0,0,1)));
+      building.upgradeProgress=0;
+    }
+    return building;
   });
   const townHall=saveRef(buildings,state.townHall)||buildings.find(building=>building.type==='town_hall')||null;
   const residents=(state.residents||[]).map(record=>{
@@ -194,7 +201,7 @@ function restoreGameState(state) {
   G.placingMode=false;G.movingBuilding=null;G.dragging=false;G.dragButton=null;G.dragMoved=false;
   G.guardSelectStart=null;G.guardSelectEnd=null;G.guardSelectMoved=false;G.drawingFloor=false;G.lastFloorCell='';
   G.chopMode=false;G.unchopMode=false;G.huntMode=false;G.unhuntMode=false;G.fruitPlantMode=false;
-  G.infiniteResources=false;G.debugRevealAllFog=false;G.debugShowNavigation=true;G.resourceFullNotices=new Set();G.targetedTrees=new Set(residents.map(resident=>resident.chopTarget).filter(Boolean));
+  G.infiniteResources=false;G.debugRevealAllFog=false;G.debugShowNavigation=true;G.debugTimeLock=null;G.resourceFullNotices=new Set();G.targetedTrees=new Set(residents.map(resident=>resident.chopTarget).filter(Boolean));
   G.targetedAnimals=new Set(residents.map(resident=>resident.huntTarget).filter(Boolean));
   G.navigationRevision=0;G.obstacleIndexRevision=-1;G.obstacleSpatial=null;G.navigationGridRevision=-1;G.navigationGrid=null;G.residentSpatial=null;
   recalculatePopulationLimits();refreshFarmAdjacency();updateAllResourceTotals();initFog();refreshFogVisibility();
@@ -202,6 +209,7 @@ function restoreGameState(state) {
   const gameover=document.getElementById('gameover-overlay');if(gameover) gameover.style.display='none';
   const debugNavigationButton=document.getElementById('debug-navigation-btn');
   if(debugNavigationButton){debugNavigationButton.classList.add('active');debugNavigationButton.textContent='隐藏寻路';}
+  if(typeof updateDebugTimeLockButtons==='function') updateDebugTimeLockButtons();
   if(typeof hideContextMenu==='function') hideContextMenu();
   if(typeof updateBuildingPanel==='function') updateBuildingPanel();
   if(typeof updateTopBar==='function') updateTopBar();

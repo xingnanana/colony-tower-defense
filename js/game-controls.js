@@ -41,6 +41,7 @@ function setSpeed(s) {
 
 function fireArrow(source,target,damage) {
   G.projectiles.push(new ArrowProjectile(source,target,damage));
+  playGameSound('arrow',source.x,source.y);
 }
 
 function updateProjectiles(dt) {
@@ -55,6 +56,7 @@ function updateProjectiles(dt) {
       arrow.x=target.x; arrow.y=target.y;
       target.hp-=arrow.damage;
       spawnParticles(target.x,target.y,'#ffaa00',2);
+      playGameSound('impact',target.x,target.y);
       if (target.hp<=0) { target.alive=false; spawnParticles(target.x,target.y,'#ff6600',6); }
       arrow.alive=false;
       continue;
@@ -107,12 +109,47 @@ function toggleDebugNavigation() {
 function addGuardCommandMarker(x,y,type='move') {
   G.commandMarkers.push({x,y,type,life:0.9,maxLife:0.9});
   if(G.commandMarkers.length>12) G.commandMarkers.splice(0,G.commandMarkers.length-12);
+  if(type!=='invalid') playGameSound('command',x,y);
 }
 function updateCommandMarkers(dt) {
   for(const marker of G.commandMarkers) marker.life-=dt;
   G.commandMarkers=G.commandMarkers.filter(marker=>marker.life>0);
 }
-function skipToNight() {
+function updateDebugTimeLockButtons() {
+  const dayButton=document.getElementById('debug-lock-day-btn');
+  const nightButton=document.getElementById('debug-lock-night-btn');
+  if(dayButton) dayButton.classList.toggle('active',G.debugTimeLock==='day');
+  if(nightButton) nightButton.classList.toggle('active',G.debugTimeLock==='night');
+}
+function clearDebugTimeLock() {
+  G.debugTimeLock=null;
+  updateDebugTimeLockButtons();
+}
+function alignDebugTimeToPhase(mode) {
+  const cycle=gameDayDuration(),durations=dayNightDurationsForDay(G.day),nightOffset=durations.dayDuration+CFG.TRANSITION;
+  let cycleStart=Math.floor(G.totalTime/cycle)*cycle;
+  const offset=G.totalTime-cycleStart;
+  if(mode==='day'&&offset>durations.dayDuration) cycleStart+=cycle;
+  if(mode==='night'&&offset>nightOffset+durations.nightDuration) cycleStart+=cycle;
+  G.totalTime=cycleStart+(mode==='night'?nightOffset:0);
+}
+function toggleDebugTimeLock(mode) {
+  if(mode!=='day'&&mode!=='night') return G.debugTimeLock;
+  if(G.debugTimeLock===mode) {
+    clearDebugTimeLock();
+    showTimeIndicator('昼夜循环已恢复');
+    return null;
+  }
+  const previousPhase=G.phase;
+  G.debugTimeLock=mode;
+  mode==='day'?skipToDay(previousPhase!=='day',false):skipToNight(false);
+  alignDebugTimeToPhase(mode);
+  updateDebugTimeLockButtons();
+  showTimeIndicator(mode==='day'?'已启用永久白天':'已启用永久黑夜');
+  return mode;
+}
+function skipToNight(clearLock=true) {
+  if(clearLock) clearDebugTimeLock();
   G.phase = 'night'; G.dayTime = 0; G.enemies = []; G.projectiles = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   for (const r of G.residents) {
     if (r.isGuard) { wakeGuardAtHome(r);continue; }
@@ -131,11 +168,7 @@ function unlockAll() {
   const th = G.townHall; if (!th) return;
   th.level = maxBuildingLevel('town_hall'); th.maxHp = Math.floor(buildingLevelValue('town_hall',th.level,'hp')); th.hp = th.maxHp;
   G.treesChopped = Math.max(G.treesChopped||0, ...Object.values(BLD_DEFS).map(def=>Math.max(0, Number(def.unlockTreesChopped)||0)));
-  G.maxPop = CFG.MAX_POP_BASE;
-  G.maxGuards = CFG.MAX_GUARD_BASE;
-  for (const b of G.buildings) { if (b.type==='house') G.maxPop += houseCapacity(b); }
-  for (const b of G.buildings) { if (b.type==='barracks') G.maxGuards += guardCapacity(b); }
-  G.maxPop += houseCapacity(th);
+  recalculatePopulationLimits();
   updateBuildingPanel();
 }
 function upgradeTH() {
@@ -146,8 +179,9 @@ function upgradeTH() {
   refreshFogVisibility();
   updateBuildingPanel();
 }
-function skipToDay() {
-  G.phase = 'day'; G.dayTime = 0; G.day++; G.enemies = []; G.projectiles = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
+function skipToDay(advanceDay=true,clearLock=true) {
+  if(clearLock) clearDebugTimeLock();
+  G.phase = 'day'; G.dayTime = 0; if(advanceDay) G.day++; G.enemies = []; G.projectiles = []; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   setSelectedGuards([]);
   for (const r of G.residents) {
     if (r.isGuard) sendGuardHomeForDay(r);
@@ -159,13 +193,24 @@ function skipToDay() {
 }
 // === In-game balance editor ===
 function assignEngineer() {
-  const idle = G.residents.find(r => (r.state === 'IDLE' || r.state === 'PATROL') && !r.workplace && !r.isEngineer);
-  if (idle) {
-    idle.isEngineer = true;
-    assignEngineerBuildTask(idle);
+  const worker=getAssignableResidents()[0];
+  if (worker) {
+    if(isAssignableFiniteTask(worker)) {
+      worker.pendingEngineer=true;
+      worker.finishCurrentChopForWork=isIndependentWoodTask(worker);
+    } else {
+      worker.isEngineer=true;
+      assignEngineerBuildTask(worker);
+    }
   }
 }
 function unassignEngineer() {
+  const pending=G.residents.find(r=>r.pendingEngineer);
+  if(pending) {
+    pending.pendingEngineer=false;
+    pending.finishCurrentChopForWork=false;
+    return;
+  }
   const priority={IDLE:0,PATROL:0,GOING_HOME:1,SLEEPING:1,GOING_TO_REPAIR:2,REPAIRING:2,GATHERING:3,BUILDING:3,CONSTRUCTING:3};
   const eng=G.residents.filter(r=>r.isEngineer).sort((a,b)=>(priority[a.state]??2)-(priority[b.state]??2))[0];
   if (eng) {
@@ -225,7 +270,7 @@ function restartGame() {
   G.day = 1; G.dayTime = 0; G.phase = 'day'; G.totalTime = 0;
   G.selectedBldType = null; G.selectedBuilding = null; clearSelectedGuards(); G.placingMode = false; G.movingBuilding = null;
   G.guardSelectStart=null; G.guardSelectEnd=null; G.guardSelectMoved=false;
-  G.maxPop = CFG.MAX_POP_BASE; G.maxGuards = CFG.MAX_GUARD_BASE; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
+  G.maxPop = 0; G.maxGuards = 0; G.popGrowthTimer = 0; G.enemySpawnQueue = []; G.enemySpawnTimer = 0;
   G.resourceCleanupTimer = 0; G.farmLinks = []; G.navigationRevision = 0; G.obstacleIndexRevision = -1;
   G.navigationGridRevision = -1; G.navigationGrid = null;
   G.navigationQueue = [];
@@ -234,8 +279,10 @@ function restartGame() {
   G.buildingPanelDirty = true;
   G.debugRevealAllFog = false;
   G.debugShowNavigation = true;
+  G.debugTimeLock = null;
   const debugNavigationButton=document.getElementById('debug-navigation-btn');
   if(debugNavigationButton){debugNavigationButton.classList.add('active');debugNavigationButton.textContent='隐藏寻路';}
+  updateDebugTimeLockButtons();
   G.targetedTrees = new Set();
   G.targetedAnimals = new Set();G.animalSpawnTimer=0;
   G.dragging = false; G.dragButton=null; G.dragMoved=false; gameRunning = true;

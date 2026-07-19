@@ -9,8 +9,8 @@ function initGame() {
   th.stored = townHallStartingResources();
   updateAllResourceTotals();
   G.cam.x = th.x + CFG.CELL; G.cam.y = th.y + CFG.CELL;
-  G.maxPop = CFG.MAX_POP_BASE;
-  G.maxGuards = CFG.MAX_GUARD_BASE;
+  G.maxPop = houseCapacity(th);
+  G.maxGuards = guardCapacity(th);
 
   for (let i=0; i<CFG.START_POP; i++) {
     const r = new Resident(
@@ -51,6 +51,7 @@ function addBuilding(type, col, row, skipBlueprint) {
   if (type==='barracks' && !b.blueprint) G.maxGuards += BLD_DEFS[type].guardBonus;
   if (type==='farm') refreshFarmAdjacency();
   if (!b.blueprint) refreshFogVisibility();
+  const center=b.center();playGameSound('place',center.x,center.y);
   return b;
 }
 
@@ -85,9 +86,8 @@ function demolishBuilding(b) {
     if (r.assignedTower===b || r.manningTower===b) clearGuardPost(r,b);
     if (r.buildTarget===b) { r.buildTarget=null; r.state=r.carrying?'HAULING':'IDLE'; }
   }
-  if (b.type==='house') G.maxPop = Math.max(CFG.MAX_POP_BASE, G.maxPop - BLD_DEFS[b.type].popBonus - (b.level-1)*2);
-  if (b.type==='barracks') G.maxGuards = Math.max(CFG.MAX_GUARD_BASE, G.maxGuards - BLD_DEFS[b.type].guardBonus - (b.level-1)*2);
   G.buildings.splice(idx,1);
+  if(b.type==='house'||b.type==='barracks') recalculatePopulationLimits();
   if (b.assignedGuard) b.assignedGuard = null;
   if (b.type==='forester') {
     for (const node of G.resourceNodes) if (node.ownerForester===b) { node.ownerForester=null; node.marked=false; }
@@ -107,7 +107,7 @@ function scaledResourceCost(cost, ratio, round=Math.ceil) {
 function ruinRebuildCost(b) { return scaledResourceCost(b.ruinCost||BLD_DEFS[b.type].cost,0.7,Math.ceil); }
 function ruinSalvage(b) { return scaledResourceCost(b.ruinCost||BLD_DEFS[b.type].cost,0.2,Math.floor); }
 function clearBuildingAssignments(b) {
-  b.outputHauler=null; b.inputHaulers.clear(); b.upgrading=false; b.upgradeProgress=0; b.assignedEngineer=null;
+  b.outputHauler=null; b.inputHaulers.clear(); b.upgrading=false; b.upgradeProgress=0; b.upgradeTargetLevel=0; b.assignedEngineer=null;
   for (const r of G.residents) {
     if (r.workplace===b) { releaseProductionInputTask(r);r.workplace=null; r.chopTarget=null; r.state=r.carrying?'HAULING':'IDLE'; }
     if (r.home===b) assignHome(r,findNearestHome(r,r.isGuard,b));
@@ -118,13 +118,15 @@ function clearBuildingAssignments(b) {
 }
 function turnBuildingIntoRuin(b) {
   if (b.ruin||b.type==='town_hall') return;
+  const center=b.center();
   b.ruin=true; b.ruinCost=cloneResourceMap(BLD_DEFS[b.type].cost);
-  b.hp=0; b.blueprint=false; b.constructCost=null; b.constructDelivered=null; b.constructionTimer=0;
+  b.hp=0; b.blueprint=false; b.constructCost=null; b.constructDelivered=null; b.constructionTimer=0;b.constructionDuration=0;
   b.stored={}; b.pendingOutput=0; b.productionInputs={}; b.productionRoundActive=false;
   b.recruitQueue=0; b.recruitProgress=0;
   clearBuildingAssignments(b);
   recalculatePopulationLimits();
   invalidateNavigation(); refreshFarmAdjacency(); updateAllResourceTotals(); refreshFogVisibility();
+  playGameSound('destroy',center.x,center.y);
 }
 function findNearestRepairTarget(resident) {
   let best=null, bestDistance=Infinity;
@@ -161,8 +163,8 @@ function addRuinSalvage(b) {
 // ============================================================
 // UPDATE
 // ============================================================
-function gameDayDuration() { return CFG.DAY_DURATION+CFG.NIGHT_DURATION+CFG.TRANSITION*2; }
-function scheduledMealOffset(hour) { return ((hour-6+24)%24)/24*gameDayDuration(); }
+function gameDayDuration() { return CFG.DAY_LENGTH; }
+function scheduledMealOffset(hour) { return ((hour-dayCycleStartHour()+CLOCK_HOURS)%CLOCK_HOURS)/CLOCK_HOURS*gameDayDuration(); }
 function triggerScheduledMeals(startTime,endTime) {
   const cycle=gameDayDuration();
   const startCycle=Math.floor(startTime/cycle), endCycle=Math.floor(endTime/cycle);
@@ -171,22 +173,51 @@ function triggerScheduledMeals(startTime,endTime) {
     for(const offset of offsets) {
       const mealTime=cycleIndex*cycle+offset;
       if(mealTime>startTime&&mealTime<=endTime) {
-        for(const r of G.residents) if(!r.isGuard&&!r.hidden) r.mealPending=true;
+        for(const r of G.residents) if(!r.isGuard&&!r.hidden&&!r.starved) {
+          if(r.mealPending&&!r.mealPenaltyRecorded) recordMissedMeal(r);
+          if(!r.starved) { r.mealPending=true;r.mealPenaltyRecorded=false; }
+        }
       }
     }
   }
 }
 function updateDayNight(dt) {
-  const phaseDuration = G.phase==='day' ? CFG.DAY_DURATION :
-    G.phase==='night' ? CFG.NIGHT_DURATION : CFG.TRANSITION;
+  let durations=dayNightDurationsForDay(G.day);
+  const phaseDuration = G.phase==='day' ? durations.dayDuration :
+    G.phase==='night' ? durations.nightDuration : CFG.TRANSITION;
   G.dayTime += dt;
   const previousTime=G.totalTime;
   G.totalTime += dt;
   triggerScheduledMeals(previousTime,G.totalTime);
+  if(G.debugTimeLock==='day') {
+    G.phase='day';
+    while(G.dayTime>=durations.dayDuration) {
+      G.dayTime-=durations.dayDuration;
+      G.totalTime+=durations.nightDuration+CFG.TRANSITION*2;
+      G.day++;
+      showTimeIndicator('第 '+G.day+' 天');
+      durations=dayNightDurationsForDay(G.day);
+    }
+    return;
+  }
+  if(G.debugTimeLock==='night') {
+    G.phase='night';
+    while(G.dayTime>=durations.nightDuration) {
+      G.dayTime-=durations.nightDuration;
+      G.totalTime+=durations.dayDuration+CFG.TRANSITION*2;
+      G.day++;
+      G.enemies=[];G.projectiles=[];G.enemySpawnQueue=[];G.enemySpawnTimer=0;
+      spawnEnemyWave();
+      showTimeIndicator('第 '+G.day+' 夜');
+      durations=dayNightDurationsForDay(G.day);
+    }
+    return;
+  }
   if (G.dayTime >= phaseDuration) {
     G.dayTime = 0;
     if (G.phase==='day') {
       G.phase='dusk'; showTimeIndicator('黄昏');
+      playGameSound('dusk');
       // 让居民回家睡觉
       for (const r of G.residents) {
         if (r.isGuard) continue; // guards handle their own sleep
@@ -221,6 +252,7 @@ function updateDayNight(dt) {
       for(const r of G.residents) if(r.isGuard) sendGuardHomeForDay(r);
     } else if (G.phase==='dawn') {
       G.phase='day'; G.day++; showTimeIndicator('第 '+G.day+' 天');
+      playGameSound('dawn');
       for (const r of G.residents) {
         if (r.isGuard) {
           if(r.state!=='GUARD_GOING_HOME'&&r.state!=='GUARD_SLEEPING') sendGuardHomeForDay(r);

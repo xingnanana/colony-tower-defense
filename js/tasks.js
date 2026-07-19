@@ -60,10 +60,38 @@ function neededMaterials(bp, excludeResident=null) {
 function assignedEngineerCount(building) {
   return G.residents.reduce((count,resident)=>count+(resident.isEngineer&&resident.buildTarget===building?1:0),0);
 }
+function isConstructionMaterialProject(building) {
+  return !!building&&(building.blueprint||(building.upgrading&&building.constructionTimer<=0&&!!building.constructCost));
+}
+function constructionMaterialsComplete(building) {
+  if(!building?.constructCost) return true;
+  return Object.entries(building.constructCost).every(([type,amount])=>(building.constructDelivered?.[type]||0)>=amount);
+}
+function constructionWorkDuration(building) {
+  const level=building.upgrading?(building.upgradeTargetLevel||building.level+1):building.level;
+  return Math.max(0.1,Number(buildingLevelValue(building.type,level,'buildTime'))||2);
+}
+function beginBuildingConstruction(building) {
+  if(!building||building.constructionTimer>0) return false;
+  building.blueprint=false;
+  building.constructCost=null;building.constructDelivered=null;
+  building.constructionDuration=constructionWorkDuration(building);
+  building.constructionTimer=building.constructionDuration;
+  return true;
+}
+function startBuildingUpgrade(building) {
+  if(!building||building.ruin||building.blueprint||building.constructionTimer>0||building.upgrading||building.level>=maxBuildingLevel(building.type)) return false;
+  const cost=upgradeCostForLevel(building.type,building.level+1);
+  building.upgrading=true;building.upgradeProgress=0;building.upgradeTargetLevel=building.level+1;
+  building.constructCost=cloneResourceMap(cost);building.constructDelivered={};
+  for(const type of Object.keys(cost)) building.constructDelivered[type]=0;
+  if(constructionMaterialsComplete(building)) beginBuildingConstruction(building);
+  return true;
+}
 function findNearestBlueprint(resident, onlyUnstaffed=false) {
   let best = null, bestD = Infinity;
   for (const b of G.buildings) {
-    if (!b.blueprint || b.hp <= 0 || (onlyUnstaffed&&assignedEngineerCount(b)>0)) continue;
+    if (!isConstructionMaterialProject(b) || b.hp <= 0 || (onlyUnstaffed&&assignedEngineerCount(b)>0)) continue;
     const need=neededMaterials(b);
     if (need && (G.resources[need.type]||0)<1) continue;
     if(!need) continue;
@@ -102,7 +130,7 @@ function resolveCollisions(r, nx, ny) {
       if (!isResourceObstacleNode(b.resourceNode)) continue;
     } else if (!buildingBlocksMovement(b)) continue;
     const c = b.center();
-    if (!b.resourceNode && r.buildTarget === b) continue; // always allow approaching build target
+    if (!b.resourceNode && residentCanEnterOwnWorkplace(r,b)) continue;
     // Only allow leaving own home/workplace, not entering.
     if (!b.resourceNode && (r.workplace === b || r.home === b) &&
         Math.hypot(nx - c.x, ny - c.y) > Math.hypot(r.x - c.x, r.y - c.y)) continue;
@@ -173,10 +201,6 @@ function canResidentHandHarvest(node) {
   // Trees are the only natural resource residents can harvest directly.
   return !!node && node.alive && (node.type === 'tree'||node.type==='fruit_tree');
 }
-function harvestStorageAvailable(resident,node) {
-  if(totalStorageFreeSpace('wood')<1) return false;
-  return node?.type!=='fruit_tree'||totalStorageFreeSpace('food')>=CFG.FRUIT_TREE_FOOD_MAX;
-}
 function nextQueuedCarry(resident) {
   const next=resident.carryQueue?.shift();
   if(!next) return false;
@@ -184,9 +208,15 @@ function nextQueuedCarry(resident) {
 }
 function dropGroundItem(resident) {
   if(!resident.carrying||resident.carrying.amount<=0) return null;
-  const item={type:resident.carrying.type,amount:resident.carrying.amount,x:resident.x,y:resident.y,alive:true,claimedBy:null};
-  G.groundItems.push(item);
-  resident.carrying=null;resident.carryingFrom=null;resident.dropCarryingWhenBlocked=false;
+  const source=resident.carryingFrom;
+  let item=G.groundItems.find(candidate=>candidate.alive&&!candidate.claimedBy&&candidate.type===resident.carrying.type&&Math.hypot(candidate.x-resident.x,candidate.y-resident.y)<=20);
+  if(item) item.amount+=resident.carrying.amount;
+  else {
+    item={type:resident.carrying.type,amount:resident.carrying.amount,x:resident.x,y:resident.y,alive:true,claimedBy:null};
+    G.groundItems.push(item);
+  }
+  if(source?.outputHauler===resident) source.outputHauler=null;
+  resident.carrying=null;resident.carryingFrom=null;resident.carryingForPlanting=false;resident.dropCarryingWhenBlocked=false;
   return item;
 }
 function releaseGroundPickup(resident) {
@@ -238,6 +268,13 @@ function findNearestGroundItem(resident) {
   }
   return best;
 }
+function claimNearestGroundItem(resident) {
+  const item=findNearestGroundItem(resident);
+  if(!item) return false;
+  item.claimedBy=resident;resident.pickupTarget=item;resident.state='GOING_TO_PICKUP';
+  const access=groundItemInteractionPoint(resident,item);resident.targetX=access.x;resident.targetY=access.y;
+  return true;
+}
 
 function isFinishableResidentTask(r) {
   return r.state==='CHOPPING' || r.state==='HAULING' || r.state==='GATHERING' ||
@@ -245,8 +282,31 @@ function isFinishableResidentTask(r) {
     r.state==='GOING_TO_PLANT_MATERIAL' || r.state==='DELIVERING_PLANT_MATERIAL' || r.state==='PLANTING' ||
     r.state==='DELIVERING_PRODUCTION_INPUT';
 }
+function residentHungerMultiplier(r) {
+  if(!r||r.isGuard) return 1;
+  if((r.missedMeals||0)>=2) return Math.max(0.05,Number(CFG.HUNGER_LEVEL_TWO_MULTIPLIER)||0.5);
+  if((r.missedMeals||0)>=1) return Math.max(0.05,Number(CFG.HUNGER_LEVEL_ONE_MULTIPLIER)||0.75);
+  return 1;
+}
+function residentMealCost(r) { return 1+Math.max(0,Math.floor(r?.missedMeals||0)); }
+function residentMoveSpeed(r,base=CFG.RESIDENT_SPEED) { return base*residentHungerMultiplier(r); }
+function recordMissedMeal(r) {
+  if(!r||r.isGuard||r.starved||r.mealPenaltyRecorded) return false;
+  r.mealPenaltyRecorded=true;
+  r.missedMeals=(r.missedMeals||0)+1;
+  if(r.missedMeals>=Math.max(1,Math.floor(CFG.HUNGER_DEATH_MISSED_MEALS||3))) {
+    r.starved=true;
+    showTimeIndicator('一名居民饿死了');
+  }
+  return true;
+}
+function completeResidentMeal(r,foodConsumed=residentMealCost(r)) {
+  r.mealPending=false;
+  r.mealPenaltyRecorded=false;
+  r.missedMeals=Math.max(0,(r.missedMeals||0)-Math.max(0,Math.floor(foodConsumed)-1));
+}
 function beginEating(r) {
-  if ((G.resources.food||0) <= 0) return false;
+  if ((G.resources.food||0) <= 0) { recordMissedMeal(r); return false; }
   releaseGroundPickup(r);
   releaseFruitPlanting(r);
   releaseProductionInputTask(r);
@@ -264,12 +324,15 @@ function eatAfterFinishingTask(r) {
   r.finishBeforeEating=false;
   return beginEating(r);
 }
+function finishHaulingTask(r) {
+  r.finishCurrentChopForWork=false;
+  if(!eatAfterFinishingTask(r)) {
+    r.state=(G.phase==='night'||G.phase==='dusk')?'IDLE':r.workplace&&r.workplace.hp>0?'GOING_TO_WORK':'IDLE';
+  }
+}
 
 function findForesterTree(r, forester) {
   if (!forester || forester.type!=='forester' || forester.hp<=0) return null;
-  const carryCapacity=productionBufferCapacity(forester);
-  const carried=r.carrying?.amount||0;
-  if (totalStorageFreeSpace('wood')<Math.max(1,carryCapacity-carried)) return null;
   const radius = (buildingRuntimeDef(forester).foresterRadius || 4) * CFG.CELL;
   const center = forester.center();
   let best=null, bestDist=Infinity;
@@ -284,7 +347,8 @@ function findForesterTree(r, forester) {
 }
 function foresterGrowthSlots(b) {
   const def=buildingRuntimeDef(b);
-  return Math.max(1, Math.ceil(def.maxWorkers * def.saplingGrowTime / (def.chopTime/productionSpeedMultiplier(b))));
+  const chopTime=Math.max(0.1,Number(CFG.TREE_CHOP_TIME)||3)/productionSpeedMultiplier(b);
+  return Math.max(1, Math.ceil(def.maxWorkers * def.saplingGrowTime / chopTime));
 }
 function foresterPlantInterval(b) {
   return buildingRuntimeDef(b).saplingGrowTime / foresterGrowthSlots(b);
@@ -308,13 +372,13 @@ function maxBuildingLevel(type) {
 }
 
 function houseCapacity(h) {
-  if (h.type==='town_hall') return CFG.MAX_POP_BASE + (h.level-1)*4;
+  if (h.type==='town_hall') return buildingLevelValue('town_hall',h.level,'popBonus');
   if (h.type==='house') return buildingLevelValue('house',h.level,'popBonus');
   if (h.type==='barracks') return buildingLevelValue('barracks',h.level,'guardBonus');
   return 0;
 }
 function guardCapacity(h) {
-  if (h.type==='town_hall') return CFG.MAX_GUARD_BASE;
+  if (h.type==='town_hall') return buildingLevelValue('town_hall',h.level,'guardBonus');
   return h.type==='barracks' ? houseCapacity(h) : 0;
 }
 function recalculatePopulationLimits() {
@@ -361,22 +425,40 @@ function refreshFarmAdjacency() {
   }
 }
 function getIdleResidents() {
-  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer && !r.isGuard);
+  return G.residents.filter(r=>(r.state==='IDLE'||r.state==='PATROL') && !r.workplace && !r.isEngineer && !r.pendingEngineer && !r.isGuard);
+}
+function residentHasFiniteIndependentTask(r) {
+  if(!r||r.isEngineer||r.isGuard) return false;
+  if((r.state==='GOING_TO_CHOP'||r.state==='CHOPPING')&&r.chopTarget?.alive&&r.chopTarget.marked&&!r.chopTarget.ownerForester) return true;
+  if((r.state==='GOING_TO_HUNT'||r.state==='HUNTING')&&r.huntTarget?.alive&&r.huntTarget.marked) return true;
+  if(['GOING_TO_PLANT_MATERIAL','DELIVERING_PLANT_MATERIAL','GOING_TO_PLANT','PLANTING'].includes(r.state)&&r.plantTarget?.alive) return true;
+  if(r.state==='GOING_TO_PICKUP'&&r.pickupTarget?.alive) return true;
+  return r.state==='HAULING'&&!!r.carrying&&!r.carryingFrom;
+}
+function isAssignableFiniteTask(r) {
+  return !!r&&!r.workplace&&!r.pendingEngineer&&residentHasFiniteIndependentTask(r);
 }
 function isIndependentWoodTask(r) {
   if(!r||r.workplace||r.isEngineer||r.isGuard) return false;
-  if((r.state==='GOING_TO_CHOP'||r.state==='CHOPPING')&&r.chopTarget&&!r.chopTarget.ownerForester) return true;
+  if((r.state==='GOING_TO_CHOP'||r.state==='CHOPPING')&&r.chopTarget?.alive&&r.chopTarget.marked&&!r.chopTarget.ownerForester) return true;
   return r.state==='HAULING'&&r.carrying?.type==='wood'&&!r.carryingFrom;
 }
 function getAssignableResidents() {
-  return [...getIdleResidents(),...G.residents.filter(isIndependentWoodTask)];
+  return [...getIdleResidents(),...G.residents.filter(isAssignableFiniteTask)];
+}
+function activatePendingEngineer(r) {
+  if(!r?.pendingEngineer||residentHasFiniteIndependentTask(r)) return false;
+  r.pendingEngineer=false;r.isEngineer=true;
+  if((r.state==='IDLE'||r.state==='PATROL')&&G.phase==='day') assignEngineerBuildTask(r);
+  return true;
 }
 function assignResidentToWorkplace(worker,b) {
   if(!worker||!b||worker.workplace||b.assignedWorkers>=buildingRuntimeDef(b).maxWorkers) return false;
+  const finishingTask=isAssignableFiniteTask(worker);
   const finishingWoodTask=isIndependentWoodTask(worker);
   worker.workplace=b;
   worker.finishCurrentChopForWork=finishingWoodTask;
-  if(!finishingWoodTask) worker.state='GOING_TO_WORK';
+  if(!finishingTask) worker.state='GOING_TO_WORK';
   b.assignedWorkers++;
   return true;
 }
@@ -396,10 +478,10 @@ function releaseNurseryWorkers(nursery) {
   let released=0;
   for(const resident of G.residents) {
     if(resident.isGuard||resident.workplace!==nursery) continue;
+    const finishingTask=residentHasFiniteIndependentTask(resident);
     resident.workplace=null;
     resident.finishCurrentChopForWork=false;
-    resident.chopTarget=null;
-    resident.state=resident.carrying?'HAULING':'IDLE';
+    if(!finishingTask) resident.state=resident.carrying?'HAULING':'IDLE';
     released++;
   }
   nursery.assignedWorkers=0;
@@ -407,6 +489,7 @@ function releaseNurseryWorkers(nursery) {
 }
 function cancelNurseryRecruit(nursery) {
   if(!nursery||nursery.type!=='nursery'||nursery.recruitQueue<=0) return false;
+  storeOrDropResources(buildingRuntimeDef(nursery).recruitCost,nursery);
   nursery.recruitQueue--;
   if(nursery.recruitQueue===0) {
     nursery.recruitProgress=0;

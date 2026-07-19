@@ -211,7 +211,7 @@ function totalStorageFreeSpace(type) {
   return Math.max(0,status.capacity-status.stored);
 }
 function availableGroundPickupSpace(type) {
-  const reserved=G.residents.reduce((total,resident)=>total+(resident.dropCarryingWhenBlocked&&resident.carrying?.type===type?resident.carrying.amount:0),0);
+  const reserved=G.residents.reduce((total,resident)=>total+(resident.state==='HAULING'&&resident.carrying?.type===type?resident.carrying.amount:0),0);
   return Math.max(0,totalStorageFreeSpace(type)-reserved);
 }
 function updateResourceTotal(type) {
@@ -226,7 +226,26 @@ function depositToStorage(b, type, amount) {
   if (deposited <= 0) return 0;
   b.stored[type] = storedAmount(b, type) + deposited;
   G.resources[type] = (G.resources[type] || 0) + deposited;
+  const center=b.center();playGameSound('deposit',center.x,center.y);
   return deposited;
+}
+function storeOrDropResources(resources, origin) {
+  const point=typeof origin?.center==='function'?origin.center():origin;
+  const x=Number.isFinite(point?.x)?point.x:0, y=Number.isFinite(point?.y)?point.y:0;
+  for(const [type,total] of Object.entries(resources||{})) {
+    let remaining=Math.max(0,total||0);
+    const stores=G.buildings
+      .filter(b=>b.hp>0&&!b.ruin&&!b.blueprint&&b.constructionTimer<=0&&storageAcceptsResource(b,type))
+      .sort((a,b)=>Math.hypot(a.center().x-x,a.center().y-y)-Math.hypot(b.center().x-x,b.center().y-y));
+    for(const store of stores) {
+      remaining-=depositToStorage(store,type,remaining);
+      if(remaining<=0) break;
+    }
+    if(remaining<=0) continue;
+    const nearby=G.groundItems.find(item=>item.alive&&!item.claimedBy&&item.type===type&&Math.hypot(item.x-x,item.y-y)<=20);
+    if(nearby) nearby.amount+=remaining;
+    else G.groundItems.push({type,amount:remaining,x,y,alive:true,claimedBy:null});
+  }
 }
 function withdrawFromStorage(b, type, amount) {
   if (!storageAcceptsResource(b,type)) return 0;

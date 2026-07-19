@@ -421,6 +421,46 @@ function drawGroundItem(item) {
   ctx.restore();
 }
 
+function drawBlueprintBuilding(b,x,y,w,h,cx,cy,cr,def) {
+  const inset=3/G.cam.zoom;
+  ctx.save();
+  ctx.fillStyle='rgba(20,74,105,0.76)';
+  if(b.type==='farm') ctx.fillRect(x+2,y+2,w-4,h-4);
+  else { ctx.beginPath();ctx.arc(cx,cy,cr,0,Math.PI*2);ctx.fill(); }
+
+  ctx.save();
+  if(b.type==='farm') { ctx.beginPath();ctx.rect(x+2,y+2,w-4,h-4);ctx.clip(); }
+  else { ctx.beginPath();ctx.arc(cx,cy,cr,0,Math.PI*2);ctx.clip(); }
+  ctx.strokeStyle='rgba(120,211,244,0.22)';ctx.lineWidth=1/G.cam.zoom;
+  const grid=10;
+  for(let gx=x;gx<=x+w;gx+=grid) { ctx.beginPath();ctx.moveTo(gx,y);ctx.lineTo(gx,y+h);ctx.stroke(); }
+  for(let gy=y;gy<=y+h;gy+=grid) { ctx.beginPath();ctx.moveTo(x,gy);ctx.lineTo(x+w,gy);ctx.stroke(); }
+  ctx.restore();
+
+  ctx.strokeStyle='rgba(151,229,255,0.96)';ctx.lineWidth=2/G.cam.zoom;ctx.setLineDash([6/G.cam.zoom,4/G.cam.zoom]);
+  if(b.type==='farm') ctx.strokeRect(x+inset,y+inset,w-inset*2,h-inset*2);
+  else { ctx.beginPath();ctx.arc(cx,cy,Math.max(2,cr-inset),0,Math.PI*2);ctx.stroke(); }
+  ctx.setLineDash([]);
+
+  ctx.strokeStyle='rgba(190,239,255,0.82)';ctx.lineWidth=1.2/G.cam.zoom;
+  ctx.beginPath();ctx.moveTo(x+7,cy);ctx.lineTo(x+w-7,cy);ctx.moveTo(cx,y+7);ctx.lineTo(cx,y+h-7);ctx.stroke();
+  const frameW=Math.max(14,w*0.42),frameH=Math.max(14,h*0.42);
+  ctx.strokeRect(cx-frameW/2,cy-frameH/2,frameW,frameH);
+  ctx.beginPath();ctx.moveTo(cx-frameW/2,cy-frameH/2);ctx.lineTo(cx+frameW/2,cy+frameH/2);
+  ctx.moveTo(cx+frameW/2,cy-frameH/2);ctx.lineTo(cx-frameW/2,cy+frameH/2);ctx.stroke();
+
+  ctx.fillStyle='rgba(218,247,255,0.96)';ctx.font='700 8px Arial,sans-serif';ctx.textAlign='center';
+  ctx.fillText(def.icon,cx,cy+3);
+  const totalCost=Object.values(b.constructCost||{}).reduce((sum,value)=>sum+value,0);
+  const totalDone=Object.values(b.constructDelivered||{}).reduce((sum,value)=>sum+value,0);
+  const ratio=totalCost>0?clamp(totalDone/totalCost,0,1):0;
+  const barW=w-8,barH=5;
+  ctx.fillStyle='rgba(5,24,36,0.86)';ctx.fillRect(x+4,y+h-12,barW,barH);
+  ctx.fillStyle='#74d8ff';ctx.fillRect(x+4,y+h-12,barW*ratio,barH);
+  ctx.fillStyle='#e4f8ff';ctx.font='7px Arial,sans-serif';ctx.fillText(Math.floor(totalDone)+'/'+totalCost,cx,y+h-6);
+  ctx.restore();
+}
+
 function drawBuilding(b, x, y) {
   const def=buildingRuntimeDef(b), w=def.sz[0]*CFG.CELL, h=def.sz[1]*CFG.CELL, cx=x+w/2, cy=y+h/2;
   const cr = b.collisionRadius();
@@ -428,9 +468,12 @@ function drawBuilding(b, x, y) {
     drawRuin(b,x,y,w,h,cx,cy);
     return;
   }
+  if(b.blueprint) {
+    drawBlueprintBuilding(b,x,y,w,h,cx,cy,cr,def);
+    return;
+  }
   ctx.fillStyle='rgba(255,255,255,0.04)'; ctx.fillRect(x, y, w, h);
   ctx.strokeStyle='rgba(255,255,255,0.12)'; ctx.lineWidth=1; ctx.setLineDash([3,6]); ctx.strokeRect(x+1,y+1,w-2,h-2); ctx.setLineDash([]);
-  if (b.blueprint) ctx.globalAlpha = 0.5;
   ctx.save(); ctx.shadowColor='rgba(0,0,0,0.42)'; ctx.shadowBlur=7/G.cam.zoom; ctx.shadowOffsetY=3/G.cam.zoom;
   ctx.fillStyle=buildingColor(b.type);
   if (b.type==='farm') ctx.fillRect(x+3,y+3,w-6,h-6);
@@ -449,31 +492,19 @@ function drawBuilding(b, x, y) {
     ctx.fillStyle = guard ? 'rgba(112,170,238,0.9)' : 'rgba(220,220,190,0.32)';
     ctx.beginPath(); ctx.arc(post.x, post.y, guard ? 3 : 2, 0, Math.PI*2); ctx.fill();
   }
-  if (b.blueprint) ctx.globalAlpha = 1;
   if (b.hp<b.maxHp && !b.blueprint && b.constructionTimer <= 0) {
     const bw=w-8, bh=4;
     ctx.fillStyle='#333'; ctx.fillRect(x+4,y-8,bw,bh);
     ctx.fillStyle=b.hp/b.maxHp>0.5?'#4a4':'#a44'; ctx.fillRect(x+4,y-8,bw*(b.hp/b.maxHp),bh);
   }
-  if (b.blueprint) {
-    ctx.fillStyle='#fff'; ctx.font='700 9px Arial,sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+3);
-    const totalCost = Object.values(b.constructCost||{}).reduce((a,v)=>a+v,0);
-    const totalDone = Object.values(b.constructDelivered||{}).reduce((a,v)=>a+v,0);
-    const ratio = totalCost > 0 ? totalDone / totalCost : 0;
-    const barW = w - 8, barH = 5;
-    ctx.fillStyle = '#333'; ctx.fillRect(x+4, y+h-12, barW, barH);
-    ctx.fillStyle = '#4af'; ctx.fillRect(x+4, y+h-12, barW * ratio, barH);
-    ctx.fillStyle = '#fff'; ctx.font = '7px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(Math.floor(totalDone)+'/'+totalCost, cx, y+h-7);
-  }
   // Construction progress (bottom-to-top fill)
   if (!b.blueprint && b.constructionTimer > 0) {
-    const bt = BLD_DEFS[b.type].buildTime || 2;
+    const bt = b.constructionDuration||constructionWorkDuration(b);
     const prog = 1 - b.constructionTimer / bt;
-    ctx.fillStyle = 'rgba(100,180,255,0.5)';
+    ctx.fillStyle = b.upgrading?'rgba(238,194,74,0.5)':'rgba(100,180,255,0.5)';
     ctx.fillRect(x, y + h*(1-prog), w, h*prog);
     ctx.fillStyle = '#fff'; ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-    ctx.fillText(Math.floor(prog*100)+'%', cx, cy);
+    ctx.fillText((b.upgrading?'升级 ':'')+Math.floor(prog*100)+'%', cx, cy);
   }
   if (!b.blueprint && b.constructionTimer <= 0) {
     ctx.fillStyle='rgba(245,240,218,0.88)'; ctx.font='700 8px Arial,sans-serif'; ctx.textAlign='center'; ctx.fillText(def.icon,cx,cy+3);
@@ -488,7 +519,6 @@ function drawBuilding(b, x, y) {
       const inputType=nextProductionInputType(b);
       warning=inputType&&availableProductionInputAmount(inputType)<productionInputUnreservedNeed(b,inputType)?'缺料':'备料';
     }
-    else if (b.pendingOutput >= productionBufferCapacity(b) && !findNearestStorage(b.center(),def.produces,{requireSpace:productionBufferCapacity(b)})) warning='仓满';
     if (warning) {
       ctx.fillStyle='rgba(80,24,18,0.9)'; ctx.fillRect(cx-13,y-9,26,10);
       ctx.fillStyle='#ffd0b8'; ctx.font='8px sans-serif'; ctx.textAlign='center'; ctx.fillText(warning,cx,y-1);
@@ -507,7 +537,12 @@ function drawBuilding(b, x, y) {
     ctx.fillText(`${stored}/${cap}`, cx, y+h-7);
   }
 
-  if (!b.blueprint && b.upgrading) { ctx.fillStyle='rgba(255,255,0,0.5)'; ctx.beginPath(); ctx.arc(cx,cy,cr,-Math.PI/2,-Math.PI/2+Math.PI*2*b.upgradeProgress); ctx.lineTo(cx,cy); ctx.fill(); }
+  if (!b.blueprint && b.upgrading && b.constructionTimer<=0) {
+    const total=Object.values(b.constructCost||{}).reduce((sum,value)=>sum+value,0);
+    const delivered=Object.values(b.constructDelivered||{}).reduce((sum,value)=>sum+value,0);
+    const ratio=total>0?clamp(delivered/total,0,1):0;
+    ctx.strokeStyle='rgba(255,215,84,0.9)';ctx.lineWidth=3/G.cam.zoom;ctx.beginPath();ctx.arc(cx,cy,cr+3,-Math.PI/2,-Math.PI/2+Math.PI*2*ratio);ctx.stroke();
+  }
   if (!b.blueprint && def.recruits && b.recruitQueue>0) {
     ctx.fillStyle=def.recruits==='guard'?'rgba(100,150,255,0.42)':'rgba(100,255,100,0.42)';
     ctx.beginPath(); ctx.arc(cx,cy,cr-3,-Math.PI/2,-Math.PI/2+Math.PI*2*b.recruitProgress); ctx.lineTo(cx,cy); ctx.fill();
@@ -542,10 +577,6 @@ function drawBuilding(b, x, y) {
     const required=Object.values(def.inputs).reduce((sum,amount)=>sum+amount*productionBufferCapacity(b),0);
     ctx.fillStyle='rgba(187,224,255,0.94)';ctx.font='700 8px Arial,sans-serif';ctx.textAlign='center';
     ctx.fillText(`料 ${loadedInputs}/${required}`,cx,y-13);
-  }
-  if (!b.blueprint && b.type!=='town_hall' && b.type!=='wood_storage') {
-    const ts=b.stored?Object.values(b.stored).reduce((a,c)=>a+c,0):0;
-    if (ts>0) { ctx.fillStyle='rgba(255,200,0,0.9)'; ctx.font='700 8px Arial,sans-serif'; ctx.fillText(`BOX ${ts}`,cx,y-4); }
   }
 }
 
@@ -673,13 +704,24 @@ function drawResidentAxeIcon(x, y) {
   ctx.fillStyle='#c7d1cb'; ctx.beginPath(); ctx.moveTo(x+1,y-6); ctx.quadraticCurveTo(x+8,y-7,x+7,y); ctx.lineTo(x+3,y+2); ctx.closePath(); ctx.fill();
   ctx.restore();
 }
-function drawResidentFoodIcon(x, y) {
+function drawResidentFoodIcon(x, y, hungerLevel=0) {
   ctx.save();
   ctx.fillStyle='rgba(19,27,22,0.78)'; ctx.beginPath(); ctx.arc(x,y,9,0,Math.PI*2); ctx.fill();
-  ctx.fillStyle='#d9574d'; ctx.beginPath(); ctx.arc(x,y+1,4.8,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle='#f39a86'; ctx.lineWidth=0.9; ctx.beginPath(); ctx.arc(x,y+1,4.8,0,Math.PI*2); ctx.stroke();
+  ctx.fillStyle=hungerLevel>=2?'#e0524d':hungerLevel===1?'#d8873f':'#d9574d'; ctx.beginPath(); ctx.arc(x,y+1,4.8,0,Math.PI*2); ctx.fill();
+  ctx.strokeStyle=hungerLevel>=2?'#ff8c83':hungerLevel===1?'#f0bd66':'#f39a86'; ctx.lineWidth=hungerLevel?1.4:0.9; ctx.beginPath(); ctx.arc(x,y+1,4.8,0,Math.PI*2); ctx.stroke();
   ctx.strokeStyle='#805338'; ctx.lineWidth=1.5; ctx.lineCap='round'; ctx.beginPath(); ctx.moveTo(x,y-3); ctx.lineTo(x+0.4,y-6); ctx.stroke();
   ctx.fillStyle='#6eaa5d'; ctx.beginPath(); ctx.ellipse(x+3,y-4,2.4,1.3,-0.5,0,Math.PI*2); ctx.fill();
+  if(hungerLevel>=2) { ctx.strokeStyle='#ff726b';ctx.lineWidth=1;ctx.beginPath();ctx.arc(x,y,7,0,Math.PI*2);ctx.stroke(); }
+  ctx.restore();
+}
+function drawResidentHungerBadge(x,y,hungerLevel) {
+  if(hungerLevel<=0) return;
+  ctx.save();
+  ctx.fillStyle='rgba(19,27,22,0.88)';ctx.beginPath();ctx.arc(x,y,5.5,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle=hungerLevel>=2?'#ff665f':'#e4a34d';ctx.lineWidth=hungerLevel>=2?1.4:1;ctx.beginPath();ctx.arc(x,y,5,0,Math.PI*2);ctx.stroke();
+  ctx.fillStyle=hungerLevel>=2?'#e0524d':'#d8873f';ctx.beginPath();ctx.arc(x,y+0.7,2.7,0,Math.PI*2);ctx.fill();
+  ctx.strokeStyle='#805338';ctx.lineWidth=1;ctx.beginPath();ctx.moveTo(x,y-1.5);ctx.lineTo(x+0.3,y-3.7);ctx.stroke();
+  ctx.fillStyle='#77ad58';ctx.beginPath();ctx.ellipse(x+1.8,y-2.8,1.5,0.8,-0.45,0,Math.PI*2);ctx.fill();
   ctx.restore();
 }
 function drawResidentSleepIcon(x, y) {
@@ -700,6 +742,7 @@ function drawResidentPlantIcon(x,y) {
   ctx.fillStyle='#77ad58';ctx.beginPath();ctx.ellipse(x-4,y-5,3.5,2,-0.5,0,Math.PI*2);ctx.fill();ctx.restore();
 }
 function drawResident(r) {
+  const hungerLevel=r.isGuard?0:Math.min(2,Math.max(0,Math.floor(r.missedMeals||0)));
   const bodyColor = r.isGuard
     ? {GUARD_SLEEPING:'#6688aa',GUARD_FIND_TOWER:'#ff6644',GUARD_MANNING:'#4488ff',
        GUARD_FIGHTING:'#ff3333',GUARD_RETURNING:'#ff8800',GUARD_HEALING:'#44cc44',GUARD_GOING_HOME:'#8294c8'}[r.state]||'#ff6644'
@@ -723,7 +766,7 @@ function drawResident(r) {
   ctx.fillStyle='rgba(255,255,255,0.15)'; ctx.beginPath(); ctx.arc(r.x,r.y,cr,0,Math.PI*2); ctx.fill();
   ctx.save(); ctx.translate(r.x, r.y + cr/2 - 10); ctx.scale(0.5, 1.0);
   ctx.fillStyle=bodyColor; ctx.beginPath(); ctx.arc(0,0,10,0,Math.PI*2); ctx.fill();
-  ctx.strokeStyle='rgba(255,255,255,0.5)'; ctx.lineWidth=0.8; ctx.stroke();
+  ctx.strokeStyle=hungerLevel>=2?'#ff665f':hungerLevel===1?'#e4a34d':'rgba(255,255,255,0.5)'; ctx.lineWidth=hungerLevel?1.4:0.8; ctx.stroke();
   ctx.restore();
   ctx.fillStyle='#fff'; ctx.beginPath(); ctx.arc(r.x+2, r.y-14, 1.5, 0, Math.PI*2); ctx.fill();
   if (r.carrying) { ctx.fillStyle=rc(r.carrying.type); ctx.beginPath(); ctx.arc(r.x, r.y-22, 3, 0, Math.PI*2); ctx.fill(); }
@@ -738,16 +781,21 @@ function drawResident(r) {
     ctx.fillRect(r.x - gbw/2, r.y + cr + 4, gbw * gpct, gbh);
   }
   const iconY=r.y-31;
-  if (r.state==='GOING_TO_EAT'||r.state==='EATING') drawResidentFoodIcon(r.x,iconY);
+  if (r.state==='GOING_TO_EAT'||r.state==='EATING') drawResidentFoodIcon(r.x,iconY,hungerLevel);
   else if (r.state==='GOING_HOME' || r.state==='SLEEPING' || r.state==='GUARD_GOING_HOME') drawResidentSleepIcon(r.x,iconY);
   else if(['GOING_TO_PLANT_MATERIAL','DELIVERING_PLANT_MATERIAL','GOING_TO_PLANT','PLANTING'].includes(r.state)) drawResidentPlantIcon(r.x,iconY);
   else if(r.state==='GOING_TO_HUNT'||r.state==='HUNTING') drawResidentHuntIcon(r.x,iconY);
   else if (!r.workplace && r.state==='GOING_TO_CHOP') drawResidentAxeIcon(r.x,iconY);
+  if(hungerLevel>0&&r.state!=='GOING_TO_EAT'&&r.state!=='EATING') drawResidentHungerBadge(r.x+10,r.y-7,hungerLevel);
 }
 
 function drawEnemy(e) {
   const facing=enemyFacingPoint(e);
   const a=Math.atan2(facing.y-e.y,facing.x-e.x), s=e.size;
+  if(e.bloodMoon) {
+    ctx.save();ctx.strokeStyle='rgba(255,54,54,0.72)';ctx.lineWidth=2/G.cam.zoom;
+    ctx.beginPath();ctx.arc(e.x,e.y,s*1.45,0,Math.PI*2);ctx.stroke();ctx.restore();
+  }
   ctx.save(); ctx.translate(e.x,e.y); ctx.rotate(a);
   const def=ENEMY_DEFS[e.type] || ENEMY_DEFS.normal;
   ctx.fillStyle=e.attacking?'#ff4444':def.color;
@@ -786,8 +834,7 @@ function lerpColor(c1,c2,t) {
 
 function drawClock() {
   const cx = CFG.CANVAS_W - 55, cy = 55, r = 38;
-  const cycleLen = CFG.DAY_DURATION + CFG.NIGHT_DURATION + CFG.TRANSITION*2;
-  const hour24 = ((G.totalTime / cycleLen * 24) + 6) % 24;
+  const hour12=gameClockHour(),nightStart=nightStartHourForDay(G.day),nightEnd=CFG.NIGHT_END_HOUR,bloodMoon=isBloodMoonDay(G.day);
 
   // Clock face background
   ctx.fillStyle = 'rgba(0,0,0,0.7)';
@@ -795,31 +842,29 @@ function drawClock() {
   ctx.strokeStyle = '#888'; ctx.lineWidth = 2;
   ctx.stroke();
 
-  // Night sector: 10 PM (330°) to 6 AM (90°) = 120°
-  ctx.fillStyle = '#222';
+  ctx.fillStyle = bloodMoon ? '#571c22' : '#222';
   ctx.beginPath(); ctx.moveTo(cx, cy);
-  ctx.arc(cx, cy, r-3, -Math.PI/2 + (22/24)*Math.PI*2, -Math.PI/2 + (6/24)*Math.PI*2);
+  ctx.arc(cx, cy, r-3, -Math.PI/2 + (nightStart/CLOCK_HOURS)*Math.PI*2, -Math.PI/2 + (nightEnd/CLOCK_HOURS)*Math.PI*2);
   ctx.closePath(); ctx.fill();
 
-  // Day sector: 6 AM (90°) to 10 PM (330°) = 240° — grey
   ctx.fillStyle = '#999';
   ctx.beginPath(); ctx.moveTo(cx, cy);
-  ctx.arc(cx, cy, r-3, -Math.PI/2 + (6/24)*Math.PI*2, -Math.PI/2 + (22/24)*Math.PI*2);
+  ctx.arc(cx, cy, r-3, -Math.PI/2 + (nightEnd/CLOCK_HOURS)*Math.PI*2, -Math.PI/2 + (nightStart/CLOCK_HOURS)*Math.PI*2);
   ctx.closePath(); ctx.fill();
 
   // Hour markers
   ctx.font = '9px sans-serif'; ctx.textAlign = 'center';
-  for (let h=0; h<24; h+=3) {
-    const a = -Math.PI/2 + (h/24)*Math.PI*2;
+  for (let h=0; h<CLOCK_HOURS; h+=3) {
+    const a = -Math.PI/2 + (h/CLOCK_HOURS)*Math.PI*2;
     const lx = cx + Math.cos(a)*(r-14), ly = cy + Math.sin(a)*(r-14);
-    const label = h===0?'0':h===6?'6':h===12?'12':h===18?'18':String(h);
-    const isNight = (h>=22||h<6); // 10pm-6am
+    const label = h===0?String(CLOCK_HOURS):String(h);
+    const isNight = clockHourInRange(h,nightStart,nightEnd);
     ctx.fillStyle = isNight ? '#fff' : '#000';
     ctx.fillText(label, lx, ly+3);
   }
 
   // Hour hand — pure white
-  const ha = -Math.PI/2 + (hour24/24)*Math.PI*2;
+  const ha = -Math.PI/2 + (hour12/CLOCK_HOURS)*Math.PI*2;
   ctx.strokeStyle = '#fff'; ctx.lineWidth = 2.5;
   ctx.beginPath(); ctx.moveTo(cx,cy);
   ctx.lineTo(cx+Math.cos(ha)*(r-18), cy+Math.sin(ha)*(r-18)); ctx.stroke();

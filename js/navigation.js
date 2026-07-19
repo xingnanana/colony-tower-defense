@@ -39,10 +39,11 @@ function rebuildResidentSpatialHash() {
 function segmentHitsBuilding(x1, y1, x2, y2, b, r) {
   if (!b || (b.resourceNode ? !b.resourceNode.alive : !buildingBlocksMovement(b))) return false;
   if (b.resourceNode && !isResourceObstacleNode(b.resourceNode)) return false;
-  if (b === r.workplace || b === r.home || b === r.buildTarget) return false;
-  const goalDist = Math.hypot(x2 - b.center().x, y2 - b.center().y);
-  if (goalDist < b.collisionRadius() + RESIDENT_RADIUS + 4) return false;
   const c = b.center();
+  const passRadius=b.collisionRadius()+RESIDENT_RADIUS+4;
+  if ((b===r.workplace||b===r.home)&&Math.hypot(x1-c.x,y1-c.y)<passRadius) return false;
+  const goalDist = Math.hypot(x2-c.x, y2-c.y);
+  if (goalDist < b.collisionRadius() + RESIDENT_RADIUS + 4) return false;
   const vx = x2 - x1, vy = y2 - y1;
   const lenSq = vx * vx + vy * vy;
   const t = lenSq > 0 ? clamp(((c.x - x1) * vx + (c.y - y1) * vy) / lenSq, 0, 1) : 0;
@@ -256,6 +257,100 @@ function findNavigationPath(startX,startY,targetX,targetY) {
   const end=simplified[simplified.length-1]||navigationCellCenter(goal.col,goal.row);
   return {points:simplified.length?simplified:[end],reachedGoal:reached,blockedGoal:!reached||!navigationLineClear(end,{x:targetX,y:targetY},grid)};
 }
+function buildingInteractionRange(b) {
+  return b.collisionRadius()+RESIDENT_RADIUS+16;
+}
+function residentReachedBuilding(unit,building) {
+  if(!unit||!building) return false;
+  const center=building.center();
+  if(Math.hypot(unit.x-center.x,unit.y-center.y)<=building.collisionRadius()+RESIDENT_RADIUS+10) return true;
+  const access=unit.buildingAccessBuilding===building?unit.buildingAccessTarget:null;
+  return !!access&&Math.hypot(unit.x-access.x,unit.y-access.y)<=Math.max(10,CFG.NAV_CELL*0.75);
+}
+function setBuildingInteractionTarget(unit,building) {
+  const target=buildingInteractionPoint(unit,building);
+  unit.targetX=target.x;
+  unit.targetY=target.y;
+  return target;
+}
+function groundItemBlockingObstacle(item) {
+  if(!item) return null;
+  ensureObstacleSpatialHash();
+  let blocker=null,bestDepth=0;
+  for(const obstacle of G.obstacleSpatial.query(item.x,item.y,item.x,item.y)) {
+    if(obstacle.resourceNode ? !isResourceObstacleNode(obstacle.resourceNode) : !buildingBlocksMovement(obstacle)) continue;
+    const center=obstacle.center(),depth=obstacle.collisionRadius()-Math.hypot(item.x-center.x,item.y-center.y);
+    if(depth>bestDepth) { blocker=obstacle;bestDepth=depth; }
+  }
+  return blocker;
+}
+function groundItemInteractionPoint(unit,item) {
+  const blocker=groundItemBlockingObstacle(item);
+  if(!blocker) return {x:item.x,y:item.y,blocker:null};
+  const point=buildingInteractionPoint(unit,blocker);
+  return {x:point.x,y:point.y,blocker};
+}
+function residentReachedGroundItem(unit,item,access) {
+  if(Math.hypot(unit.x-item.x,unit.y-item.y)<RESIDENT_RADIUS+8) return true;
+  return !!access?.blocker&&Math.hypot(unit.x-access.x,unit.y-access.y)<=Math.max(10,CFG.NAV_CELL*0.75);
+}
+function buildingInteractionPointClear(unit,building,point) {
+  if(point.x<RESIDENT_RADIUS||point.y<RESIDENT_RADIUS||point.x>CFG.WORLD_W-RESIDENT_RADIUS||point.y>CFG.WORLD_H-RESIDENT_RADIUS) return false;
+  const grid=ensureNavigationGrid(),col=Math.floor(point.x/CFG.NAV_CELL),row=Math.floor(point.y/CFG.NAV_CELL);
+  if(!navigationCellOpen(col,row,grid)) return false;
+  ensureObstacleSpatialHash();
+  const padding=RESIDENT_RADIUS+3;
+  for(const obstacle of G.obstacleSpatial.query(point.x-80,point.y-80,point.x+80,point.y+80)) {
+    if(obstacle.resourceNode ? !isResourceObstacleNode(obstacle.resourceNode) : !buildingBlocksMovement(obstacle)) continue;
+    const center=obstacle.center(),minimum=obstacle.collisionRadius()+padding;
+    if(Math.hypot(point.x-center.x,point.y-center.y)<minimum) return false;
+  }
+  return true;
+}
+function navigationPlanDistance(unit,plan) {
+  if(!plan?.points?.length) return Infinity;
+  let distance=0,previous=unit;
+  for(const point of plan.points) { distance+=Math.hypot(point.x-previous.x,point.y-previous.y);previous=point; }
+  return distance;
+}
+function buildingInteractionPoint(unit,building) {
+  const cached=unit.buildingAccessTarget;
+  if(unit.buildingAccessBuilding===building&&unit.buildingAccessRevision===G.navigationRevision&&cached&&
+      buildingInteractionPointClear(unit,building,cached)) return cached;
+  const center=building.center(),radius=building.collisionRadius()+RESIDENT_RADIUS+8;
+  const startAngle=Math.atan2(unit.y-center.y,unit.x-center.x),candidates=[];
+  for(let index=0;index<24;index++) {
+    const offset=index===0?0:(Math.ceil(index/2)*(index%2?1:-1));
+    const angle=startAngle+offset*Math.PI/12;
+    const point={x:center.x+Math.cos(angle)*radius,y:center.y+Math.sin(angle)*radius};
+    if(buildingInteractionPointClear(unit,building,point)) candidates.push(point);
+  }
+  let best=null,bestScore=Infinity;
+  for(const point of candidates) {
+    if(firstBlockingObstacle(unit,point.x,point.y)) continue;
+    const score=Math.hypot(point.x-unit.x,point.y-unit.y);
+    if(score<bestScore){best=point;bestScore=score;}
+  }
+  if(!best) for(const point of candidates) {
+    const plan=findNavigationPath(unit.x,unit.y,point.x,point.y);
+    if(!plan?.reachedGoal||plan.blockedGoal) continue;
+    const score=navigationPlanDistance(unit,plan);
+    if(score<bestScore){best=point;bestScore=score;}
+  }
+  if(!best) {
+    const angle=startAngle;
+    const desired={x:center.x+Math.cos(angle)*radius,y:center.y+Math.sin(angle)*radius};
+    const openCell=nearestOpenNavigationCell(desired.x,desired.y);
+    const openPoint=openCell?navigationCellCenter(openCell.col,openCell.row):null;
+    best=openPoint&&Math.hypot(openPoint.x-center.x,openPoint.y-center.y)<=buildingInteractionRange(building)+CFG.NAV_CELL
+      ? openPoint
+      : desired;
+  }
+  unit.buildingAccessTarget=best;
+  unit.buildingAccessBuilding=building;
+  unit.buildingAccessRevision=G.navigationRevision;
+  return best;
+}
 function clearNavigation(r) {
   r.navWaypoint = null;
   r.navBlock = null;
@@ -302,6 +397,31 @@ function navigationBlockIsActive(block) {
 function workplaceWorkRange(b) {
   const normalRange=b.collisionRadius()+RESIDENT_RADIUS+2;
   return b.type==='farm' ? normalRange*0.5 : normalRange;
+}
+function buildingUsesInteriorWorkers(building) {
+  const def=building&&buildingRuntimeDef(building);
+  return !!def&&(def.cat==='production'||def.recruits==='resident'||def.recruits==='guard');
+}
+function workplaceInteriorRange(building) {
+  return Math.max(RESIDENT_RADIUS+4,building.collisionRadius()-RESIDENT_RADIUS);
+}
+function workplaceInteriorPoint(resident,building) {
+  const workers=G.residents.filter(other=>!other.isGuard&&other.workplace===building);
+  const index=Math.max(0,workers.indexOf(resident)),count=Math.max(1,workers.length),center=building.center();
+  if(count===1) return center;
+  const radius=Math.min(workplaceInteriorRange(building)-3,RESIDENT_RADIUS*2+4);
+  const angle=-Math.PI/2+index*Math.PI*2/count;
+  return {x:center.x+Math.cos(angle)*radius,y:center.y+Math.sin(angle)*radius};
+}
+function workplaceTravelPoint(resident,building) {
+  if(residentReachedBuilding(resident,building)) {
+    return workplaceInteriorPoint(resident,building);
+  }
+  return buildingInteractionPoint(resident,building);
+}
+function residentCanEnterOwnWorkplace(resident,building) {
+  if(!resident||resident.workplace!==building||!buildingUsesInteriorWorkers(building)) return false;
+  return true;
 }
 function canPassArrivedFormationGuard(r,other) {
   return !!(r.isGuard&&r.controlMode==='manual'&&r.manualTarget&&r.formationCommandId&&
@@ -371,6 +491,7 @@ function flowMove(r, tx, ty, speed, dt) {
   return resolveCollisions(r, steered.x, steered.y);
 }
 function moveViaFlow(r, tx, ty, speed, dt) {
+  if(!r.isGuard&&Object.prototype.hasOwnProperty.call(r,'missedMeals')) speed*=residentHungerMultiplier(r);
   const rs = flowMove(r, tx, ty, speed, dt);
   r.x = rs.x; r.y = rs.y;
   updateNavigationProgress(r,tx,ty,dt);

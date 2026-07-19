@@ -4,6 +4,7 @@ const path = require('node:path');
 
 const root = path.resolve(__dirname, '..');
 const balancePath = path.join(root, 'data', 'balance.json');
+const balanceVersion = 2;
 const port = Number(process.env.PORT) || 3010;
 const mimeTypes = {
   '.html': 'text/html; charset=utf-8',
@@ -23,7 +24,7 @@ function sendJson(response, status, value) {
 }
 
 function validBalance(data) {
-  return data && typeof data === 'object' && data.version === 1 &&
+  return data && typeof data === 'object' && Number.isInteger(data.version) && data.version >= 1 && data.version <= balanceVersion &&
     data.globals && typeof data.globals === 'object' &&
     data.buildings && typeof data.buildings === 'object';
 }

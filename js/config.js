@@ -16,10 +16,13 @@ const CFG = {
   CANVAS_W: 1200, CANVAS_H: 800,
   CELL: 40, WORLD_COLS: 150, WORLD_ROWS: 150,
   WORLD_W: 6000, WORLD_H: 6000,
-  DAY_DURATION: 162, NIGHT_DURATION: 78, TRANSITION: 8,
+  DAY_LENGTH: 256, NIGHT_START_HOUR: 10.5, NIGHT_END_HOUR: 3,
+  DAY_DURATION: 160, NIGHT_DURATION: 80, TRANSITION: 8,
+  BLOOD_MOON_INTERVAL_DAYS: 5, NIGHT_GROWTH_HOURS: 0.5, NIGHT_MAX_HOURS: 5.5,
   START_FOOD: 50, START_WOOD: 40, START_STONE: 20, START_IRON: 0, START_INGOT: 0,
-  START_POP: 4, START_ENGINEERS: 1, MAX_POP_BASE: 4, MAX_GUARD_BASE: 2,
-  MEAL_TIME_LUNCH: 12, MEAL_TIME_DINNER: 18,
+  START_POP: 4, START_ENGINEERS: 1,
+  MEAL_TIME_LUNCH: 6, MEAL_TIME_DINNER: 9,
+  HUNGER_LEVEL_ONE_MULTIPLIER: 0.75, HUNGER_LEVEL_TWO_MULTIPLIER: 0.5, HUNGER_DEATH_MISSED_MEALS: 3,
   ENEMY_ATTACK_RANGE: 30,
   ENEMY_WAVE_BASE_COUNT: 3,
   ENEMY_WAVE_PER_DAY: 2,
@@ -29,6 +32,10 @@ const CFG = {
   ENEMY_WAVE_INTERVAL: 10,
   ENEMY_SPAWN_JITTER: 0.35,
   ENEMY_SPAWN_FOG_DEPTH: 2,
+  BLOOD_MOON_COUNT_MULTIPLIER: 1.75,
+  BLOOD_MOON_HP_MULTIPLIER: 1.5,
+  BLOOD_MOON_DAMAGE_MULTIPLIER: 1.35,
+  BLOOD_MOON_SPEED_MULTIPLIER: 1.1,
   TOWER_RANGE: 150, TOWER_DAMAGE: 15, TOWER_COOLDOWN: 0.8,
   ARROW_SPEED: 420,
   RESIDENT_SPEED: 60,
@@ -66,6 +73,8 @@ const CFG = {
   GUARD_ATTACK_COOLDOWN: 0.6,
   ENEMY_GUARD_LEASH: 180,
   ENGINEER_REPAIR_RATE: 12,
+  TREE_CHOP_TIME: 3,
+  TREE_WOOD_YIELD: 5,
   FRUIT_TREE_WOOD_COST: 2,
   FRUIT_TREE_PLANT_TIME: 2,
   FRUIT_TREE_GROW_TIME_MIN: 20,
@@ -97,7 +106,7 @@ const BLD_DEFS = {
 
   farm:        { name:'农场', icon:'农', cat:'production',sz:[2,2], cost:{wood:5},          hp:100, maxWorkers:2, produces:'food',  baseTime:8, batchSize:5, levelSpeedBonus:0.2, levelBufferBonus:2, unlock:1 , buildTime:2 },
 
-  forester:    { name:'护林员小屋',icon:'林', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:3, produces:'wood', baseTime:10, batchSize:5, levelSpeedBonus:0.2, levelBufferBonus:2, chopTime:3, saplingGrowTime:5, growJitter:0.2, unlock:2, buildTime:5, foresterRadius:4 },
+  forester:    { name:'护林员小屋',icon:'林', cat:'production',sz:[2,2], cost:{wood:15,stone:10},hp:150, maxWorkers:3, produces:'wood', baseTime:10, batchSize:5, levelSpeedBonus:0.2, levelBufferBonus:2, saplingGrowTime:5, growJitter:0.2, unlock:2, buildTime:5, foresterRadius:4 },
 
   quarry:      { name:'采石场',icon:'石', cat:'production',sz:[2,2], cost:{wood:10,stone:5}, hp:120, maxWorkers:3, produces:'stone', sourceType:'stone', sourceRadius:3, baseTime:10, batchSize:5, levelSpeedBonus:0.2, levelBufferBonus:2, unlock:3 , buildTime:8 },
 
@@ -125,7 +134,7 @@ const BLD_DEFS = {
 
   restoration_tower:{ name:'恢复塔',icon:'复', cat:'defense', sz:[1,1], cost:{wood:20,stone:15},hp:140, maxWorkers:0, repairRange:160, buildingRepairRate:8, unitRepairRate:12, levelRepairBonus:0.2, unlock:4, buildTime:10 },
 
-  town_hall:   { name:'大本营',icon:'', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, capacity:200, vision:8, range:180, damage:12, cooldown:1, startResources:{food:5,wood:5,stone:0,iron:0,charcoal:0,ingot:0}, storageCaps:{food:200,wood:200,stone:200,iron:200,charcoal:200,ingot:200}, unlock:1 , buildTime:2 },
+  town_hall:   { name:'大本营',icon:'', cat:'facility',  sz:[2,2], cost:{},           hp:500, maxWorkers:0, popBonus:4, guardBonus:2, capacity:200, vision:8, range:180, damage:12, cooldown:1, startResources:{food:5,wood:5,stone:0,iron:0,charcoal:0,ingot:0}, storageCaps:{food:200,wood:200,stone:200,iron:200,charcoal:200,ingot:200}, unlock:1 , buildTime:2 },
 
   lamp:        { name:'灯', icon:'灯', cat:'facility',  sz:[1,1], cost:{wood:5}, hp:50, maxWorkers:0, unlock:1, buildTime:2, vision:5, levelVisionBonus:1 },
 
@@ -197,6 +206,8 @@ function defaultBuildingLevelValue(type, level, key) {
   if (key==='damage' && type==='arrow_tower') return def.damage*(1+(level-1)*(def.levelDamageBonus||0));
   if (key==='range' && type==='auto_arrow_tower') return def.range+(level-1)*(def.levelRangeBonus||0);
   if (key==='vision' && type==='lamp') return def.vision+(level-1)*(def.levelVisionBonus||0);
+  if (key==='popBonus' && type==='town_hall') return def.popBonus+(level-1)*4;
+  if (key==='guardBonus' && type==='town_hall') return def.guardBonus;
   if (key==='popBonus' && type==='house') return def.popBonus+(level-1)*2;
   if (key==='guardBonus' && type==='barracks') return def.guardBonus+(level-1)*2;
   return base;
@@ -209,7 +220,7 @@ function buildingLevelValue(type, level, key) {
 function buildingRuntimeDef(b) {
   const def=BLD_DEFS[b.type];
   const runtime={...def,...buildingLevelOverrides(b.type,b.level)};
-  for (const key of ['hp','maxWorkers','baseTime','capacity','range','damage','cooldown','vision','foresterRadius','sourceRadius','repairRange','buildingRepairRate','unitRepairRate','levelRepairBonus','popBonus','guardBonus','recruitTime','buildTime','startResources','storageCaps','batchSize','levelSpeedBonus','levelBufferBonus','levelCapacityBonus','levelDamageBonus','levelRangeBonus','levelVisionBonus','levelDamageReduction','chopTime','saplingGrowTime','growJitter']) runtime[key]=buildingLevelValue(b.type,b.level,key);
+  for (const key of ['hp','maxWorkers','baseTime','capacity','range','damage','cooldown','vision','foresterRadius','sourceRadius','repairRange','buildingRepairRate','unitRepairRate','levelRepairBonus','popBonus','guardBonus','recruitTime','buildTime','startResources','storageCaps','batchSize','levelSpeedBonus','levelBufferBonus','levelCapacityBonus','levelDamageBonus','levelRangeBonus','levelVisionBonus','levelDamageReduction','saplingGrowTime','growJitter']) runtime[key]=buildingLevelValue(b.type,b.level,key);
   return runtime;
 }
 function townHallResourceCapacity(type, level=1) { return buildingLevelValue('town_hall',level,'storageCaps')?.[type]||0; }
@@ -232,13 +243,13 @@ function upgradeCostForLevel(type, nextLevel) {
 }
 
 const ENEMY_DEFS = {
-  normal:  { name:'普通敌人', hp:40,  speed:50, damage:8,  size:10, unlockDay:1, spawnWeight:1,    color:'#ff6633' },
-  fast:    { name:'快速敌人', hp:24,  speed:88, damage:5,  size:7,  unlockDay:3, spawnWeight:0.5,  color:'#c978df' },
-  breaker: { name:'破坏者',   hp:110, speed:30, damage:16, size:14, unlockDay:6, spawnWeight:0.28, color:'#a94c38' },
+  normal:  { name:'普通敌人', hp:40,  speed:50, damage:8,  size:10, unlockDay:1, spawnWeight:1,    bloodMoonUnlockDay:1, bloodMoonSpawnWeight:0.7, color:'#ff6633' },
+  fast:    { name:'快速敌人', hp:24,  speed:88, damage:5,  size:7,  unlockDay:3, spawnWeight:0.5,  bloodMoonUnlockDay:5, bloodMoonSpawnWeight:1.2, color:'#c978df' },
+  breaker: { name:'破坏者',   hp:110, speed:30, damage:16, size:14, unlockDay:6, spawnWeight:0.28, bloodMoonUnlockDay:5, bloodMoonSpawnWeight:1,   color:'#a94c38' },
 };
 
 const SETTINGS_STORAGE_KEY = 'colony-game-settings-v1';
-const SETTINGS_VERSION = 3;
+const SETTINGS_VERSION = 4;
 const SAVE_STORAGE_KEY = 'village-game-saves-v1';
 const SAVE_VERSION = 1;
 const MAX_SAVE_SLOTS = 10;
@@ -256,7 +267,14 @@ const SHORTCUT_ACTIONS = [
 ];
 const DEFAULT_SHORTCUTS = Object.fromEntries(SHORTCUT_ACTIONS.map(action => [action.id, action.defaultCode]));
 const DEFAULT_CAMERA_DRAG_THRESHOLD = 12;
-let gameSettings = { version:SETTINGS_VERSION, shortcuts:{...DEFAULT_SHORTCUTS}, cameraDragThreshold:DEFAULT_CAMERA_DRAG_THRESHOLD };
+const DEFAULT_SOUND_VOLUME = 0.55;
+let gameSettings = {
+  version:SETTINGS_VERSION,
+  shortcuts:{...DEFAULT_SHORTCUTS},
+  cameraDragThreshold:DEFAULT_CAMERA_DRAG_THRESHOLD,
+  soundEnabled:true,
+  soundVolume:DEFAULT_SOUND_VOLUME
+};
 let pendingShortcutAction = null;
 
 function loadGameSettings() {
@@ -274,6 +292,8 @@ function loadGameSettings() {
     if (saved && Number.isFinite(Number(saved.cameraDragThreshold))) {
       gameSettings.cameraDragThreshold=clamp(Math.round(Number(saved.cameraDragThreshold)),4,32);
     }
+    if(saved&&typeof saved.soundEnabled==='boolean') gameSettings.soundEnabled=saved.soundEnabled;
+    if(saved&&Number.isFinite(Number(saved.soundVolume))) gameSettings.soundVolume=clamp(Number(saved.soundVolume),0,1);
   } catch (error) { console.warn('Game settings could not be loaded.', error); }
   if (migrated) saveGameSettings();
 }
@@ -299,11 +319,56 @@ loadGameSettings();
 
 // The development server serves the saved overrides. Direct file opening keeps
 // using the defaults above, so the game remains portable.
+const CLOCK_HOURS=12;
+const BALANCE_VERSION=2;
+function cyclicHourSpan(start,end) { return (end-start+CLOCK_HOURS)%CLOCK_HOURS; }
+function clockHourInRange(hour,start,end) { return cyclicHourSpan(start,hour)<cyclicHourSpan(start,end); }
+function syncDayNightDurations(config=CFG) {
+  const total=Math.max(1,Number(config.DAY_LENGTH)||256);
+  const nightHours=cyclicHourSpan(Number(config.NIGHT_START_HOUR)||0,Number(config.NIGHT_END_HOUR)||0);
+  config.DAY_LENGTH=total;
+  config.DAY_DURATION=total*(CLOCK_HOURS-nightHours)/CLOCK_HOURS;
+  config.NIGHT_DURATION=Math.max(0,total*nightHours/CLOCK_HOURS-Math.max(0,Number(config.TRANSITION)||0)*2);
+  return {total,nightHours,dayDuration:config.DAY_DURATION,nightDuration:config.NIGHT_DURATION};
+}
+function bloodMoonIntervalDays() { return Math.max(1,Math.floor(Number(CFG.BLOOD_MOON_INTERVAL_DAYS)||5)); }
+function isBloodMoonDay(day=G.day) { return Math.max(1,Math.floor(Number(day)||1))%bloodMoonIntervalDays()===0; }
+function completedBloodMoonCount(day=G.day) { return Math.floor(Math.max(0,(Number(day)||1)-1)/bloodMoonIntervalDays()); }
+function initialNightHours() { return cyclicHourSpan(Number(CFG.NIGHT_START_HOUR)||0,Number(CFG.NIGHT_END_HOUR)||0); }
+function nightHoursForDay(day=G.day) {
+  const initial=initialNightHours();
+  const maximum=Math.max(initial,Math.min(CLOCK_HOURS-0.5,Number(CFG.NIGHT_MAX_HOURS)||initial));
+  return Math.min(maximum,initial+completedBloodMoonCount(day)*Math.max(0,Number(CFG.NIGHT_GROWTH_HOURS)||0));
+}
+function dayNightDurationsForDay(day=G.day) {
+  const total=gameDayDuration(),nightHours=nightHoursForDay(day),transition=Math.max(0,Number(CFG.TRANSITION)||0);
+  return {
+    nightHours,
+    dayDuration:total*(CLOCK_HOURS-nightHours)/CLOCK_HOURS,
+    nightDuration:Math.max(0,total*nightHours/CLOCK_HOURS-transition*2),
+  };
+}
+function nightStartHourForDay(day=G.day) { return (Number(CFG.NIGHT_END_HOUR)-nightHoursForDay(day)+CLOCK_HOURS)%CLOCK_HOURS; }
+function dayCycleStartHour() { return Number(CFG.NIGHT_END_HOUR)||0; }
+function gameClockHour(totalTime=G.totalTime) { return ((totalTime/gameDayDuration()*CLOCK_HOURS)+dayCycleStartHour())%CLOCK_HOURS; }
+
 function applyBalanceData(data) {
   if (!data || typeof data !== 'object') return;
   if (data.globals && typeof data.globals === 'object') {
-    for (const [key, value] of Object.entries(data.globals)) {
+    const legacyDay=Number(data.globals.DAY_DURATION),legacyNight=Number(data.globals.NIGHT_DURATION);
+    const globals={...data.globals};
+    if((Number(data.version)||1)<BALANCE_VERSION) {
+      for(const key of ['NIGHT_START_HOUR','NIGHT_END_HOUR','MEAL_TIME_LUNCH','MEAL_TIME_DINNER']) {
+        if(Number.isFinite(globals[key])) globals[key]/=2;
+      }
+    }
+    for (const [key, value] of Object.entries(globals)) {
       if (Object.prototype.hasOwnProperty.call(CFG, key) && Number.isFinite(value)) CFG[key] = value;
+    }
+    if(!Number.isFinite(globals.DAY_LENGTH)&&Number.isFinite(legacyDay)&&Number.isFinite(legacyNight)) {
+      CFG.DAY_LENGTH=legacyDay+legacyNight+CFG.TRANSITION*2;
+      CFG.NIGHT_END_HOUR=3;
+      CFG.NIGHT_START_HOUR=(CFG.NIGHT_END_HOUR-((legacyNight+CFG.TRANSITION*2)/CFG.DAY_LENGTH*CLOCK_HOURS)+CLOCK_HOURS)%CLOCK_HOURS;
     }
   }
   if (data.buildings && typeof data.buildings === 'object') {
@@ -315,12 +380,18 @@ function applyBalanceData(data) {
       if (values.levels && typeof values.levels==='object') BLD_DEFS[key].levels=JSON.parse(JSON.stringify(values.levels));
     }
   }
+  const savedTownHall=data.buildings?.town_hall;
+  if(savedTownHall&&typeof savedTownHall==='object') {
+    if(!Object.prototype.hasOwnProperty.call(savedTownHall,'popBonus')&&Number.isFinite(data.globals?.MAX_POP_BASE)) BLD_DEFS.town_hall.popBonus=data.globals.MAX_POP_BASE;
+    if(!Object.prototype.hasOwnProperty.call(savedTownHall,'guardBonus')&&Number.isFinite(data.globals?.MAX_GUARD_BASE)) BLD_DEFS.town_hall.guardBonus=data.globals.MAX_GUARD_BASE;
+  }
   if (data.enemies && typeof data.enemies === 'object') {
     for (const [key, values] of Object.entries(data.enemies)) {
       if (!ENEMY_DEFS[key] || !values || typeof values !== 'object') continue;
       Object.assign(ENEMY_DEFS[key], values);
     }
   }
+  syncDayNightDurations();
 }
 function loadSavedBalance() {
   if (typeof location === 'undefined' || location.protocol === 'file:') return;
@@ -334,6 +405,7 @@ function loadSavedBalance() {
   }
 }
 loadSavedBalance();
+syncDayNightDurations();
 
 // ============================================================
 // GAME STATE
@@ -345,7 +417,7 @@ const G = {
   selectedBldType: null, selectedBuilding: null, selectedGuard: null, selectedGuards: [], hoveredCell: null,
   mouseX: 0, mouseY: 0,
   placingMode: false, movingBuilding: null,
-  maxPop: CFG.MAX_POP_BASE, maxGuards: CFG.MAX_GUARD_BASE, popGrowthTimer: 0,
+  maxPop: 0, maxGuards: 0, popGrowthTimer: 0,
   engineerCount: 0,
   enemySpawnQueue: [], enemySpawnTimer: 0,
   cam: { x:CFG.WORLD_W/2, y:CFG.WORLD_H/2, zoom:1 },
@@ -377,5 +449,6 @@ const G = {
   fogUpdateTimer: 0,
   debugRevealAllFog: false,
   debugShowNavigation: true,
+  debugTimeLock: null,
   guardMoveCommandSequence: 0,
 };

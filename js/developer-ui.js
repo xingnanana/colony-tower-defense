@@ -14,6 +14,8 @@ const BLD_TYPE_EDIT_FIELDS = {
     { k:'range', label:'攻击射程', type:'num', min:1, step:1, unit:'像素' },
     { k:'damage', label:'箭矢伤害', type:'num', min:0, step:1 },
     { k:'cooldown', label:'攻击间隔', type:'num', min:0.05, step:0.05, unit:'秒' },
+    { k:'popBonus', label:'该级村民上限', type:'num', min:0, step:1, unit:'人' },
+    { k:'guardBonus', label:'该级守卫上限', type:'num', min:0, step:1, unit:'人' },
     { k:'startResources', label:'初始拥有资源', type:'resources' },
     { k:'storageCaps', label:'各资源仓储上限', type:'resources' },
   ],
@@ -42,7 +44,6 @@ const BLD_TYPE_EDIT_FIELDS = {
     { k:'batchSize', label:'搬运批量', type:'num', min:1, step:1, unit:'件' },
     { k:'levelSpeedBonus', label:'每级伐木效率', type:'num', min:0, max:2, step:0.05, unit:'倍率' },
     { k:'levelBufferBonus', label:'每级暂存加成', type:'num', min:0, step:1, unit:'件' },
-    { k:'chopTime', label:'单棵伐木时间', type:'num', min:0.5, step:0.1, unit:'秒' },
     { k:'saplingGrowTime', label:'树苗成长时间', type:'num', min:0.5, step:0.1, unit:'秒' },
     { k:'growJitter', label:'树苗成长波动', type:'num', min:0, max:0.9, step:0.05, unit:'比例' },
   ],
@@ -113,11 +114,20 @@ function buildingEditFields(type, level=1) {
   return [...common, ...typeFields];
 }
 const GLOBAL_EDIT_FIELDS = [
-  { k:'DAY_DURATION', label:'白昼时长', min:10, step:1, unit:'秒', restart:true },
-  { k:'NIGHT_DURATION', label:'夜晚时长', min:10, step:1, unit:'秒', restart:true },
-  { k:'MEAL_TIME_LUNCH', label:'第一餐时间', min:0, max:23.5, step:0.5, unit:'时' },
-  { k:'MEAL_TIME_DINNER', label:'第二餐时间', min:0, max:23.5, step:0.5, unit:'时' },
+  { k:'DAY_LENGTH', label:'一天时长', min:30, step:1, unit:'秒', restart:true },
+  { k:'NIGHT_START_HOUR', label:'夜晚开始', type:'nightRange', min:0, max:11.5, step:0.5, unit:'时', restart:true },
+  { k:'NIGHT_END_HOUR', label:'夜晚结束', type:'nightRange', min:0, max:11.5, step:0.5, unit:'时', restart:true },
+  { k:'BLOOD_MOON_INTERVAL_DAYS', label:'血月周期', min:1, step:1, unit:'天' },
+  { k:'NIGHT_GROWTH_HOURS', label:'血月后夜晚增长', min:0, max:6, step:0.5, unit:'时' },
+  { k:'NIGHT_MAX_HOURS', label:'夜晚时长上限', min:0.5, max:11.5, step:0.5, unit:'时' },
+  { k:'MEAL_TIME_LUNCH', label:'第一餐时间', min:0, max:11.5, step:0.5, unit:'时' },
+  { k:'MEAL_TIME_DINNER', label:'第二餐时间', min:0, max:11.5, step:0.5, unit:'时' },
+  { k:'HUNGER_LEVEL_ONE_MULTIPLIER', label:'一级饥饿效率', min:0.05, max:1, step:0.05, unit:'倍率' },
+  { k:'HUNGER_LEVEL_TWO_MULTIPLIER', label:'二级饥饿效率', min:0.05, max:1, step:0.05, unit:'倍率' },
+  { k:'HUNGER_DEATH_MISSED_MEALS', label:'饿死所需连续缺餐', min:1, step:1, unit:'次' },
   { k:'RESIDENT_SPEED', label:'居民速度', min:1, step:1, unit:'像素/秒' },
+  { k:'TREE_CHOP_TIME', label:'单棵砍伐时间', min:0.1, step:0.1, unit:'秒' },
+  { k:'TREE_WOOD_YIELD', label:'单棵树木材产量', min:1, step:1, unit:'木材' },
   { k:'FRUIT_TREE_WOOD_COST', label:'果树苗木材消耗', min:0, step:1, unit:'木材' },
   { k:'FRUIT_TREE_PLANT_TIME', label:'果树种植时间', min:0.1, step:0.1, unit:'秒' },
   { k:'FRUIT_TREE_GROW_TIME_MIN', label:'果树成长时间下限', min:1, step:1, unit:'秒' },
@@ -135,9 +145,10 @@ const GLOBAL_EDIT_FIELDS = [
   { k:'NAV_STUCK_MIN_DISTANCE', label:'停滞最小位移', min:1, step:1, unit:'像素' },
 ];
 const GLOBAL_EDIT_GROUPS=[
-  {key:'time',label:'时间与居民作息',description:'昼夜长度和居民固定用餐时间。',fields:['DAY_DURATION','NIGHT_DURATION','MEAL_TIME_LUNCH','MEAL_TIME_DINNER']},
+  {key:'time',label:'时间与居民作息',description:'夜晚区间决定初始夜长；每次血月结束后，后续夜晚逐步延长至设定上限。',fields:['DAY_LENGTH','NIGHT_START_HOUR','NIGHT_END_HOUR','BLOOD_MOON_INTERVAL_DAYS','NIGHT_GROWTH_HOURS','NIGHT_MAX_HOURS','MEAL_TIME_LUNCH','MEAL_TIME_DINNER','HUNGER_LEVEL_ONE_MULTIPLIER','HUNGER_LEVEL_TWO_MULTIPLIER','HUNGER_DEATH_MISSED_MEALS']},
   {key:'movement',label:'移动与寻路',description:'居民基础速度，以及移动单位停滞后强制重新寻路的条件。',fields:['RESIDENT_SPEED','NAV_STUCK_WINDOW','NAV_STUCK_MIN_DISTANCE']},
-  {key:'fruitTrees',label:'果树种植与收获',description:'果树种植成本、施工成长时间和食物产量。',fields:['FRUIT_TREE_WOOD_COST','FRUIT_TREE_PLANT_TIME','FRUIT_TREE_GROW_TIME_MIN','FRUIT_TREE_GROW_TIME_MAX','FRUIT_TREE_FOOD_MIN','FRUIT_TREE_FOOD_MAX']},
+  {key:'logging',label:'树木砍伐',description:'普通树与成熟果树共用的砍伐时间和木材产量。',fields:['TREE_CHOP_TIME','TREE_WOOD_YIELD']},
+  {key:'fruitTrees',label:'果树种植与收获',description:'果树种植成本、施工时间、成长时间和食物产量。',fields:['FRUIT_TREE_WOOD_COST','FRUIT_TREE_PLANT_TIME','FRUIT_TREE_GROW_TIME_MIN','FRUIT_TREE_GROW_TIME_MAX','FRUIT_TREE_FOOD_MIN','FRUIT_TREE_FOOD_MAX']},
   {key:'hunting',label:'猎物与狩猎',description:'地图猎物数量、补充速度、属性和狩猎产量。',fields:['ANIMAL_INITIAL_COUNT','ANIMAL_MAX_COUNT','ANIMAL_RESPAWN_INTERVAL','ANIMAL_FOOD_MIN','ANIMAL_FOOD_MAX','ANIMAL_SPEED','ANIMAL_HP']},
 ];
 function globalEditGroup(key) { return GLOBAL_EDIT_GROUPS.find(group=>group.key===key)||GLOBAL_EDIT_GROUPS[0]; }
@@ -165,6 +176,10 @@ const ENEMY_SPAWN_EDIT_FIELDS = [
   { k:'ENEMY_WAVE_INTERVAL', label:'波次之间间隔', min:0, step:0.5, unit:'秒' },
   { k:'ENEMY_SPAWN_JITTER', label:'单位生成随机扰动', min:0, max:1, step:0.05, unit:'比例' },
   { k:'ENEMY_SPAWN_FOG_DEPTH', label:'迷雾生成最小深度', min:1, step:1, unit:'格' },
+  { k:'BLOOD_MOON_COUNT_MULTIPLIER', label:'血月敌人数量', min:1, step:0.05, unit:'倍率' },
+  { k:'BLOOD_MOON_HP_MULTIPLIER', label:'血月敌人生命', min:0.1, step:0.05, unit:'倍率' },
+  { k:'BLOOD_MOON_DAMAGE_MULTIPLIER', label:'血月敌人伤害', min:0.1, step:0.05, unit:'倍率' },
+  { k:'BLOOD_MOON_SPEED_MULTIPLIER', label:'血月敌人移速', min:0.1, step:0.05, unit:'倍率' },
 ];
 const ENEMY_EDIT_FIELDS = [
   { k:'name', label:'名称', type:'text' },
@@ -174,6 +189,8 @@ const ENEMY_EDIT_FIELDS = [
   { k:'size', label:'体型', type:'num', min:2, step:1 },
   { k:'unlockDay', label:'出现天数', type:'num', min:1, step:1 },
   { k:'spawnWeight', label:'生成权重', type:'num', min:0, step:0.05 },
+  { k:'bloodMoonUnlockDay', label:'血月出现天数', type:'num', min:1, step:1 },
+  { k:'bloodMoonSpawnWeight', label:'血月生成权重', type:'num', min:0, step:0.05 },
 ];
 const WORLD_RESOURCE_EDIT_FIELDS = [
   { k:'TREE_INITIAL_COUNT', label:'初始树木总数', min:5, step:1, unit:'棵' },
@@ -221,6 +238,7 @@ function openSettingsPanel() {
   pendingShortcutAction=null;
   document.getElementById('settings-overlay').style.display='flex';
   setCameraDragThreshold(gameSettings.cameraDragThreshold);
+  syncSoundSettingsPanel();
   renderSaveSlots();
   renderShortcutSettings();
   settingsSetStatus('存档保存在当前浏览器中；设置修改会自动保存。');
@@ -299,8 +317,6 @@ function cfgPanelFields(view) {
   if(view.cat==='initialResources') return [
     {id:'cfg-initial-POP',field:{k:'START_POP',label:'初始人口'}},
     {id:'cfg-initial-ENGINEERS',field:{k:'START_ENGINEERS',label:'初始工程师'}},
-    {id:'cfg-initial-MAXPOP',field:{k:'MAX_POP_BASE',label:'人口上限基数'}},
-    {id:'cfg-initial-MAXGUARD',field:{k:'MAX_GUARD_BASE',label:'初始守卫上限'}},
   ];
   return [];
 }
@@ -322,6 +338,28 @@ function cfgRestoreCurrentPanel(view) {
     const element=document.getElementById(id);
     if(element) element.value=value;
   }
+}
+function cfgFormatHour(value) {
+  const totalMinutes=Math.round((Number(value)||0)*60)%(CLOCK_HOURS*60);
+  const hour=Math.floor(totalMinutes/60)||CLOCK_HOURS;
+  return String(hour).padStart(2,'0')+':'+String(totalMinutes%60).padStart(2,'0');
+}
+function cfgUpdateNightRangePreview() {
+  const start=document.getElementById('cfg-global-NIGHT_START_HOUR');
+  const end=document.getElementById('cfg-global-NIGHT_END_HOUR');
+  const track=document.getElementById('cfg-night-range-track');
+  if(!start||!end||!track) return;
+  const startValue=Number(start.value),endValue=Number(end.value);
+  const low=Math.min(startValue,endValue)/CLOCK_HOURS*100,high=Math.max(startValue,endValue)/CLOCK_HOURS*100;
+  track.style.background=startValue>endValue
+    ? `linear-gradient(to right,#334653 0%,#334653 ${low}%,#6b6540 ${low}%,#6b6540 ${high}%,#334653 ${high}%,#334653 100%)`
+    : `linear-gradient(to right,#6b6540 0%,#6b6540 ${low}%,#334653 ${low}%,#334653 ${high}%,#6b6540 ${high}%,#6b6540 100%)`;
+  const startLabel=document.getElementById('cfg-night-start-label'),endLabel=document.getElementById('cfg-night-end-label');
+  if(startLabel) startLabel.textContent='开始 '+cfgFormatHour(startValue);
+  if(endLabel) endLabel.textContent='结束 '+cfgFormatHour(endValue);
+}
+function cfgNightRangeHtml() {
+  return `<div class="cfg-night-range-row"><label>夜晚区间</label><div class="cfg-night-range-control"><div id="cfg-night-range-track" class="cfg-night-range-track"><input id="cfg-global-NIGHT_START_HOUR" aria-label="夜晚开始" type="range" min="0" max="11.5" step="0.5" value="${CFG.NIGHT_START_HOUR}" oninput="cfgUpdateNightRangePreview()"><input id="cfg-global-NIGHT_END_HOUR" aria-label="夜晚结束" type="range" min="0" max="11.5" step="0.5" value="${CFG.NIGHT_END_HOUR}" oninput="cfgUpdateNightRangePreview()"></div><div class="cfg-night-range-values"><span id="cfg-night-start-label"></span><span id="cfg-night-end-label"></span></div></div><span class="cfg-restart-label">重开生效</span></div>`;
 }
 function closeConfigPanel() {
   cfgEditSession=null;
@@ -492,6 +530,8 @@ function cfgSelectItem() {
     const group=globalEditGroup(key);
     html=`<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">${group.description}</div>`;
     for(const f of globalEditFields(key)) {
+      if(f.k==='NIGHT_START_HOUR') { html+=cfgNightRangeHtml();continue; }
+      if(f.k==='NIGHT_END_HOUR') continue;
       html+=`<div style="display:grid;grid-template-columns:120px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-global-${f.k}" type="number" min="${f.min}" step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:${f.restart?'#d5a85c':'#788898'}">${f.restart?'重开生效':f.unit}</span></div>`;
     }
   } else if(cat==='professions') {
@@ -501,13 +541,13 @@ function cfgSelectItem() {
       html+=`<div style="display:grid;grid-template-columns:120px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-profession-${f.k}" type="number" min="${f.min}" ${f.max!==undefined?`max="${f.max}"`:''} step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:#788898">${f.unit}</span></div>`;
     }
   } else if(cat==='enemySpawns') {
-    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">修改后将在下一次进入夜晚时使用，不会改变当前夜晚已固定的生成队列。</div>';
+    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">修改后将在下一次进入夜晚时使用。血月会放大总数量和单位属性，但不会改变当前夜晚已固定的生成队列。</div>';
     for(const f of ENEMY_SPAWN_EDIT_FIELDS) {
       html+=`<div style="display:grid;grid-template-columns:150px 1fr 72px;align-items:center;gap:8px;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-spawn-${f.k}" type="number" min="${f.min}" ${f.max!==undefined?`max="${f.max}"`:''} step="${f.step}" value="${CFG[f.k]}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:#788898">${f.unit}</span></div>`;
     }
   } else if(cat==='enemies'&&ENEMY_DEFS[key]) {
     const d=ENEMY_DEFS[key];
-    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">普通敌人始终可生成；快速敌人和破坏者从“出现天数”起按生成权重混入夜袭。破坏者会优先攻击路线上的防御建筑。</div>';
+    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">普通夜晚和血月可分别配置敌人的首次出现天数与生成权重。破坏者会优先攻击路线上的防御建筑。</div>';
     for(const f of ENEMY_EDIT_FIELDS) {
       const inputType=f.type==='text'?'text':'number';
       const limits=f.type==='num'?`min="${f.min}" step="${f.step}"`:'';
@@ -538,15 +578,14 @@ function cfgSelectItem() {
       html+=`<div style="display:grid;grid-template-columns:132px 1fr 52px;align-items:center;gap:8px;padding:3px 0;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-fld-${f.k}" type="${inputType}" ${limits} ${resourceHint} value="${val??''}" style="min-width:0;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="color:#788898;font-size:11px;">${f.unit||''}</span></div>`;
     }
   } else if(cat==='initialResources') {
-    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">重新开始游戏时将使用以下初始人口配置。初始资源与大本营各资源仓储上限请在“建筑 → 大本营 → 等级 1”中编辑。</div>';
+    html='<div style="color:#9aa7b8;line-height:18px;margin-bottom:4px;">重新开始游戏时将使用以下初始人口配置。大本营每级村民/守卫上限、初始资源和仓储上限请在“建筑 → 大本营”对应等级中编辑。</div>';
     html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">初始人口</label><input id="cfg-initial-POP" type="number" min="0" step="1" value="${CFG.START_POP}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
     html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">初始工程师</label><input id="cfg-initial-ENGINEERS" type="number" min="0" step="1" value="${CFG.START_ENGINEERS}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
-    html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">人口上限基数</label><input id="cfg-initial-MAXPOP" type="number" min="1" step="1" value="${CFG.MAX_POP_BASE}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
-    html+=`<div style="display:grid;grid-template-columns:120px 1fr;align-items:center;gap:8px;padding:4px 0;"><label style="text-align:right;color:#aaa;">初始守卫上限</label><input id="cfg-initial-MAXGUARD" type="number" min="0" step="1" value="${CFG.MAX_GUARD_BASE}" style="background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"></div>`;
   }
   container.innerHTML=html;
   const level=cat==='buildings'?(Number(document.getElementById('cfg-building-level').value)||1):1;
   cfgRestoreCurrentPanel({cat,key,level});
+  if(cat==='globals'&&key==='time') cfgUpdateNightRangePreview();
 }
 function cfgConfigSnapshot() {
   const globals={...CFG};
@@ -616,8 +655,6 @@ function cfgMergePanelIntoCandidate(panel,candidate) {
     const fields=[
       ['cfg-initial-POP','START_POP','初始人口',0],
       ['cfg-initial-ENGINEERS','START_ENGINEERS','初始工程师',0],
-      ['cfg-initial-MAXPOP','MAX_POP_BASE','人口上限基数',1],
-      ['cfg-initial-MAXGUARD','MAX_GUARD_BASE','初始守卫上限',0],
     ];
     for(const [id,key,label,min] of fields) {
       const value=Number(read(id));
@@ -629,7 +666,13 @@ function cfgMergePanelIntoCandidate(panel,candidate) {
 }
 function cfgValidateCandidate(candidate) {
   const cfg=candidate.globals;
+  const nightHours=cyclicHourSpan(cfg.NIGHT_START_HOUR,cfg.NIGHT_END_HOUR);
+  if(nightHours<=0) return '夜晚开始与结束时间不能相同';
+  if(cfg.DAY_LENGTH*nightHours/CLOCK_HOURS<=cfg.TRANSITION*2) return '夜晚区间过短，无法容纳黄昏和黎明过渡';
+  if(cfg.NIGHT_MAX_HOURS<nightHours) return '夜晚时长上限不能小于初始夜晚时长';
+  if(cfg.DAY_LENGTH*cfg.NIGHT_MAX_HOURS/CLOCK_HOURS<=cfg.TRANSITION*2) return '夜晚时长上限无法容纳黄昏和黎明过渡';
   if(cfg.MEAL_TIME_LUNCH===cfg.MEAL_TIME_DINNER) return '两次用餐时间不能相同';
+  if(cfg.HUNGER_LEVEL_TWO_MULTIPLIER>cfg.HUNGER_LEVEL_ONE_MULTIPLIER) return '二级饥饿效率不能高于一级饥饿效率';
   if(cfg.FRUIT_TREE_GROW_TIME_MIN>cfg.FRUIT_TREE_GROW_TIME_MAX||cfg.FRUIT_TREE_FOOD_MIN>cfg.FRUIT_TREE_FOOD_MAX) return '果树的随机下限不能大于上限';
   if(cfg.ANIMAL_INITIAL_COUNT>cfg.ANIMAL_MAX_COUNT||cfg.ANIMAL_FOOD_MIN>cfg.ANIMAL_FOOD_MAX) return '猎物数量或产量下限不能大于上限';
   if(cfg.START_ENGINEERS>cfg.START_POP) return '初始工程师必须介于 0 和初始人口之间';
@@ -647,6 +690,7 @@ function cfgReplaceConfigObject(target,source) {
 }
 function cfgCommitCandidate(candidate) {
   Object.assign(CFG,candidate.globals);
+  syncDayNightDurations();
   cfgReplaceConfigObject(ENEMY_DEFS,candidate.enemies);
   cfgReplaceConfigObject(BLD_DEFS,candidate.buildings);
   for(const resident of G.residents) if(resident.isGuard) {
@@ -692,8 +736,8 @@ function collectBalanceData() {
   for(const fields of Object.values(PROFESSION_EDIT_FIELDS)) for(const field of fields) globals[field.k]=CFG[field.k];
   for(const field of ENEMY_SPAWN_EDIT_FIELDS) globals[field.k]=CFG[field.k];
   for(const field of WORLD_RESOURCE_EDIT_FIELDS) globals[field.k]=CFG[field.k];
-  globals.START_POP=CFG.START_POP; globals.START_ENGINEERS=CFG.START_ENGINEERS; globals.MAX_POP_BASE=CFG.MAX_POP_BASE; globals.MAX_GUARD_BASE=CFG.MAX_GUARD_BASE;
-  return {version:1, savedAt:new Date().toISOString(), globals, enemies:ENEMY_DEFS, buildings:BLD_DEFS};
+  globals.START_POP=CFG.START_POP; globals.START_ENGINEERS=CFG.START_ENGINEERS;
+  return {version:BALANCE_VERSION, savedAt:new Date().toISOString(), globals, enemies:ENEMY_DEFS, buildings:BLD_DEFS};
 }
 async function cfgSaveProject() {
   if(!cfgApply()) return;
