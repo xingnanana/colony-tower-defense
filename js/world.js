@@ -52,14 +52,14 @@ function refreshFogVisibility() {
   if (G.debugRevealAllFog) { G.fogVisible.fill(1); return; }
   G.fogVisible.fill(0);
   for(const b of G.buildings) {
-    if (b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
+    if (b.hp<=0||b.blueprint||(b.constructionTimer>0&&!b.upgrading)) continue;
     const radius=buildingFogRadius(b);
     if(radius>0) { const c=b.center();revealFogCircle(c.x,c.y,radius); }
   }
 }
 function isStaticPatrolVisible(x,y) {
   for(const b of G.buildings) {
-    if (b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
+    if (b.hp<=0||b.blueprint||(b.constructionTimer>0&&!b.upgrading)) continue;
     const radius=buildingFogRadius(b);
     if(radius>0) { const c=b.center();if(Math.hypot(x-c.x,y-c.y)<=radius) return true; }
   }

@@ -89,7 +89,7 @@ function drawNightLights(nightAlpha) {
   nightOverlayCtx.fillRect(0,0,CFG.CANVAS_W,CFG.CANVAS_H);
   nightOverlayCtx.globalCompositeOperation='destination-out';
   for(const b of G.buildings) {
-    if (b.hp<=0||b.blueprint||b.constructionTimer>0) continue;
+    if (b.hp<=0||b.blueprint||(b.constructionTimer>0&&!b.upgrading)) continue;
     const radius=nightLightRadius(b);
     if (!radius) continue;
     const c=b.center(), screen=worldToScreen(c.x,c.y), screenRadius=radius*G.cam.zoom;

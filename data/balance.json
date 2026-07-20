@@ -1,6 +1,6 @@
 {
   "version": 2,
-  "savedAt": "2026-07-19T16:04:33.917Z",
+  "savedAt": "2026-07-20T01:05:44.428Z",
   "globals": {
     "DAY_LENGTH": 300,
     "NIGHT_START_HOUR": 0,
@@ -16,6 +16,8 @@
     "RESIDENT_SPEED": 60,
     "TREE_CHOP_TIME": 10,
     "TREE_WOOD_YIELD": 5,
+    "FRUIT_TREE_CHOP_TIME": 3,
+    "FRUIT_TREE_WOOD_YIELD": 0,
     "FRUIT_TREE_WOOD_COST": 5,
     "FRUIT_TREE_PLANT_TIME": 5,
     "FRUIT_TREE_GROW_TIME_MIN": 50,
@@ -39,8 +41,8 @@
     "ENEMY_WAVE_BASE_COUNT": 1,
     "ENEMY_WAVE_PER_DAY": 2,
     "ENEMY_WAVE_MAX": 4,
-    "ENEMY_WAVE_DAY_STEP": 2,
-    "ENEMY_WAVE_DURATION": 7,
+    "ENEMY_WAVE_DAY_STEP": 3,
+    "ENEMY_WAVE_DURATION": 9,
     "ENEMY_WAVE_INTERVAL": 10,
     "ENEMY_SPAWN_JITTER": 0.35,
     "ENEMY_SPAWN_FOG_DEPTH": 2,
@@ -199,12 +201,11 @@
         2
       ],
       "cost": {
-        "wood": 10,
-        "stone": 5
+        "wood": 50
       },
       "hp": 200,
       "maxWorkers": 0,
-      "guardBonus": 4,
+      "guardBonus": 2,
       "unlock": 3,
       "buildTime": 5,
       "maxLevel": 5,
@@ -240,18 +241,33 @@
         2
       ],
       "cost": {
-        "wood": 15
+        "wood": 35
       },
       "hp": 160,
       "maxWorkers": 0,
       "recruits": "guard",
       "recruitTime": 15,
       "recruitCost": {
-        "food": 20
+        "food": 15
       },
       "unlock": 3,
       "buildTime": 5,
-      "maxLevel": 5
+      "maxLevel": 5,
+      "levels": {
+        "3": {
+          "unlock": 3,
+          "hp": 270,
+          "buildTime": 5,
+          "recruitTime": 15,
+          "recruitCost": {
+            "food": 20
+          },
+          "upgradeCost": {
+            "wood": 20,
+            "stone": 10
+          }
+        }
+      }
     },
     "farm": {
       "name": "农场",
@@ -339,7 +355,7 @@
       "baseTime": 10,
       "batchSize": 5,
       "levelSpeedBonus": 0.2,
-      "levelBufferBonus": 2,
+      "levelBufferBonus": 0,
       "saplingGrowTime": 5,
       "growJitter": 0.2,
       "unlock": 2,
@@ -761,7 +777,7 @@
             "ingot": 0
           },
           "upgradeCost": {
-            "wood": 300
+            "wood": 200
           },
           "range": 180,
           "damage": 12,
@@ -784,7 +800,7 @@
             "ingot": 0
           },
           "upgradeCost": {
-            "wood": 1000
+            "wood": 800
           }
         },
         "5": {

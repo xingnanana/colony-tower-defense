@@ -230,7 +230,9 @@ function updateResidents(dt) {
           playGameSound('chop',r.chopTarget.x,r.chopTarget.y);
         }
         const forester=!r.finishCurrentChopForWork&&r.workplace&&r.workplace.type==='forester' ? r.workplace : {type:'forester',level:1};
-        const chopTime=Math.max(0.1,Number(CFG.TREE_CHOP_TIME)||3)/productionSpeedMultiplier(forester);
+        const isFruitTree=r.chopTarget&&r.chopTarget.type==='fruit_tree';
+        const baseChopTime=isFruitTree ? Math.max(0.1,Number(CFG.FRUIT_TREE_CHOP_TIME)||Number(CFG.TREE_CHOP_TIME)||3) : Math.max(0.1,Number(CFG.TREE_CHOP_TIME)||3);
+        const chopTime=baseChopTime/productionSpeedMultiplier(forester);
         if (r.chopTimer >= chopTime) {
           const carryCapacity=productionBufferCapacity(r.finishCurrentChopForWork?{level:1}:(r.workplace||{level:1}));
           const harvestedNode=r.chopTarget;
@@ -239,9 +241,8 @@ function updateResidents(dt) {
           G.buildingPanelDirty=true;
           spawnParticles(r.chopTarget.x, r.chopTarget.y, '#8B4513', 5);
           playGameSound('tree_fall',r.chopTarget.x,r.chopTarget.y);
-          const woodYield=Math.max(1,Math.floor(CFG.TREE_WOOD_YIELD||1));
-          if (!r.carrying) r.carrying = { type: 'wood', amount: woodYield };
-          else r.carrying.amount+=woodYield;
+          const woodYield=harvestedNode.type==='fruit_tree' ? Math.max(0,Math.floor(CFG.FRUIT_TREE_WOOD_YIELD??CFG.TREE_WOOD_YIELD??1)) : Math.max(1,Math.floor(CFG.TREE_WOOD_YIELD||1));
+          if (woodYield>0) { if (!r.carrying) r.carrying={type:'wood',amount:woodYield}; else r.carrying.amount+=woodYield; }
           if(harvestedNode.type==='fruit_tree') {
             const foodAmount=Math.floor(CFG.FRUIT_TREE_FOOD_MIN+Math.random()*(CFG.FRUIT_TREE_FOOD_MAX-CFG.FRUIT_TREE_FOOD_MIN+1));
             r.carryQueue.push({type:'food',amount:foodAmount});

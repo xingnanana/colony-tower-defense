@@ -1,6 +1,7 @@
 const BLD_COMMON_EDIT_FIELDS = [
   { k:'name', label:'名称', type:'text' },
   { k:'icon', label:'图标', type:'text' },
+  { k:'sz', label:'占地面积', type:'sz' },
   { k:'maxLevel', label:'等级上限', type:'num', min:1, step:1 },
   { k:'unlock', label:'解锁所需大本营等级', type:'num', min:1, step:1 },
   { k:'hp', label:'生命', type:'num', min:1, step:1 },
@@ -128,6 +129,8 @@ const GLOBAL_EDIT_FIELDS = [
   { k:'RESIDENT_SPEED', label:'居民速度', min:1, step:1, unit:'像素/秒' },
   { k:'TREE_CHOP_TIME', label:'单棵砍伐时间', min:0.1, step:0.1, unit:'秒' },
   { k:'TREE_WOOD_YIELD', label:'单棵树木材产量', min:1, step:1, unit:'木材' },
+  { k:'FRUIT_TREE_CHOP_TIME', label:'果树砍伐时间', min:0.1, step:0.1, unit:'秒' },
+  { k:'FRUIT_TREE_WOOD_YIELD', label:'果树木材产量', min:0, step:1, unit:'木材' },
   { k:'FRUIT_TREE_WOOD_COST', label:'果树苗木材消耗', min:0, step:1, unit:'木材' },
   { k:'FRUIT_TREE_PLANT_TIME', label:'果树种植时间', min:0.1, step:0.1, unit:'秒' },
   { k:'FRUIT_TREE_GROW_TIME_MIN', label:'果树成长时间下限', min:1, step:1, unit:'秒' },
@@ -147,8 +150,8 @@ const GLOBAL_EDIT_FIELDS = [
 const GLOBAL_EDIT_GROUPS=[
   {key:'time',label:'时间与居民作息',description:'夜晚区间决定初始夜长；每次血月结束后，后续夜晚逐步延长至设定上限。',fields:['DAY_LENGTH','NIGHT_START_HOUR','NIGHT_END_HOUR','BLOOD_MOON_INTERVAL_DAYS','NIGHT_GROWTH_HOURS','NIGHT_MAX_HOURS','MEAL_TIME_LUNCH','MEAL_TIME_DINNER','HUNGER_LEVEL_ONE_MULTIPLIER','HUNGER_LEVEL_TWO_MULTIPLIER','HUNGER_DEATH_MISSED_MEALS']},
   {key:'movement',label:'移动与寻路',description:'居民基础速度，以及移动单位停滞后强制重新寻路的条件。',fields:['RESIDENT_SPEED','NAV_STUCK_WINDOW','NAV_STUCK_MIN_DISTANCE']},
-  {key:'logging',label:'树木砍伐',description:'普通树与成熟果树共用的砍伐时间和木材产量。',fields:['TREE_CHOP_TIME','TREE_WOOD_YIELD']},
-  {key:'fruitTrees',label:'果树种植与收获',description:'果树种植成本、施工时间、成长时间和食物产量。',fields:['FRUIT_TREE_WOOD_COST','FRUIT_TREE_PLANT_TIME','FRUIT_TREE_GROW_TIME_MIN','FRUIT_TREE_GROW_TIME_MAX','FRUIT_TREE_FOOD_MIN','FRUIT_TREE_FOOD_MAX']},
+  {key:'logging',label:'树木砍伐',description:'普通树的砍伐时间和木材产量。',fields:['TREE_CHOP_TIME','TREE_WOOD_YIELD']},
+  {key:'fruitTrees',label:'果树种植与收获',description:'果树砍伐时间、木材产量、种植成本、施工时间、成长时间和食物产量。',fields:['FRUIT_TREE_CHOP_TIME','FRUIT_TREE_WOOD_YIELD','FRUIT_TREE_WOOD_COST','FRUIT_TREE_PLANT_TIME','FRUIT_TREE_GROW_TIME_MIN','FRUIT_TREE_GROW_TIME_MAX','FRUIT_TREE_FOOD_MIN','FRUIT_TREE_FOOD_MAX']},
   {key:'hunting',label:'猎物与狩猎',description:'地图猎物数量、补充速度、属性和狩猎产量。',fields:['ANIMAL_INITIAL_COUNT','ANIMAL_MAX_COUNT','ANIMAL_RESPAWN_INTERVAL','ANIMAL_FOOD_MIN','ANIMAL_FOOD_MAX','ANIMAL_SPEED','ANIMAL_HP']},
 ];
 function globalEditGroup(key) { return GLOBAL_EDIT_GROUPS.find(group=>group.key===key)||GLOBAL_EDIT_GROUPS[0]; }
@@ -310,7 +313,7 @@ function cfgPanelFields(view) {
   if(view.cat==='worldResources') return WORLD_RESOURCE_EDIT_FIELDS.map(field=>({id:'cfg-world-'+field.k,field}));
   if(view.cat==='buildings'&&BLD_DEFS[view.key]) {
     const level=view.level||1;
-    const fields=buildingEditFields(view.key,level).filter(field=>level===1||!['name','icon','maxLevel','cost'].includes(field.k));
+    const fields=buildingEditFields(view.key,level).filter(field=>level===1||!['name','icon','sz','maxLevel','cost'].includes(field.k));
     if(level>1) fields.push({k:'upgradeCost',label:'升至本级消耗',type:'resources'});
     return fields.map(field=>({id:'cfg-fld-'+field.k,field}));
   }
@@ -561,11 +564,16 @@ function cfgSelectItem() {
   } else if(cat==='buildings'&&BLD_DEFS[key]) {
     const d=BLD_DEFS[key];
     const level=syncCfgBuildingLevelOptions(key);
-    const fields=buildingEditFields(key,level).filter(field=>level===1||!['name','icon','maxLevel','cost'].includes(field.k));
+    const fields=buildingEditFields(key,level).filter(field=>level===1||!['name','icon','sz','maxLevel','cost'].includes(field.k));
     if(level>1) fields.push({k:'upgradeCost',label:'升至本级消耗',type:'resources'});
     html=`<div style="color:#9aa7b8;line-height:18px;margin-bottom:8px;">正在编辑 ${d.name} 的等级 ${level} 参数。未单独填写的等级会沿用默认升级曲线；范围、射程和容量会立即作用于当前游戏。</div>`;
     for(const f of fields) {
-      let val=f.k==='upgradeCost' ? upgradeCostForLevel(key,level) : (level===1||['name','icon','maxLevel','cost'].includes(f.k) ? d[f.k] : buildingLevelValue(key,level,f.k));
+      let val=f.k==='upgradeCost' ? upgradeCostForLevel(key,level) : (level===1||['name','icon','sz','maxLevel','cost'].includes(f.k) ? d[f.k] : buildingLevelValue(key,level,f.k));
+      if(f.type==='sz') {
+        const [w,h]=Array.isArray(val)?val:[1,1];
+        html+=`<div style="display:grid;grid-template-columns:132px 72px 16px 72px 52px;align-items:center;gap:8px;padding:3px 0;"><label style="text-align:right;color:#aaa;">${f.label}</label><input id="cfg-fld-sz-w" type="number" min="1" step="1" value="${w}" style="min-width:0;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span style="text-align:center;color:#aaa;">×</span><input id="cfg-fld-sz-h" type="number" min="1" step="1" value="${h}" style="min-width:0;background:#2a2a3a;color:#fff;border:1px solid #555;padding:4px 6px;border-radius:3px;font-size:12px;font-family:inherit;"><span></span></div>`;
+        continue;
+      }
       if(f.type==='resources') val=Object.entries(val||{}).map(([resource,amount])=>resource+':'+amount).join(',');
       if(f.type==='resource') {
         const options=RESOURCE_TYPES.map(resource=>`<option value="${resource}" ${resource===val?'selected':''}>${RESOURCE_NAMES[resource]}</option>`).join('');
@@ -638,7 +646,13 @@ function cfgMergePanelIntoCandidate(panel,candidate) {
     const target=level===1?candidate.buildings[view.key]:((candidate.buildings[view.key].levels||(candidate.buildings[view.key].levels={}))[level]||((candidate.buildings[view.key].levels||(candidate.buildings[view.key].levels={}))[level]={}));
     for(const {id,field} of cfgPanelFields(view)) {
       const raw=read(id);
-      if(field.type==='num') {
+      if(field.type==='sz') {
+        const w=cfgParseNumber(read('cfg-fld-sz-w'),{min:1,step:1});
+        const h=cfgParseNumber(read('cfg-fld-sz-h'),{min:1,step:1});
+        if(w.error) return candidate.buildings[view.key].name+'：'+w.error;
+        if(h.error) return candidate.buildings[view.key].name+'：'+h.error;
+        target[field.k]=[w.value,h.value];
+      } else if(field.type==='num') {
         const parsed=cfgParseNumber(raw,field);
         if(parsed.error) return candidate.buildings[view.key].name+'：'+parsed.error;
         target[field.k]=parsed.value;
